@@ -1,0 +1,17 @@
+# Local env files — never commit real secrets
+.env
+.env.*
+!.env.example
+api.env
+auth.env
+test.env
+
+# Runtime artefacts
+db_data/
+redis/
+traefik/certs/local.crt
+traefik/certs/local.key
+
+# shared_migrations is a bind mount; never populate the host copy with
+# the canonical migrations. Compose mounts the volume at runtime.
+shared_migrations/
