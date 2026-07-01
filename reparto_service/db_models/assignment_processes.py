@@ -161,3 +161,57 @@ class AssignmentProcessesPublic(SQLModel):
         description="List of assignment processes."
     )
     count: int = Field(description="Total assignment processes count.")
+
+
+# ── Lifecycle command schemas (plan §8.4, §10.2) ──────────────────────────────
+
+
+class ProcessTransitionRequest(SQLModel):
+    """Request body for ``POST /assignment-processes/{id}/transition``.
+
+    ``target_status`` must be a legal edge out of the current status
+    (see ``reparto_service.services.process_lifecycle``). Audit-event
+    payloads (plan §8.14) are a post-MVP item, so this first slice only
+    carries the target.
+    """
+
+    target_status: AssignmentProcessStatus = Field(
+        description="Status to transition the process into."
+    )
+
+
+class ProcessReopenRequest(SQLModel):
+    """Request body for ``POST /assignment-processes/{id}/reopen``.
+
+    The reopen flow only accepts the ``final`` → ``reopened`` edge
+    (plan §8.4, §10.2) and requires an explicit reason at the schema
+    level. The reason is reserved for the post-MVP ``AuditEvent`` table
+    (plan §8.14) — the controller validates it but does not yet persist
+    it.
+    """
+
+    reason: str = Field(
+        min_length=1,
+        max_length=500,
+        description="Mandatory justification for reopening the process.",
+    )
+
+
+class ProcessCopyRequest(SQLModel):
+    """Request body for ``POST /assignment-processes/{id}/copy-from/{source_id}``.
+
+    The receiving process is the URL ``{id}``; the source process is the
+    URL ``{source_id}``. The target process must exist, belong to the
+    same school, and currently be in a state that has not yet been
+    populated (plan §14.1: copy *structure* is the default, assignments
+    require an explicit flag).
+    """
+
+    copy_assignments: bool = Field(
+        default=False,
+        description=(
+            "When ``True``, copy the source's existing assignments to the "
+            "target process. Default is ``False``: only the structure "
+            "(teachers, subjects, groups, hour requirements) is copied."
+        ),
+    )
