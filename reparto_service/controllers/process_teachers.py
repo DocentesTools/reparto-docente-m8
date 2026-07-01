@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 from auth_sdk_m8.schemas.user import UserModel
 
 from reparto_service.controllers.base import DomainController
+from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.process_teachers import (
     ProcessTeacher,
     ProcessTeacherCreate,
@@ -53,7 +54,10 @@ class ProcessTeacherController(DomainController):
         current_user: UserModel,
         process_teacher_in: ProcessTeacherCreate,
     ) -> ProcessTeacherPublic:
-        DomainController.get_process_or_404(session, process_id)
+        del current_user
+        DomainController.ensure_process_mutable(
+            DomainController.get_process_or_404(session, process_id)
+        )
         DomainController.get_or_404(
             session, TeacherProfile, process_teacher_in.teacher_profile_id
         )
@@ -90,9 +94,10 @@ class ProcessTeacherController(DomainController):
         current_user: UserModel,
     ) -> ProcessTeacherPublic:
         del current_user
-        process_teacher = ProcessTeacherController._get_or_404(
+        process, process_teacher = ProcessTeacherController._get_for_update_or_404(
             session, process_id, process_teacher_id
         )
+        DomainController.ensure_process_mutable(process)
         process_teacher.sqlmodel_update(
             process_teacher_in.model_dump(exclude_unset=True)
         )
@@ -105,9 +110,10 @@ class ProcessTeacherController(DomainController):
     def delete_process_teacher(
         session: Session, process_id: uuid.UUID, process_teacher_id: uuid.UUID
     ) -> ProcessTeacherPublic:
-        process_teacher = ProcessTeacherController._get_or_404(
+        process, process_teacher = ProcessTeacherController._get_for_update_or_404(
             session, process_id, process_teacher_id
         )
+        DomainController.ensure_process_mutable(process)
         session.delete(process_teacher)
         session.commit()
         return ProcessTeacherPublic.model_validate(process_teacher)
@@ -135,6 +141,21 @@ class ProcessTeacherController(DomainController):
                 ),
             )
         return process_teacher
+
+    @staticmethod
+    def _get_for_update_or_404(
+        session: Session, process_id: uuid.UUID, process_teacher_id: uuid.UUID
+    ) -> tuple[AssignmentProcess, ProcessTeacher]:
+        """Return both the process and the process teacher in one shot.
+
+        Update / delete paths need the process for the immutability
+        check; this helper avoids two round-trips to the database.
+        """
+        process = DomainController.get_process_or_404(session, process_id)
+        process_teacher = ProcessTeacherController._get_or_404(
+            session, process_id, process_teacher_id
+        )
+        return process, process_teacher
 
 
 __all__ = ["ProcessTeacherController"]
