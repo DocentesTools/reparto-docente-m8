@@ -1,10 +1,12 @@
 """AssignmentProcess routes.
 
-Hosts the parent CRUD for an annual assignment process and the
-read-only summary/dashboard endpoints used by the department-head view.
-Per-resource child endpoints (teachers, subjects, groups, requirements,
-assignments) live in their own route files but are mounted under the
-``/assignment-processes/{process_id}/...`` namespace.
+Hosts the parent CRUD for an annual assignment process, the lifecycle
+endpoints introduced for the Phase 1 state machine (plan §8.4, §10.2)
+and the read-only summary/dashboard endpoints used by the
+department-head view. Per-resource child endpoints (teachers, subjects,
+groups, requirements, assignments) live in their own route files but
+are mounted under the ``/assignment-processes/{process_id}/...``
+namespace.
 """
 
 from __future__ import annotations
@@ -24,6 +26,9 @@ from reparto_service.db_models.assignment_processes import (
     AssignmentProcessPublic,
     AssignmentProcessesPublic,
     AssignmentProcessUpdate,
+    ProcessCopyRequest,
+    ProcessReopenRequest,
+    ProcessTransitionRequest,
 )
 from reparto_service.schemas.summary import ProcessDashboard, ProcessSummary
 
@@ -60,12 +65,56 @@ def get_process(session: SessionDep, process_id: uuid.UUID) -> AssignmentProcess
 @router.patch("/{process_id}", response_model=AssignmentProcessPublic)
 def update_process(
     session: SessionDep,
-    current_user: CurrentUser,
     process_id: uuid.UUID,
     process_in: AssignmentProcessUpdate,
 ) -> AssignmentProcessPublic:
-    AssignmentProcessController.require_writer(current_user)
     return AssignmentProcessController.update_process(session, process_id, process_in)
+
+
+# ── Lifecycle (plan §8.4, §10.2) ──────────────────────────────────────────────
+
+
+@router.post("/{process_id}/transition", response_model=AssignmentProcessPublic)
+def transition_process(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+    request: ProcessTransitionRequest,
+) -> AssignmentProcessPublic:
+    AssignmentProcessController.require_writer(current_user)
+    return AssignmentProcessController.transition_process(
+        session, process_id, current_user, request
+    )
+
+
+@router.post("/{process_id}/reopen", response_model=AssignmentProcessPublic)
+def reopen_process(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+    request: ProcessReopenRequest,
+) -> AssignmentProcessPublic:
+    AssignmentProcessController.require_writer(current_user)
+    return AssignmentProcessController.reopen_process(
+        session, process_id, current_user, request
+    )
+
+
+@router.post(
+    "/{process_id}/copy-from/{source_process_id}",
+    response_model=AssignmentProcessPublic,
+)
+def copy_from_process(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+    source_process_id: uuid.UUID,
+    request: ProcessCopyRequest,
+) -> AssignmentProcessPublic:
+    AssignmentProcessController.require_writer(current_user)
+    return AssignmentProcessController.copy_from_process(
+        session, process_id, source_process_id, request, current_user
+    )
 
 
 # ── Summary / dashboard read endpoints ────────────────────────────────────────
