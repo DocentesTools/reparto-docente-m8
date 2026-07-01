@@ -32,7 +32,6 @@ from reparto_service.db_models.assignments import (
 from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.enums import (
-    AssignmentProcessStatus,
     AssignmentStatus,
 )
 
@@ -209,17 +208,7 @@ class AssignmentController(DomainController):
                 ),
             )
         process = DomainController.get_process_or_404(session, process_id)
-        if process.status in {
-            AssignmentProcessStatus.FINAL,
-            AssignmentProcessStatus.ARCHIVED,
-        }:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Cannot mutate assignments on a process in status "
-                    f"{process.status.value}."
-                ),
-            )
+        DomainController.ensure_process_mutable(process)
         return process
 
     @staticmethod
