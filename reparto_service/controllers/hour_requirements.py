@@ -51,7 +51,9 @@ class HourRequirementController(DomainController):
         process_id: uuid.UUID,
         requirement_in: HourRequirementCreate,
     ) -> HourRequirementPublic:
-        DomainController.get_process_or_404(session, process_id)
+        DomainController.ensure_process_mutable(
+            DomainController.get_process_or_404(session, process_id)
+        )
         if requirement_in.assignment_process_id != process_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -84,6 +86,9 @@ class HourRequirementController(DomainController):
         requirement = HourRequirementController._get_or_404(
             session, process_id, requirement_id
         )
+        DomainController.ensure_process_mutable(
+            DomainController.get_process_or_404(session, process_id)
+        )
         requirement.sqlmodel_update(requirement_in.model_dump(exclude_unset=True))
         session.add(requirement)
         session.commit()
@@ -96,6 +101,9 @@ class HourRequirementController(DomainController):
     ) -> HourRequirementPublic:
         requirement = HourRequirementController._get_or_404(
             session, process_id, requirement_id
+        )
+        DomainController.ensure_process_mutable(
+            DomainController.get_process_or_404(session, process_id)
         )
         # Block delete if any assignment exists for the requirement.
         from reparto_service.db_models.assignments import Assignment
