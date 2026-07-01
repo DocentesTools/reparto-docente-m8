@@ -143,12 +143,24 @@ def make_process_teacher(
     *,
     available_hours: float = 18.0,
     status: ProcessTeacherStatus = ProcessTeacherStatus.ACTIVE,
+    selection_position: Optional[int] = None,
+    selection_points: Optional[float] = None,
+    selection_criteria_label: Optional[str] = None,
+    selection_notes: Optional[str] = None,
+    order_locked: bool = False,
+    participates_in_selection: bool = True,
 ) -> ProcessTeacher:
     pt = ProcessTeacher(
         assignment_process_id=process.id,
         teacher_profile_id=profile.id,
         available_hours=available_hours,
         status=status,
+        selection_position=selection_position,
+        selection_points=selection_points,
+        selection_criteria_label=selection_criteria_label,
+        selection_notes=selection_notes,
+        order_locked=order_locked,
+        participates_in_selection=participates_in_selection,
     )
     session.add(pt)
     session.commit()
