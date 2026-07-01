@@ -6,6 +6,16 @@ Pydantic schemas (or raise domain-specific exceptions) so they can be
 unit-tested without an HTTP client.
 """
 
+from .process_lifecycle import (
+    ALLOWED_TRANSITIONS,
+    IllegalTransitionError,
+    assert_allowed_transition,
+    is_allowed_transition,
+    is_closing_transition,
+    is_reopen_edge,
+    is_reopen_to_close_edge,
+    is_terminal,
+)
 from .summary import (
     CODE_PROCESS_BALANCED,
     CODE_PROCESS_HAS_OVERAGE,
@@ -21,6 +31,7 @@ from .summary import (
 )
 
 __all__ = [
+    "ALLOWED_TRANSITIONS",
     "CODE_PROCESS_BALANCED",
     "CODE_PROCESS_HAS_OVERAGE",
     "CODE_PROCESS_HAS_PENDING",
@@ -31,5 +42,12 @@ __all__ = [
     "CODE_TEACHER_BALANCED",
     "CODE_TEACHER_OVERLOADED",
     "CODE_TEACHER_OVERLOADED_OVERRIDDEN",
+    "IllegalTransitionError",
     "SummaryService",
+    "assert_allowed_transition",
+    "is_allowed_transition",
+    "is_closing_transition",
+    "is_reopen_edge",
+    "is_reopen_to_close_edge",
+    "is_terminal",
 ]
