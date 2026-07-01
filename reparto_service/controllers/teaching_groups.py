@@ -45,7 +45,9 @@ class TeachingGroupController(DomainController):
         process_id: uuid.UUID,
         group_in: TeachingGroupCreate,
     ) -> TeachingGroupPublic:
-        DomainController.get_process_or_404(session, process_id)
+        DomainController.ensure_process_mutable(
+            DomainController.get_process_or_404(session, process_id)
+        )
         if group_in.assignment_process_id != process_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -78,6 +80,9 @@ class TeachingGroupController(DomainController):
         group_in: TeachingGroupUpdate,
     ) -> TeachingGroupPublic:
         group = TeachingGroupController._get_or_404(session, process_id, group_id)
+        DomainController.ensure_process_mutable(
+            DomainController.get_process_or_404(session, process_id)
+        )
         group.sqlmodel_update(group_in.model_dump(exclude_unset=True))
         session.add(group)
         try:
@@ -99,6 +104,9 @@ class TeachingGroupController(DomainController):
         session: Session, process_id: uuid.UUID, group_id: uuid.UUID
     ) -> TeachingGroupPublic:
         group = TeachingGroupController._get_or_404(session, process_id, group_id)
+        DomainController.ensure_process_mutable(
+            DomainController.get_process_or_404(session, process_id)
+        )
         session.delete(group)
         session.commit()
         return TeachingGroupPublic.model_validate(group)
