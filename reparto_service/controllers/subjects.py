@@ -41,7 +41,9 @@ class SubjectController(DomainController):
     def create_subject(
         session: Session, process_id: uuid.UUID, subject_in: SubjectCreate
     ) -> SubjectPublic:
-        DomainController.get_process_or_404(session, process_id)
+        DomainController.ensure_process_mutable(
+            DomainController.get_process_or_404(session, process_id)
+        )
         if subject_in.assignment_process_id != process_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -74,6 +76,9 @@ class SubjectController(DomainController):
         subject_in: SubjectUpdate,
     ) -> SubjectPublic:
         subject = SubjectController._get_or_404(session, process_id, subject_id)
+        DomainController.ensure_process_mutable(
+            DomainController.get_process_or_404(session, process_id)
+        )
         subject.sqlmodel_update(subject_in.model_dump(exclude_unset=True))
         session.add(subject)
         try:
@@ -95,6 +100,9 @@ class SubjectController(DomainController):
         session: Session, process_id: uuid.UUID, subject_id: uuid.UUID
     ) -> SubjectPublic:
         subject = SubjectController._get_or_404(session, process_id, subject_id)
+        DomainController.ensure_process_mutable(
+            DomainController.get_process_or_404(session, process_id)
+        )
         session.delete(subject)
         session.commit()
         return SubjectPublic.model_validate(subject)
