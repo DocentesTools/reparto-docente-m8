@@ -13,6 +13,17 @@ from auth_sdk_m8.schemas.user import UserModel
 from sqlmodel import SQLModel
 
 from reparto_service.db_models.assignment_processes import AssignmentProcess
+from reparto_service.enums import AssignmentProcessStatus
+
+# Child resources cannot be mutated when the parent process is in one of
+# these statuses. ``final`` is locked by plan §8.4; ``archived`` is the
+# terminal status and the lifecycle service refuses any edge out of it.
+_IMMUTABLE_PROCESS_STATUSES: frozenset[AssignmentProcessStatus] = frozenset(
+    {
+        AssignmentProcessStatus.FINAL,
+        AssignmentProcessStatus.ARCHIVED,
+    }
+)
 
 
 class DomainController(BaseController):
@@ -21,7 +32,10 @@ class DomainController(BaseController):
     Provides:
 
     * a "must mutate" permission helper (superuser or above the reader role),
-    * lookup-or-404 helpers for every owned parent (process, teacher profile, etc.).
+    * lookup-or-404 helpers for every owned parent (process, teacher profile, etc.),
+    * a ``ensure_process_mutable`` guard that every child resource
+      controller calls before a write, enforcing plan §8.4's
+      "final process is immutable" rule.
     """
 
     @staticmethod
@@ -64,5 +78,22 @@ class DomainController(BaseController):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"AssignmentProcess {process_id} not found.",
+            )
+        return process
+
+    @staticmethod
+    def ensure_process_mutable(process: AssignmentProcess) -> AssignmentProcess:
+        """Raise 400 when the process is in a non-mutable status.
+
+        The check is centralised here so every child resource controller
+        enforces plan §8.4's immutability rule with one rule of thumb.
+        """
+        if process.status in _IMMUTABLE_PROCESS_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Cannot mutate a process in status {process.status.value}; "
+                    "reopen it first."
+                ),
             )
         return process
