@@ -33,6 +33,7 @@ from sqlmodel import Session, select
 from reparto_service.db_models.assignments import Assignment
 from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.process_teachers import ProcessTeacher
+from reparto_service.db_models.selection_turns import SelectionTurn
 from reparto_service.db_models.subjects import Subject
 from reparto_service.db_models.teacher_profiles import TeacherProfile
 from reparto_service.db_models.teaching_groups import TeachingGroup
@@ -41,10 +42,12 @@ from reparto_service.enums import (
     GlobalBalanceState,
     ProcessTeacherStatus,
     RequirementBalanceState,
+    SelectionTurnStatus,
     TeacherBalanceState,
     ValidationSeverity,
 )
 from reparto_service.schemas.summary import (
+    CurrentTurnSummary,
     GlobalBalance,
     ProcessDashboard,
     ProcessSummary,
@@ -110,6 +113,30 @@ class SummaryService:
         )
         rows = list(session.exec(statement).all())
         return [row for row in rows if row.status != AssignmentStatus.CANCELLED]
+
+    @staticmethod
+    def compute_current_turn(
+        session: Session, process_id: uuid.UUID
+    ) -> CurrentTurnSummary | None:
+        """Return the active turn for the process, if one exists."""
+        statement = (
+            select(SelectionTurn, ProcessTeacher)
+            .where(SelectionTurn.process_teacher_id == ProcessTeacher.id)
+            .where(ProcessTeacher.assignment_process_id == process_id)
+            .where(SelectionTurn.status == SelectionTurnStatus.ACTIVE)
+        )
+        row = session.exec(statement).first()
+        if row is None:
+            return None
+        turn, _ = row
+        return CurrentTurnSummary(
+            meeting_session_id=turn.meeting_session_id,
+            selection_turn_id=turn.id,
+            process_teacher_id=turn.process_teacher_id,
+            position=turn.position,
+            status=turn.status,
+            started_at=turn.started_at,
+        )
 
     # ── Per-row balances ────────────────────────────────────────────────────
 
@@ -513,6 +540,7 @@ class SummaryService:
             process_id=process_id,
             global_balance=global_balance,
             validations=validations,
+            current_turn=SummaryService.compute_current_turn(session, process_id),
             blocking_validation_count=blocking,
         )
 
@@ -534,5 +562,6 @@ class SummaryService:
             teacher_balances=teacher_balances,
             requirement_balances=requirement_balances,
             validations=validations,
+            current_turn=SummaryService.compute_current_turn(session, process_id),
             blocking_validation_count=blocking,
         )

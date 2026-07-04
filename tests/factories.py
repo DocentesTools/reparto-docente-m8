@@ -20,6 +20,7 @@ from reparto_service.db_models.departments import Department
 from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.meeting_sessions import MeetingSession
 from reparto_service.db_models.process_teachers import ProcessTeacher
+from reparto_service.db_models.selection_turns import SelectionTurn
 from reparto_service.db_models.schools import School
 from reparto_service.db_models.subjects import Subject
 from reparto_service.db_models.teacher_profiles import TeacherProfile
@@ -34,6 +35,7 @@ from reparto_service.enums import (
     ProcessTeacherStatus,
     RequirementType,
     SelectionOrderMode,
+    SelectionTurnStatus,
 )
 
 
@@ -281,3 +283,23 @@ def make_meeting_session(
     session.commit()
     session.refresh(meeting_session)
     return meeting_session
+
+
+def make_selection_turn(
+    session: Session,
+    meeting_session: MeetingSession,
+    process_teacher: ProcessTeacher,
+    *,
+    position: int = 0,
+    status: SelectionTurnStatus = SelectionTurnStatus.PENDING,
+) -> SelectionTurn:
+    turn = SelectionTurn(
+        meeting_session_id=meeting_session.id,
+        process_teacher_id=process_teacher.id,
+        position=position,
+        status=status,
+    )
+    session.add(turn)
+    session.commit()
+    session.refresh(turn)
+    return turn

@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from reparto_service.enums import (
     GlobalBalanceState,
     RequirementBalanceState,
+    SelectionTurnStatus,
     TeacherBalanceState,
     ValidationSeverity,
 )
@@ -155,6 +156,19 @@ class ValidationMessage(BaseModel):
 # ── Dashboard payload ────────────────────────────────────────────────────────
 
 
+class CurrentTurnSummary(BaseModel):
+    """Current active turn exposed to dashboard and summary clients."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    meeting_session_id: uuid.UUID = Field(description="Meeting session ID.")
+    selection_turn_id: uuid.UUID = Field(description="Active selection turn ID.")
+    process_teacher_id: uuid.UUID = Field(description="Teacher whose turn is active.")
+    position: int = Field(ge=0, description="Turn order position.")
+    status: SelectionTurnStatus = Field(description="Turn status.")
+    started_at: Optional[datetime] = Field(default=None)
+
+
 class ProcessDashboard(BaseModel):
     """Full dashboard payload for one assignment process.
 
@@ -177,6 +191,7 @@ class ProcessDashboard(BaseModel):
     validations: list[ValidationMessage] = Field(
         description="Validation findings (plan 9.4)."
     )
+    current_turn: Optional[CurrentTurnSummary] = Field(default=None)
     blocking_validation_count: int = Field(
         ge=0, description="Convenience: count of blocking validations."
     )
@@ -193,6 +208,7 @@ class ProcessSummary(BaseModel):
     process_id: uuid.UUID = Field(description="Assignment process ID.")
     global_balance: GlobalBalance = Field(description="Aggregate balance.")
     validations: list[ValidationMessage] = Field(description="Validation findings.")
+    current_turn: Optional[CurrentTurnSummary] = Field(default=None)
     blocking_validation_count: int = Field(
         ge=0, description="Convenience: count of blocking validations."
     )

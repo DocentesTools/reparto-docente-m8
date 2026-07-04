@@ -66,6 +66,16 @@ class MeetingSessionStatus(str, Enum):
     REOPENED = "reopened"
 
 
+class SelectionTurnStatus(str, Enum):
+    """Status of one teacher turn inside a meeting session."""
+
+    PENDING = "pending"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    SKIPPED = "skipped"
+    OVERRIDDEN = "overridden"
+
+
 class RequirementType(str, Enum):
     """Type of required hours communicated by school leadership."""
 
