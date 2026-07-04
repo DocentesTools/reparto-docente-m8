@@ -33,7 +33,7 @@ def create_session(
     process_id: uuid.UUID,
     meeting_session_in: MeetingSessionCreate,
 ) -> MeetingSessionPublic:
-    MeetingSessionController.require_writer(current_user)
+    MeetingSessionController.require_process_writer(session, current_user, process_id)
     return MeetingSessionController.create_session(
         session, process_id, current_user, meeting_session_in
     )
@@ -56,7 +56,7 @@ def update_session(
     meeting_session_id: uuid.UUID,
     meeting_session_in: MeetingSessionUpdate,
 ) -> MeetingSessionPublic:
-    MeetingSessionController.require_writer(current_user)
+    MeetingSessionController.require_process_writer(session, current_user, process_id)
     return MeetingSessionController.update_session(
         session, process_id, meeting_session_id, current_user, meeting_session_in
     )
@@ -69,7 +69,7 @@ def close_session(
     process_id: uuid.UUID,
     meeting_session_id: uuid.UUID,
 ) -> MeetingSessionPublic:
-    MeetingSessionController.require_writer(current_user)
+    MeetingSessionController.require_process_writer(session, current_user, process_id)
     return MeetingSessionController.close_session(
         session, process_id, meeting_session_id
     )

@@ -8,7 +8,9 @@ from fastapi import APIRouter
 
 from reparto_service.app.deps import CurrentUser, SessionDep
 from reparto_service.controllers.history import HistoryController
+from reparto_service.db_models.assignment_processes import AssignmentProcessPublic
 from reparto_service.db_models.export_artifacts import (
+    ExportBackupRestoreRequest,
     ExportArtifactCreate,
     ExportArtifactPublic,
     ExportArtifactsPublic,
@@ -38,7 +40,7 @@ def create_version(
     process_id: uuid.UUID,
     payload: ProcessVersionCreate,
 ) -> ProcessVersionPublic:
-    HistoryController.require_writer(current_user)
+    HistoryController.require_process_writer(session, current_user, process_id)
     return HistoryController.create_version(session, process_id, current_user, payload)
 
 
@@ -76,5 +78,18 @@ def create_artifact(
     process_id: uuid.UUID,
     payload: ExportArtifactCreate,
 ) -> ExportArtifactPublic:
-    HistoryController.require_writer(current_user)
+    HistoryController.require_process_writer(session, current_user, process_id)
     return HistoryController.create_artifact(session, process_id, current_user, payload)
+
+
+@router.post("/restore-draft", response_model=AssignmentProcessPublic, status_code=201)
+def restore_backup_to_draft(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+    payload: ExportBackupRestoreRequest,
+) -> AssignmentProcessPublic:
+    HistoryController.require_process_writer(session, current_user, process_id)
+    return HistoryController.restore_backup_to_draft(
+        session, process_id, current_user, payload
+    )

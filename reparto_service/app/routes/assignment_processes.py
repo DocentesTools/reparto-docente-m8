@@ -71,9 +71,13 @@ def get_process(session: SessionDep, process_id: uuid.UUID) -> AssignmentProcess
 @router.patch("/{process_id}", response_model=AssignmentProcessPublic)
 def update_process(
     session: SessionDep,
+    current_user: CurrentUser,
     process_id: uuid.UUID,
     process_in: AssignmentProcessUpdate,
 ) -> AssignmentProcessPublic:
+    AssignmentProcessController.require_process_writer(
+        session, current_user, process_id
+    )
     return AssignmentProcessController.update_process(session, process_id, process_in)
 
 
@@ -87,7 +91,9 @@ def transition_process(
     process_id: uuid.UUID,
     request: ProcessTransitionRequest,
 ) -> AssignmentProcessPublic:
-    AssignmentProcessController.require_writer(current_user)
+    AssignmentProcessController.require_process_writer(
+        session, current_user, process_id
+    )
     return AssignmentProcessController.transition_process(
         session, process_id, current_user, request
     )
@@ -100,7 +106,9 @@ def reopen_process(
     process_id: uuid.UUID,
     request: ProcessReopenRequest,
 ) -> AssignmentProcessPublic:
-    AssignmentProcessController.require_writer(current_user)
+    AssignmentProcessController.require_process_writer(
+        session, current_user, process_id
+    )
     return AssignmentProcessController.reopen_process(
         session, process_id, current_user, request
     )
@@ -117,7 +125,9 @@ def copy_from_process(
     source_process_id: uuid.UUID,
     request: ProcessCopyRequest,
 ) -> AssignmentProcessPublic:
-    AssignmentProcessController.require_writer(current_user)
+    AssignmentProcessController.require_process_writer(
+        session, current_user, process_id
+    )
     return AssignmentProcessController.copy_from_process(
         session, process_id, source_process_id, request, current_user
     )

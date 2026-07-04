@@ -13,6 +13,7 @@ from auth_sdk_m8.schemas.user import UserModel
 from sqlmodel import SQLModel
 
 from reparto_service.db_models.assignment_processes import AssignmentProcess
+from reparto_service.db_models.departments import Department
 from reparto_service.enums import AssignmentProcessStatus
 
 # Child resources cannot be mutated when the parent process is in one of
@@ -22,6 +23,13 @@ _IMMUTABLE_PROCESS_STATUSES: frozenset[AssignmentProcessStatus] = frozenset(
     {
         AssignmentProcessStatus.FINAL,
         AssignmentProcessStatus.ARCHIVED,
+    }
+)
+_MUTATION_ROLES: frozenset[str] = frozenset(
+    {
+        "superadmin",
+        "admin",
+        "writer",
     }
 )
 
@@ -49,11 +57,11 @@ class DomainController(BaseController):
             return
         role = current_user.role
         role_value = role.value if hasattr(role, "value") else str(role)
-        if role_value in {"superadmin", "admin", "writer"}:
+        if role_value in _MUTATION_ROLES:
             return
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Writer role required to mutate this resource.",
+            detail="Department-head role required to mutate this resource.",
         )
 
     @staticmethod
@@ -66,6 +74,32 @@ class DomainController(BaseController):
                 detail=f"{model.__name__} {item_id} not found.",
             )
         return item
+
+    @staticmethod
+    def require_process_writer(
+        session: Session, current_user: UserModel, process_id: uuid.UUID
+    ) -> None:
+        """Raise 403 unless the caller can mutate this process.
+
+        Platform writer/admin roles keep broad setup access. A regular auth
+        user can also mutate the process when the process department explicitly
+        binds them as ``department_head_user_id``.
+        """
+        try:
+            DomainController.require_writer(current_user)
+            return
+        except HTTPException:
+            pass
+        process = DomainController.get_process_or_404(session, process_id)
+        department = session.get(Department, process.department_id)
+        if department is not None and department.department_head_user_id == uuid.UUID(
+            str(current_user.id)
+        ):
+            return
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Department-head role required to mutate this process.",
+        )
 
     @staticmethod
     def get_process_or_404(

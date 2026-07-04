@@ -5,10 +5,52 @@ from __future__ import annotations
 import uuid
 
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
+from reparto_service.db_models.assignments import Assignment
+from reparto_service.db_models.hour_requirements import HourRequirement
+from reparto_service.db_models.process_teachers import ProcessTeacher
+from reparto_service.db_models.subjects import Subject
+from reparto_service.db_models.teaching_groups import TeachingGroup
 from reparto_service.enums import AssignmentProcessStatus
 from tests import factories
+
+
+def _subject_count(session: Session, process_id: uuid.UUID) -> int:
+    rows = session.exec(
+        select(Subject).where(Subject.assignment_process_id == process_id)
+    ).all()
+    return len(rows)
+
+
+def _teaching_group_count(session: Session, process_id: uuid.UUID) -> int:
+    rows = session.exec(
+        select(TeachingGroup).where(TeachingGroup.assignment_process_id == process_id)
+    ).all()
+    return len(rows)
+
+
+def _process_teacher_count(session: Session, process_id: uuid.UUID) -> int:
+    rows = session.exec(
+        select(ProcessTeacher).where(ProcessTeacher.assignment_process_id == process_id)
+    ).all()
+    return len(rows)
+
+
+def _requirement_count(session: Session, process_id: uuid.UUID) -> int:
+    rows = session.exec(
+        select(HourRequirement).where(
+            HourRequirement.assignment_process_id == process_id
+        )
+    ).all()
+    return len(rows)
+
+
+def _assignment_count(session: Session, process_id: uuid.UUID) -> int:
+    rows = session.exec(
+        select(Assignment).where(Assignment.assignment_process_id == process_id)
+    ).all()
+    return len(rows)
 
 
 def test_create_and_compare_versions(client: TestClient, session: Session) -> None:
@@ -65,6 +107,10 @@ def test_compare_versions_returns_404_for_missing_version(
 
 def test_create_json_backup_artifact(client: TestClient, session: Session) -> None:
     process = factories.make_assignment_process(session)
+    client.post(
+        f"/reparto/assignment-processes/{process.id}/versions",
+        json={"reason": "backup baseline"},
+    )
 
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/exports",
@@ -76,6 +122,103 @@ def test_create_json_backup_artifact(client: TestClient, session: Session) -> No
     assert body["checksum"]
     assert body["file_path"].endswith(".json")
     assert '"process"' in body["content"]
+    assert '"versions"' in body["content"]
+
+
+def test_restore_backup_into_empty_draft(client: TestClient, session: Session) -> None:
+    source = factories.make_assignment_process(session)
+    target = factories.make_assignment_process(session)
+    profile = factories.make_teacher_profile(session)
+    teacher = factories.make_process_teacher(session, source, profile)
+    subject = factories.make_subject(session, source)
+    group = factories.make_teaching_group(session, source)
+    requirement = factories.make_hour_requirement(session, source, group, subject)
+    factories.make_assignment(session, source, requirement, teacher)
+    backup = client.post(
+        f"/reparto/assignment-processes/{source.id}/exports",
+        json={"export_type": "backup", "format": "json"},
+    ).json()
+
+    resp = client.post(
+        f"/reparto/assignment-processes/{target.id}/restore-draft",
+        json={"content": backup["content"]},
+    )
+
+    assert resp.status_code == 201
+    session.refresh(target)
+    assert target.created_from_process_id == source.id
+    assert _subject_count(session, target.id) == 1
+    assert _teaching_group_count(session, target.id) == 1
+    assert _process_teacher_count(session, target.id) == 1
+    assert _requirement_count(session, target.id) == 1
+    assert _assignment_count(session, target.id) == 1
+
+
+def test_restore_backup_can_skip_assignments(
+    client: TestClient, session: Session
+) -> None:
+    source = factories.make_assignment_process(session)
+    target = factories.make_assignment_process(session)
+    profile = factories.make_teacher_profile(session)
+    teacher = factories.make_process_teacher(session, source, profile)
+    subject = factories.make_subject(session, source)
+    group = factories.make_teaching_group(session, source)
+    requirement = factories.make_hour_requirement(session, source, group, subject)
+    factories.make_assignment(session, source, requirement, teacher)
+    backup = client.post(
+        f"/reparto/assignment-processes/{source.id}/exports",
+        json={"export_type": "backup", "format": "json"},
+    ).json()
+
+    resp = client.post(
+        f"/reparto/assignment-processes/{target.id}/restore-draft",
+        json={"content": backup["content"], "restore_assignments": False},
+    )
+
+    assert resp.status_code == 201
+    assert _assignment_count(session, target.id) == 0
+
+
+def test_restore_backup_requires_draft(client: TestClient, session: Session) -> None:
+    process = factories.make_assignment_process(
+        session, status=AssignmentProcessStatus.READY_FOR_MEETING
+    )
+
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/restore-draft",
+        json={"content": "{}"},
+    )
+
+    assert resp.status_code == 400
+    assert "draft process" in resp.json()["detail"]
+
+
+def test_restore_backup_rejects_invalid_content(
+    client: TestClient, session: Session
+) -> None:
+    target = factories.make_assignment_process(session)
+
+    invalid_json = client.post(
+        f"/reparto/assignment-processes/{target.id}/restore-draft",
+        json={"content": "not-json"},
+    )
+    non_object = client.post(
+        f"/reparto/assignment-processes/{target.id}/restore-draft",
+        json={"content": "[]"},
+    )
+    missing_process = client.post(
+        f"/reparto/assignment-processes/{target.id}/restore-draft",
+        json={"content": '{"subjects":[]}'},
+    )
+    missing_section = client.post(
+        f"/reparto/assignment-processes/{target.id}/restore-draft",
+        json={"content": '{"process":{}}'},
+    )
+
+    assert invalid_json.status_code == 400
+    assert non_object.status_code == 400
+    assert missing_process.status_code == 400
+    assert missing_section.status_code == 400
 
 
 def test_list_artifacts_endpoint(client: TestClient, session: Session) -> None:

@@ -14,12 +14,18 @@ from auth_sdk_m8.schemas.user import UserModel
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.academic_years import AcademicYear
 from reparto_service.db_models.assignment_processes import AssignmentProcess
+from reparto_service.db_models.departments import Department
 
 
-def _make_user(role: RoleType | str, *, superuser: bool = False) -> UserModel:
+def _make_user(
+    role: RoleType | str,
+    *,
+    superuser: bool = False,
+    user_id: uuid.UUID | None = None,
+) -> UserModel:
     role_value = role.value if isinstance(role, RoleType) else role
     return UserModel(
-        id=str(uuid.uuid4()),
+        id=str(user_id or uuid.uuid4()),
         email="t@example.com",
         is_active=True,
         is_superuser=superuser,
@@ -64,6 +70,34 @@ def test_require_writer_blocks_user_role() -> None:
 def test_require_writer_accepts_role_enum() -> None:
     user = _make_user(RoleType.WRITER)
     DomainController.require_writer(user)
+
+
+def test_require_process_writer_passes_for_department_head_binding(
+    session: Session,
+) -> None:
+    head_user_id = uuid.uuid4()
+    process = __import__(
+        "tests.factories", fromlist=["make_assignment_process"]
+    ).make_assignment_process(session)
+    department = session.get(Department, process.department_id)
+    assert department is not None
+    department.department_head_user_id = head_user_id
+    session.add(department)
+    session.commit()
+    user = _make_user("user", user_id=head_user_id)
+
+    DomainController.require_process_writer(session, user, process.id)
+
+
+def test_require_process_writer_blocks_unbound_user(session: Session) -> None:
+    process = __import__(
+        "tests.factories", fromlist=["make_assignment_process"]
+    ).make_assignment_process(session)
+    user = _make_user("user")
+
+    with pytest.raises(HTTPException) as exc:
+        DomainController.require_process_writer(session, user, process.id)
+    assert exc.value.status_code == 403
 
 
 def test_get_or_404_returns_item(session: Session) -> None:

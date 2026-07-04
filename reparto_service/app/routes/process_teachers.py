@@ -35,7 +35,7 @@ def create_process_teacher(
     process_id: uuid.UUID,
     process_teacher_in: ProcessTeacherCreate,
 ) -> ProcessTeacherPublic:
-    ProcessTeacherController.require_writer(current_user)
+    ProcessTeacherController.require_process_writer(session, current_user, process_id)
     return ProcessTeacherController.create_process_teacher(
         session, process_id, current_user, process_teacher_in
     )
@@ -58,7 +58,7 @@ def update_process_teacher(
     process_teacher_id: uuid.UUID,
     process_teacher_in: ProcessTeacherUpdate,
 ) -> ProcessTeacherPublic:
-    ProcessTeacherController.require_writer(current_user)
+    ProcessTeacherController.require_process_writer(session, current_user, process_id)
     return ProcessTeacherController.update_process_teacher(
         session,
         process_id,
@@ -75,7 +75,7 @@ def delete_process_teacher(
     process_id: uuid.UUID,
     process_teacher_id: uuid.UUID,
 ) -> ProcessTeacherPublic:
-    ProcessTeacherController.require_writer(current_user)
+    ProcessTeacherController.require_process_writer(session, current_user, process_id)
     return ProcessTeacherController.delete_process_teacher(
         session, process_id, process_teacher_id
     )

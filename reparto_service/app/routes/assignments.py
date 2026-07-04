@@ -34,7 +34,7 @@ def create_assignment(
     process_id: uuid.UUID,
     assignment_in: AssignmentCreate,
 ) -> AssignmentPublic:
-    AssignmentController.require_writer(current_user)
+    AssignmentController.require_process_writer(session, current_user, process_id)
     return AssignmentController.create_assignment(
         session, process_id, current_user, assignment_in
     )
@@ -67,7 +67,7 @@ def update_assignment(
     assignment_id: uuid.UUID,
     assignment_in: AssignmentUpdate,
 ) -> AssignmentPublic:
-    AssignmentController.require_writer(current_user)
+    AssignmentController.require_process_writer(session, current_user, process_id)
     return AssignmentController.update_assignment(
         session, process_id, assignment_id, assignment_in, current_user
     )
@@ -80,5 +80,5 @@ def delete_assignment(
     process_id: uuid.UUID,
     assignment_id: uuid.UUID,
 ) -> AssignmentPublic:
-    AssignmentController.require_writer(current_user)
+    AssignmentController.require_process_writer(session, current_user, process_id)
     return AssignmentController.delete_assignment(session, process_id, assignment_id)
