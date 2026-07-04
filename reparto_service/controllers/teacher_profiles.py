@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import uuid
 
+from fastapi import HTTPException, status
 from sqlmodel import Session, func, select
 
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.teacher_profiles import (
     TeacherProfile,
     TeacherProfileCreate,
+    TeacherProfileLinkUser,
     TeacherProfilePublic,
     TeacherProfileUpdate,
     TeacherProfilesPublic,
@@ -61,6 +63,29 @@ class TeacherProfileController(DomainController):
     ) -> TeacherProfilePublic:
         profile = DomainController.get_or_404(session, TeacherProfile, profile_id)
         profile.sqlmodel_update(profile_in.model_dump(exclude_unset=True))
+        session.add(profile)
+        session.commit()
+        session.refresh(profile)
+        return TeacherProfilePublic.model_validate(profile)
+
+    @staticmethod
+    def link_user(
+        session: Session,
+        profile_id: uuid.UUID,
+        link_in: TeacherProfileLinkUser,
+    ) -> TeacherProfilePublic:
+        profile = DomainController.get_or_404(session, TeacherProfile, profile_id)
+        existing = session.exec(
+            select(TeacherProfile)
+            .where(TeacherProfile.user_id == link_in.user_id)
+            .where(TeacherProfile.id != profile_id)
+        ).first()
+        if existing is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Auth user is already linked to another teacher profile.",
+            )
+        profile.user_id = link_in.user_id
         session.add(profile)
         session.commit()
         session.refresh(profile)

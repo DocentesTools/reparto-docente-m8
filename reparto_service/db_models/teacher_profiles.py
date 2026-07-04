@@ -60,6 +60,12 @@ class TeacherProfileUpdate(SQLModel):
 # ── Database model ───────────────────────────────────────────────────────────
 
 
+class TeacherProfileLinkUser(SQLModel):
+    """Request schema for binding a teacher profile to an auth user."""
+
+    user_id: uuid.UUID = Field(description="Auth-service user id to bind.")
+
+
 class TeacherProfile(TimestampMixin, TeacherProfileBase, SQLModel, table=True):
     """SQLModel table for a teacher profile."""
 

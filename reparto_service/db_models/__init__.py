@@ -84,6 +84,7 @@ from .subjects import (
 from .teacher_profiles import (
     TeacherProfile,
     TeacherProfileCreate,
+    TeacherProfileLinkUser,
     TeacherProfilePublic,
     TeacherProfilesPublic,
     TeacherProfileUpdate,
@@ -154,6 +155,7 @@ __all__ = [
     "SubjectsPublic",
     "TeacherProfile",
     "TeacherProfileCreate",
+    "TeacherProfileLinkUser",
     "TeacherProfilePublic",
     "TeacherProfileUpdate",
     "TeacherProfilesPublic",

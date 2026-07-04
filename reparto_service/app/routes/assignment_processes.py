@@ -12,9 +12,11 @@ namespace.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
 from typing import Optional
 
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 
 from reparto_service.app.deps import CurrentUser, SessionDep
 from reparto_service.controllers.assignment_processes import (
@@ -30,7 +32,11 @@ from reparto_service.db_models.assignment_processes import (
     ProcessReopenRequest,
     ProcessTransitionRequest,
 )
-from reparto_service.schemas.summary import ProcessDashboard, ProcessSummary
+from reparto_service.schemas.summary import (
+    ProcessDashboard,
+    ProcessSummary,
+    TeacherLanSummary,
+)
 
 router = APIRouter(prefix="/assignment-processes", tags=["assignment-processes"])
 
@@ -130,3 +136,25 @@ def get_process_dashboard(
     session: SessionDep, process_id: uuid.UUID
 ) -> ProcessDashboard:
     return DashboardController.get_dashboard(session, process_id)
+
+
+@router.get("/{process_id}/lan/me", response_model=TeacherLanSummary)
+def get_teacher_lan_summary(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+) -> TeacherLanSummary:
+    return DashboardController.get_teacher_lan_summary(
+        session, process_id, current_user
+    )
+
+
+@router.get("/{process_id}/events", response_class=StreamingResponse)
+def stream_process_summary(
+    session: SessionDep, process_id: uuid.UUID
+) -> StreamingResponse:
+    def generate() -> Iterator[str]:
+        payload = DashboardController.get_summary(session, process_id)
+        yield f"event: process.summary\ndata: {payload.model_dump_json()}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")

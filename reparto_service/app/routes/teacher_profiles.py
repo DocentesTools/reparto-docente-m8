@@ -11,6 +11,7 @@ from reparto_service.app.deps import CurrentUser, SessionDep
 from reparto_service.controllers.teacher_profiles import TeacherProfileController
 from reparto_service.db_models.teacher_profiles import (
     TeacherProfileCreate,
+    TeacherProfileLinkUser,
     TeacherProfilePublic,
     TeacherProfileUpdate,
     TeacherProfilesPublic,
@@ -55,6 +56,17 @@ def update_profile(
 ) -> TeacherProfilePublic:
     TeacherProfileController.require_writer(current_user)
     return TeacherProfileController.update_profile(session, profile_id, profile_in)
+
+
+@router.post("/{profile_id}/link-user", response_model=TeacherProfilePublic)
+def link_profile_user(
+    session: SessionDep,
+    current_user: CurrentUser,
+    profile_id: uuid.UUID,
+    link_in: TeacherProfileLinkUser,
+) -> TeacherProfilePublic:
+    TeacherProfileController.require_writer(current_user)
+    return TeacherProfileController.link_user(session, profile_id, link_in)
 
 
 @router.delete("/{profile_id}", response_model=TeacherProfilePublic)

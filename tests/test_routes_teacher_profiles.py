@@ -49,6 +49,47 @@ def test_update_profile(client: TestClient) -> None:
     assert resp.json()["display_name"] == "Updated"
 
 
+def test_link_profile_user(client: TestClient) -> None:
+    create = client.post(
+        "/reparto/teacher-profiles/",
+        json={"display_name": "Linked"},
+    )
+    pid = create.json()["id"]
+    user_id = str(uuid.uuid4())
+    resp = client.post(
+        f"/reparto/teacher-profiles/{pid}/link-user",
+        json={"user_id": user_id},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["user_id"] == user_id
+
+
+def test_link_profile_user_blocks_reader(reader_client: TestClient) -> None:
+    resp = reader_client.post(
+        f"/reparto/teacher-profiles/{uuid.uuid4()}/link-user",
+        json={"user_id": str(uuid.uuid4())},
+    )
+    assert resp.status_code == 403
+
+
+def test_link_profile_user_rejects_duplicate(client: TestClient) -> None:
+    user_id = str(uuid.uuid4())
+    first = client.post(
+        "/reparto/teacher-profiles/",
+        json={"display_name": "First", "user_id": user_id},
+    )
+    second = client.post(
+        "/reparto/teacher-profiles/",
+        json={"display_name": "Second"},
+    )
+    assert first.status_code == 201
+    resp = client.post(
+        f"/reparto/teacher-profiles/{second.json()['id']}/link-user",
+        json={"user_id": user_id},
+    )
+    assert resp.status_code == 409
+
+
 def test_delete_profile(client: TestClient) -> None:
     create = client.post(
         "/reparto/teacher-profiles/",

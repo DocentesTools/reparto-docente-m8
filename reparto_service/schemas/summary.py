@@ -212,3 +212,20 @@ class ProcessSummary(BaseModel):
     blocking_validation_count: int = Field(
         ge=0, description="Convenience: count of blocking validations."
     )
+
+
+class TeacherLanSummary(BaseModel):
+    """LAN-safe read payload for the authenticated teacher."""
+
+    process_id: uuid.UUID = Field(description="Assignment process ID.")
+    teacher_profile_id: uuid.UUID = Field(description="Linked teacher profile ID.")
+    process_teacher_id: uuid.UUID = Field(description="Process teacher ID.")
+    generated_at: datetime = Field(
+        description="When this LAN payload was computed (UTC)."
+    )
+    global_balance: GlobalBalance = Field(description="Non-sensitive aggregate.")
+    teacher_balance: TeacherBalance = Field(description="Only the caller's row.")
+    current_turn: Optional[CurrentTurnSummary] = Field(default=None)
+    blocking_validation_count: int = Field(
+        ge=0, description="Convenience: count of blocking validations."
+    )

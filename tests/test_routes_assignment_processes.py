@@ -157,6 +157,49 @@ def test_get_dashboard_combines_everything(
     assert body["global_balance"]["state"] == "balanced"
 
 
+def test_teacher_lan_summary_returns_only_linked_teacher(
+    client: TestClient, session: Session, current_user
+) -> None:
+    process = factories.make_assignment_process(session)
+    linked_profile = factories.make_teacher_profile(
+        session,
+        display_name="Linked Teacher",
+        user_id=uuid.UUID(str(current_user.id)),
+    )
+    other_profile = factories.make_teacher_profile(session, display_name="Other")
+    linked_teacher = factories.make_process_teacher(
+        session, process, linked_profile, available_hours=4.0
+    )
+    factories.make_process_teacher(session, process, other_profile, available_hours=8.0)
+    resp = client.get(f"/reparto/assignment-processes/{process.id}/lan/me")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["teacher_profile_id"] == str(linked_profile.id)
+    assert body["process_teacher_id"] == str(linked_teacher.id)
+    assert body["teacher_balance"]["display_name"] == "Linked Teacher"
+
+
+def test_teacher_lan_summary_requires_linked_profile(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    resp = client.get(f"/reparto/assignment-processes/{process.id}/lan/me")
+    assert resp.status_code == 404
+    assert "linked" in resp.json()["detail"]
+
+
+def test_process_summary_event_stream(client: TestClient, session: Session) -> None:
+    process = factories.make_assignment_process(session)
+    with client.stream(
+        "GET", f"/reparto/assignment-processes/{process.id}/events"
+    ) as resp:
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        text = "".join(resp.iter_text())
+    assert "event: process.summary" in text
+    assert f'"process_id":"{process.id}"' in text
+
+
 def test_summary_returns_404_for_missing_process(
     client: TestClient,
 ) -> None:
