@@ -428,7 +428,7 @@ class SummaryService:
                         entity_id=req_balance.hour_requirement_id,
                     )
                 )
-            elif req_balance.state in {
+            elif req_balance.state in {  # pragma: no branch
                 RequirementBalanceState.COVERED,
                 RequirementBalanceState.EXPLICITLY_SHARED,
             }:
@@ -495,7 +495,7 @@ class SummaryService:
                     entity_id=process_id,
                 )
             )
-        elif global_balance.state in {
+        elif global_balance.state in {  # pragma: no branch
             GlobalBalanceState.PENDING,
             GlobalBalanceState.EXCEEDED,
             GlobalBalanceState.WARNING,

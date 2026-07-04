@@ -25,14 +25,22 @@ from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.assignments import (
     Assignment,
     AssignmentCreate,
+    AssignmentDirectChoice,
     AssignmentPublic,
     AssignmentsPublic,
     AssignmentUpdate,
 )
 from reparto_service.db_models.hour_requirements import HourRequirement
+from reparto_service.db_models.meeting_sessions import MeetingSession
 from reparto_service.db_models.process_teachers import ProcessTeacher
+from reparto_service.db_models.selection_turns import SelectionTurn
+from reparto_service.db_models.teacher_profiles import TeacherProfile
 from reparto_service.enums import (
+    AssignmentSource,
     AssignmentStatus,
+    MeetingSessionStatus,
+    SelectionOrderMode,
+    SelectionTurnStatus,
 )
 
 
@@ -136,6 +144,51 @@ class AssignmentController(DomainController):
         )
         session.delete(assignment)
         session.commit()
+        return AssignmentPublic.model_validate(assignment)
+
+    @staticmethod
+    def create_direct_choice(
+        session: Session,
+        process_id: uuid.UUID,
+        current_user: UserModel,
+        choice: AssignmentDirectChoice,
+    ) -> AssignmentPublic:
+        process = AssignmentController._ensure_open(session, process_id)
+        meeting = AssignmentController._get_direct_selection_session(
+            session, process_id, choice.meeting_session_id
+        )
+        process_teacher = AssignmentController._get_linked_process_teacher(
+            session, process_id, current_user
+        )
+        AssignmentController._enforce_direct_turn(session, meeting, process_teacher.id)
+        AssignmentController._get_requirement_or_404(
+            session, process_id, choice.hour_requirement_id
+        )
+        AssignmentController._enforce_requirement_cap(
+            session=session,
+            process=process,
+            requirement_id=choice.hour_requirement_id,
+            incoming_hours=choice.assigned_hours,
+            incoming_has_override=False,
+        )
+        assignment = Assignment(
+            assignment_process_id=process_id,
+            hour_requirement_id=choice.hour_requirement_id,
+            process_teacher_id=process_teacher.id,
+            assigned_hours=choice.assigned_hours,
+            assignment_type=choice.assignment_type,
+            source=AssignmentSource.TEACHER_DIRECT,
+            status=AssignmentStatus.CONFIRMED,
+            chosen_by_user_id=uuid.UUID(str(current_user.id)),
+            confirmed_by_user_id=uuid.UUID(str(current_user.id)),
+            notes=choice.notes,
+        )
+        session.add(assignment)
+        AssignmentController._complete_active_turn_if_needed(
+            session, meeting, process_teacher.id
+        )
+        session.commit()
+        session.refresh(assignment)
         return AssignmentPublic.model_validate(assignment)
 
     # ── Internal helpers ─────────────────────────────────────────────────────
@@ -270,6 +323,90 @@ class AssignmentController(DomainController):
                 "Provide an override_reason to exceed the cap."
             ),
         )
+
+    @staticmethod
+    def _get_direct_selection_session(
+        session: Session, process_id: uuid.UUID, meeting_session_id: uuid.UUID
+    ) -> MeetingSession:
+        meeting = session.get(MeetingSession, meeting_session_id)
+        if meeting is None or meeting.assignment_process_id != process_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"MeetingSession {meeting_session_id} not found.",
+            )
+        if meeting.status not in {
+            MeetingSessionStatus.OPEN,
+            MeetingSessionStatus.SELECTING,
+            MeetingSessionStatus.REOPENED,
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Meeting session must be open for direct selection.",
+            )
+        if (
+            not meeting.lan_access_enabled
+            or not meeting.direct_teacher_selection_enabled
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Direct teacher selection is disabled for this session.",
+            )
+        return meeting
+
+    @staticmethod
+    def _get_linked_process_teacher(
+        session: Session, process_id: uuid.UUID, current_user: UserModel
+    ) -> ProcessTeacher:
+        statement = (
+            select(ProcessTeacher, TeacherProfile)
+            .where(ProcessTeacher.assignment_process_id == process_id)
+            .where(ProcessTeacher.teacher_profile_id == TeacherProfile.id)
+            .where(TeacherProfile.user_id == uuid.UUID(str(current_user.id)))
+        )
+        row = session.exec(statement).first()
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No teacher profile is linked to this auth user.",
+            )
+        process_teacher, _ = row
+        return process_teacher
+
+    @staticmethod
+    def _active_turn(
+        session: Session, meeting_session_id: uuid.UUID
+    ) -> SelectionTurn | None:
+        statement = select(SelectionTurn).where(
+            SelectionTurn.meeting_session_id == meeting_session_id,
+            SelectionTurn.status == SelectionTurnStatus.ACTIVE,
+        )
+        return session.exec(statement).first()
+
+    @staticmethod
+    def _enforce_direct_turn(
+        session: Session, meeting: MeetingSession, process_teacher_id: uuid.UUID
+    ) -> None:
+        active = AssignmentController._active_turn(session, meeting.id)
+        if meeting.selection_mode != SelectionOrderMode.STRICT:
+            return
+        if active is None or active.process_teacher_id != process_teacher_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Teacher cannot choose outside the active strict turn.",
+            )
+
+    @staticmethod
+    def _complete_active_turn_if_needed(
+        session: Session, meeting: MeetingSession, process_teacher_id: uuid.UUID
+    ) -> None:
+        active = AssignmentController._active_turn(session, meeting.id)
+        if active is None or active.process_teacher_id != process_teacher_id:
+            return
+        from datetime import datetime, timezone
+
+        active.status = SelectionTurnStatus.COMPLETED
+        active.completed_at = datetime.now(tz=timezone.utc)
+        session.add(active)
 
 
 __all__ = ["AssignmentController"]

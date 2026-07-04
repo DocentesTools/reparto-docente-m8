@@ -85,6 +85,16 @@ class AssignmentCreate(AssignmentBase):
     """Schema for creating a new assignment."""
 
 
+class AssignmentDirectChoice(SQLModel):
+    """Teacher LAN direct-choice payload."""
+
+    meeting_session_id: uuid.UUID = Field(description="Active meeting session ID.")
+    hour_requirement_id: uuid.UUID = Field(description="Requirement to choose.")
+    assigned_hours: float = Field(gt=0, description="Chosen hours.")
+    assignment_type: AssignmentType = Field(default=AssignmentType.MAIN)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+
+
 class AssignmentUpdate(SQLModel):
     """Partial update schema — every field is optional."""
 

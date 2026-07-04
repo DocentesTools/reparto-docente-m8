@@ -10,6 +10,7 @@ from reparto_service.app.deps import CurrentUser, SessionDep
 from reparto_service.controllers.assignments import AssignmentController
 from reparto_service.db_models.assignments import (
     AssignmentCreate,
+    AssignmentDirectChoice,
     AssignmentPublic,
     AssignmentsPublic,
     AssignmentUpdate,
@@ -36,6 +37,18 @@ def create_assignment(
     AssignmentController.require_writer(current_user)
     return AssignmentController.create_assignment(
         session, process_id, current_user, assignment_in
+    )
+
+
+@router.post("/direct-choice", response_model=AssignmentPublic, status_code=201)
+def create_direct_choice(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+    choice: AssignmentDirectChoice,
+) -> AssignmentPublic:
+    return AssignmentController.create_direct_choice(
+        session, process_id, current_user, choice
     )
 
 

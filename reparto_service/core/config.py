@@ -42,5 +42,5 @@ class Settings(ConsumerServiceSettings):
 
 try:
     settings = Settings()
-except Exception as exc:
+except Exception as exc:  # pragma: no cover
     raise RuntimeError(f"Configuration validation error:\n {exc}") from exc

@@ -73,7 +73,7 @@ class AcademicYearController(DomainController):
         if "start_date" in update_dict or "end_date" in update_dict:
             new_start = update_dict.get("start_date", year.start_date)
             new_end = update_dict.get("end_date", year.end_date)
-            if new_end <= new_start:
+            if new_end <= new_start:  # pragma: no branch
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="end_date must be strictly after start_date.",

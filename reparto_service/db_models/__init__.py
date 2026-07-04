@@ -26,9 +26,16 @@ from .assignment_processes import (
 from .assignments import (
     Assignment,
     AssignmentCreate,
+    AssignmentDirectChoice,
     AssignmentPublic,
     AssignmentsPublic,
     AssignmentUpdate,
+)
+from .export_artifacts import (
+    ExportArtifact,
+    ExportArtifactCreate,
+    ExportArtifactPublic,
+    ExportArtifactsPublic,
 )
 from .departments import (
     Department,
@@ -51,6 +58,13 @@ from .meeting_sessions import (
     MeetingSessionPublic,
     MeetingSessionsPublic,
     MeetingSessionUpdate,
+)
+from .process_versions import (
+    ProcessVersion,
+    ProcessVersionCreate,
+    ProcessVersionPublic,
+    ProcessVersionsPublic,
+    VersionComparison,
 )
 from .selection_turns import (
     SelectionTurn,
@@ -105,6 +119,7 @@ __all__ = [
     "AcademicYearsPublic",
     "Assignment",
     "AssignmentCreate",
+    "AssignmentDirectChoice",
     "AssignmentProcess",
     "AssignmentProcessCreate",
     "AssignmentProcessPublic",
@@ -113,6 +128,10 @@ __all__ = [
     "AssignmentPublic",
     "AssignmentUpdate",
     "AssignmentsPublic",
+    "ExportArtifact",
+    "ExportArtifactCreate",
+    "ExportArtifactPublic",
+    "ExportArtifactsPublic",
     "Department",
     "DepartmentCreate",
     "DepartmentGenerators",
@@ -137,6 +156,10 @@ __all__ = [
     "ProcessTeacherUpdate",
     "ProcessTeachersPublic",
     "ProcessTransitionRequest",
+    "ProcessVersion",
+    "ProcessVersionCreate",
+    "ProcessVersionPublic",
+    "ProcessVersionsPublic",
     "SelectionTurn",
     "SelectionTurnAction",
     "SelectionTurnComplete",
@@ -164,4 +187,5 @@ __all__ = [
     "TeachingGroupPublic",
     "TeachingGroupUpdate",
     "TeachingGroupsPublic",
+    "VersionComparison",
 ]

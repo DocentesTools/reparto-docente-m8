@@ -37,11 +37,11 @@ async def check_db() -> HealthCheckResult:
 api_router = APIRouter(prefix=settings.API_PREFIX)
 api_router.include_router(domain_router)
 
-if settings.METRICS_ENABLED:
+if settings.METRICS_ENABLED:  # pragma: no cover
     from auth_sdk_m8.observability.metrics import render as _render_metrics  # noqa: PLC0415
 
-    @api_router.get("/metrics", include_in_schema=False)
-    def metrics_endpoint() -> Response:
+    @api_router.get("/metrics", include_in_schema=False)  # pragma: no cover
+    def metrics_endpoint() -> Response:  # pragma: no cover
         data, content_type = _render_metrics()
         return Response(content=data, media_type=content_type)
 

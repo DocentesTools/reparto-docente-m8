@@ -1,0 +1,75 @@
+"""Export artifact tracking models."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Optional
+
+from pydantic import Field
+from sqlalchemy import Column, Text
+from sqlmodel import Field as SQLField, SQLModel
+
+from auth_sdk_m8.models.shared import TimestampMixin
+from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.enums import ExportArtifactFormat, ExportArtifactType
+
+
+class ExportArtifactBase(SQLModel):
+    """Shared export artifact fields."""
+
+    assignment_process_id: uuid.UUID
+    process_version_id: Optional[uuid.UUID] = None
+    export_type: ExportArtifactType
+    format: ExportArtifactFormat
+    file_path: str
+    created_by_user_id: uuid.UUID
+    checksum: str = Field(min_length=64, max_length=64)
+    content: str = Field(description="Deterministic generated payload.")
+
+
+class ExportArtifactCreate(SQLModel):
+    """Request body for generating an artifact."""
+
+    export_type: ExportArtifactType
+    format: ExportArtifactFormat
+    process_version_id: Optional[uuid.UUID] = None
+
+
+class ExportArtifact(TimestampMixin, ExportArtifactBase, SQLModel, table=True):
+    """SQLModel table for generated export artifacts."""
+
+    __tablename__ = prefixed_tables("export_artifact")
+
+    id: uuid.UUID = SQLField(
+        default_factory=uuid.uuid4,
+        sa_column=Column("id", UUIDString(), primary_key=True),
+    )
+    assignment_process_id: uuid.UUID = SQLField(
+        sa_column=Column(
+            "assignment_process_id", UUIDString(), nullable=False, index=True
+        )
+    )
+    process_version_id: Optional[uuid.UUID] = SQLField(
+        default=None,
+        sa_column=Column("process_version_id", UUIDString(), nullable=True),
+    )
+    created_by_user_id: uuid.UUID = SQLField(
+        sa_column=Column("created_by_user_id", UUIDString(), nullable=False)
+    )
+    content: str = SQLField(sa_column=Column("content", Text(), nullable=False))
+
+
+class ExportArtifactPublic(ExportArtifactBase, SQLModel):
+    """Public representation of an export artifact."""
+
+    id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExportArtifactsPublic(SQLModel):
+    """List wrapper for export artifacts."""
+
+    data: list[ExportArtifactPublic]
+    count: int

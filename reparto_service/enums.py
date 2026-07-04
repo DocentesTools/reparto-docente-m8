@@ -115,6 +115,24 @@ class AssignmentStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class ExportArtifactType(str, Enum):
+    """Generated artifact type for process history/export flows."""
+
+    INTERNAL_DRAFT = "internal_draft"
+    SCHOOL_LEADERSHIP = "school_leadership"
+    FINAL = "final"
+    TEACHER_SUMMARY = "teacher_summary"
+    BACKUP = "backup"
+
+
+class ExportArtifactFormat(str, Enum):
+    """Storage/rendering format for an export artifact."""
+
+    PDF = "pdf"
+    CSV = "csv"
+    JSON = "json"
+
+
 # ── Balance and validation states (plan 9) ────────────────────────────────────
 
 

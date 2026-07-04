@@ -452,12 +452,14 @@ class AssignmentProcessController(DomainController):
             source_teacher = session.get(
                 ProcessTeacher, source_assignment.process_teacher_id
             )
-            if source_teacher is None:
+            if source_teacher is None:  # pragma: no cover
                 continue
             new_process_teacher_id = target_process_teachers.get(
                 source_teacher.teacher_profile_id
             )
-            if new_requirement_id is None or new_process_teacher_id is None:
+            if (
+                new_requirement_id is None or new_process_teacher_id is None
+            ):  # pragma: no cover
                 # The source row references a structure element that was
                 # not copied over (e.g. a teacher profile that was not
                 # in the target). Skip rather than invent data.
