@@ -34,7 +34,9 @@ def create_subject(
     subject_in: SubjectCreate,
 ) -> SubjectPublic:
     SubjectController.require_process_writer(session, current_user, process_id)
-    return SubjectController.create_subject(session, process_id, subject_in)
+    return SubjectController.create_subject(
+        session, process_id, subject_in, current_user
+    )
 
 
 @router.get("/{subject_id}", response_model=SubjectPublic)
@@ -53,7 +55,9 @@ def update_subject(
     subject_in: SubjectUpdate,
 ) -> SubjectPublic:
     SubjectController.require_process_writer(session, current_user, process_id)
-    return SubjectController.update_subject(session, process_id, subject_id, subject_in)
+    return SubjectController.update_subject(
+        session, process_id, subject_id, subject_in, current_user
+    )
 
 
 @router.delete("/{subject_id}", response_model=SubjectPublic)
@@ -64,4 +68,6 @@ def delete_subject(
     subject_id: uuid.UUID,
 ) -> SubjectPublic:
     SubjectController.require_process_writer(session, current_user, process_id)
-    return SubjectController.delete_subject(session, process_id, subject_id)
+    return SubjectController.delete_subject(
+        session, process_id, subject_id, current_user
+    )

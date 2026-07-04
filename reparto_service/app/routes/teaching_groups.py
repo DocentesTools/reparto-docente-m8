@@ -34,7 +34,9 @@ def create_group(
     group_in: TeachingGroupCreate,
 ) -> TeachingGroupPublic:
     TeachingGroupController.require_process_writer(session, current_user, process_id)
-    return TeachingGroupController.create_group(session, process_id, group_in)
+    return TeachingGroupController.create_group(
+        session, process_id, group_in, current_user
+    )
 
 
 @router.get("/{group_id}", response_model=TeachingGroupPublic)
@@ -53,7 +55,9 @@ def update_group(
     group_in: TeachingGroupUpdate,
 ) -> TeachingGroupPublic:
     TeachingGroupController.require_process_writer(session, current_user, process_id)
-    return TeachingGroupController.update_group(session, process_id, group_id, group_in)
+    return TeachingGroupController.update_group(
+        session, process_id, group_id, group_in, current_user
+    )
 
 
 @router.delete("/{group_id}", response_model=TeachingGroupPublic)
@@ -64,4 +68,6 @@ def delete_group(
     group_id: uuid.UUID,
 ) -> TeachingGroupPublic:
     TeachingGroupController.require_process_writer(session, current_user, process_id)
-    return TeachingGroupController.delete_group(session, process_id, group_id)
+    return TeachingGroupController.delete_group(
+        session, process_id, group_id, current_user
+    )

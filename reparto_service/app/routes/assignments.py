@@ -81,4 +81,6 @@ def delete_assignment(
     assignment_id: uuid.UUID,
 ) -> AssignmentPublic:
     AssignmentController.require_process_writer(session, current_user, process_id)
-    return AssignmentController.delete_assignment(session, process_id, assignment_id)
+    return AssignmentController.delete_assignment(
+        session, process_id, assignment_id, current_user
+    )

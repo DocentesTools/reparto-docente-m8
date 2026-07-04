@@ -31,6 +31,7 @@ from .assignments import (
     AssignmentsPublic,
     AssignmentUpdate,
 )
+from .audit_events import AuditEvent, AuditEventPublic, AuditEventsPublic
 from .export_artifacts import (
     ExportArtifact,
     ExportArtifactCreate,
@@ -128,6 +129,9 @@ __all__ = [
     "AssignmentPublic",
     "AssignmentUpdate",
     "AssignmentsPublic",
+    "AuditEvent",
+    "AuditEventPublic",
+    "AuditEventsPublic",
     "ExportArtifact",
     "ExportArtifactCreate",
     "ExportArtifactPublic",

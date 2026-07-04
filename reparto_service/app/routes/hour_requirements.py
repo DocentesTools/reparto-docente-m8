@@ -37,7 +37,7 @@ def create_requirement(
 ) -> HourRequirementPublic:
     HourRequirementController.require_process_writer(session, current_user, process_id)
     return HourRequirementController.create_requirement(
-        session, process_id, requirement_in
+        session, process_id, requirement_in, current_user
     )
 
 
@@ -60,7 +60,7 @@ def update_requirement(
 ) -> HourRequirementPublic:
     HourRequirementController.require_process_writer(session, current_user, process_id)
     return HourRequirementController.update_requirement(
-        session, process_id, requirement_id, requirement_in
+        session, process_id, requirement_id, requirement_in, current_user
     )
 
 
@@ -73,5 +73,5 @@ def delete_requirement(
 ) -> HourRequirementPublic:
     HourRequirementController.require_process_writer(session, current_user, process_id)
     return HourRequirementController.delete_requirement(
-        session, process_id, requirement_id
+        session, process_id, requirement_id, current_user
     )

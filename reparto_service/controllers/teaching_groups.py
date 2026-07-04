@@ -7,6 +7,8 @@ import uuid
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
 
+from auth_sdk_m8.schemas.user import UserModel
+
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.teaching_groups import (
     TeachingGroup,
@@ -44,6 +46,7 @@ class TeachingGroupController(DomainController):
         session: Session,
         process_id: uuid.UUID,
         group_in: TeachingGroupCreate,
+        current_user: UserModel,
     ) -> TeachingGroupPublic:
         DomainController.ensure_process_mutable(
             DomainController.get_process_or_404(session, process_id)
@@ -58,6 +61,16 @@ class TeachingGroupController(DomainController):
             )
         group = TeachingGroup.model_validate(group_in.model_dump())
         session.add(group)
+        TeachingGroupController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="teaching_group.created",
+            entity_type="teaching_group",
+            entity_id=group.id,
+            before=None,
+            after=group,
+        )
         try:
             session.commit()
         except Exception as exc:
@@ -78,13 +91,25 @@ class TeachingGroupController(DomainController):
         process_id: uuid.UUID,
         group_id: uuid.UUID,
         group_in: TeachingGroupUpdate,
+        current_user: UserModel,
     ) -> TeachingGroupPublic:
         group = TeachingGroupController._get_or_404(session, process_id, group_id)
         DomainController.ensure_process_mutable(
             DomainController.get_process_or_404(session, process_id)
         )
+        before = TeachingGroup.model_validate(group.model_dump())
         group.sqlmodel_update(group_in.model_dump(exclude_unset=True))
         session.add(group)
+        TeachingGroupController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="teaching_group.updated",
+            entity_type="teaching_group",
+            entity_id=group.id,
+            before=before,
+            after=group,
+        )
         try:
             session.commit()
         except Exception as exc:
@@ -101,13 +126,27 @@ class TeachingGroupController(DomainController):
 
     @staticmethod
     def delete_group(
-        session: Session, process_id: uuid.UUID, group_id: uuid.UUID
+        session: Session,
+        process_id: uuid.UUID,
+        group_id: uuid.UUID,
+        current_user: UserModel,
     ) -> TeachingGroupPublic:
         group = TeachingGroupController._get_or_404(session, process_id, group_id)
         DomainController.ensure_process_mutable(
             DomainController.get_process_or_404(session, process_id)
         )
+        before = TeachingGroup.model_validate(group.model_dump())
         session.delete(group)
+        TeachingGroupController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="teaching_group.deleted",
+            entity_type="teaching_group",
+            entity_id=group.id,
+            before=before,
+            after=None,
+        )
         session.commit()
         return TeachingGroupPublic.model_validate(group)
 

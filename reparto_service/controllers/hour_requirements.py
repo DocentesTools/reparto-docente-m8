@@ -7,6 +7,8 @@ import uuid
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
 
+from auth_sdk_m8.schemas.user import UserModel
+
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.hour_requirements import (
     HourRequirement,
@@ -50,6 +52,7 @@ class HourRequirementController(DomainController):
         session: Session,
         process_id: uuid.UUID,
         requirement_in: HourRequirementCreate,
+        current_user: UserModel,
     ) -> HourRequirementPublic:
         DomainController.ensure_process_mutable(
             DomainController.get_process_or_404(session, process_id)
@@ -72,6 +75,16 @@ class HourRequirementController(DomainController):
         )
         requirement = HourRequirement.model_validate(requirement_in.model_dump())
         session.add(requirement)
+        HourRequirementController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="hour_requirement.created",
+            entity_type="hour_requirement",
+            entity_id=requirement.id,
+            before=None,
+            after=requirement,
+        )
         session.commit()
         session.refresh(requirement)
         return HourRequirementPublic.model_validate(requirement)
@@ -82,6 +95,7 @@ class HourRequirementController(DomainController):
         process_id: uuid.UUID,
         requirement_id: uuid.UUID,
         requirement_in: HourRequirementUpdate,
+        current_user: UserModel,
     ) -> HourRequirementPublic:
         requirement = HourRequirementController._get_or_404(
             session, process_id, requirement_id
@@ -89,15 +103,29 @@ class HourRequirementController(DomainController):
         DomainController.ensure_process_mutable(
             DomainController.get_process_or_404(session, process_id)
         )
+        before = HourRequirement.model_validate(requirement.model_dump())
         requirement.sqlmodel_update(requirement_in.model_dump(exclude_unset=True))
         session.add(requirement)
+        HourRequirementController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="hour_requirement.updated",
+            entity_type="hour_requirement",
+            entity_id=requirement.id,
+            before=before,
+            after=requirement,
+        )
         session.commit()
         session.refresh(requirement)
         return HourRequirementPublic.model_validate(requirement)
 
     @staticmethod
     def delete_requirement(
-        session: Session, process_id: uuid.UUID, requirement_id: uuid.UUID
+        session: Session,
+        process_id: uuid.UUID,
+        requirement_id: uuid.UUID,
+        current_user: UserModel,
     ) -> HourRequirementPublic:
         requirement = HourRequirementController._get_or_404(
             session, process_id, requirement_id
@@ -118,7 +146,18 @@ class HourRequirementController(DomainController):
                     "Cannot delete an hour requirement that already has assignments."
                 ),
             )
+        before = HourRequirement.model_validate(requirement.model_dump())
         session.delete(requirement)
+        HourRequirementController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="hour_requirement.deleted",
+            entity_type="hour_requirement",
+            entity_id=requirement.id,
+            before=before,
+            after=None,
+        )
         session.commit()
         return HourRequirementPublic.model_validate(requirement)
 

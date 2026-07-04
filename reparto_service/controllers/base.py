@@ -13,6 +13,7 @@ from auth_sdk_m8.schemas.user import UserModel
 from sqlmodel import SQLModel
 
 from reparto_service.db_models.assignment_processes import AssignmentProcess
+from reparto_service.db_models.audit_events import AuditEvent
 from reparto_service.db_models.departments import Department
 from reparto_service.enums import AssignmentProcessStatus
 
@@ -131,3 +132,39 @@ class DomainController(BaseController):
                 ),
             )
         return process
+
+    @staticmethod
+    def record_audit_event(
+        session: Session,
+        *,
+        process_id: uuid.UUID,
+        current_user: UserModel,
+        event_type: str,
+        entity_type: str,
+        entity_id: uuid.UUID | None,
+        before: SQLModel | None,
+        after: SQLModel | None,
+        reason: str | None = None,
+    ) -> AuditEvent:
+        """Add a domain audit event to the current transaction."""
+        role = current_user.role
+        role_value = role.value if hasattr(role, "value") else str(role)
+        event = AuditEvent(
+            assignment_process_id=process_id,
+            actor_user_id=uuid.UUID(str(current_user.id)),
+            actor_role=role_value,
+            event_type=event_type,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            before_json=DomainController._audit_payload(before),
+            after_json=DomainController._audit_payload(after),
+            reason=reason,
+        )
+        session.add(event)
+        return event
+
+    @staticmethod
+    def _audit_payload(row: SQLModel | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        return row.model_dump(mode="json")

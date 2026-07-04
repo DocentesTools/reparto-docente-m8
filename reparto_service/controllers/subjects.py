@@ -7,6 +7,8 @@ import uuid
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
 
+from auth_sdk_m8.schemas.user import UserModel
+
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.subjects import (
     Subject,
@@ -39,7 +41,10 @@ class SubjectController(DomainController):
 
     @staticmethod
     def create_subject(
-        session: Session, process_id: uuid.UUID, subject_in: SubjectCreate
+        session: Session,
+        process_id: uuid.UUID,
+        subject_in: SubjectCreate,
+        current_user: UserModel,
     ) -> SubjectPublic:
         DomainController.ensure_process_mutable(
             DomainController.get_process_or_404(session, process_id)
@@ -54,6 +59,16 @@ class SubjectController(DomainController):
             )
         subject = Subject.model_validate(subject_in.model_dump())
         session.add(subject)
+        SubjectController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="subject.created",
+            entity_type="subject",
+            entity_id=subject.id,
+            before=None,
+            after=subject,
+        )
         try:
             session.commit()
         except Exception as exc:
@@ -74,13 +89,25 @@ class SubjectController(DomainController):
         process_id: uuid.UUID,
         subject_id: uuid.UUID,
         subject_in: SubjectUpdate,
+        current_user: UserModel,
     ) -> SubjectPublic:
         subject = SubjectController._get_or_404(session, process_id, subject_id)
         DomainController.ensure_process_mutable(
             DomainController.get_process_or_404(session, process_id)
         )
+        before = Subject.model_validate(subject.model_dump())
         subject.sqlmodel_update(subject_in.model_dump(exclude_unset=True))
         session.add(subject)
+        SubjectController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="subject.updated",
+            entity_type="subject",
+            entity_id=subject.id,
+            before=before,
+            after=subject,
+        )
         try:
             session.commit()
         except Exception as exc:
@@ -97,13 +124,27 @@ class SubjectController(DomainController):
 
     @staticmethod
     def delete_subject(
-        session: Session, process_id: uuid.UUID, subject_id: uuid.UUID
+        session: Session,
+        process_id: uuid.UUID,
+        subject_id: uuid.UUID,
+        current_user: UserModel,
     ) -> SubjectPublic:
         subject = SubjectController._get_or_404(session, process_id, subject_id)
         DomainController.ensure_process_mutable(
             DomainController.get_process_or_404(session, process_id)
         )
+        before = Subject.model_validate(subject.model_dump())
         session.delete(subject)
+        SubjectController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="subject.deleted",
+            entity_type="subject",
+            entity_id=subject.id,
+            before=before,
+            after=None,
+        )
         session.commit()
         return SubjectPublic.model_validate(subject)
 

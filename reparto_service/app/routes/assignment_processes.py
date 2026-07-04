@@ -78,7 +78,9 @@ def update_process(
     AssignmentProcessController.require_process_writer(
         session, current_user, process_id
     )
-    return AssignmentProcessController.update_process(session, process_id, process_in)
+    return AssignmentProcessController.update_process(
+        session, process_id, process_in, current_user
+    )
 
 
 # ── Lifecycle (plan §8.4, §10.2) ──────────────────────────────────────────────

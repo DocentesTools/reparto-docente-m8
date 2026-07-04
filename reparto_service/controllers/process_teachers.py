@@ -54,7 +54,6 @@ class ProcessTeacherController(DomainController):
         current_user: UserModel,
         process_teacher_in: ProcessTeacherCreate,
     ) -> ProcessTeacherPublic:
-        del current_user
         DomainController.ensure_process_mutable(
             DomainController.get_process_or_404(session, process_id)
         )
@@ -71,6 +70,16 @@ class ProcessTeacherController(DomainController):
             )
         process_teacher = ProcessTeacher.model_validate(process_teacher_in.model_dump())
         session.add(process_teacher)
+        ProcessTeacherController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="process_teacher.created",
+            entity_type="process_teacher",
+            entity_id=process_teacher.id,
+            before=None,
+            after=process_teacher,
+        )
         try:
             session.commit()
         except Exception as exc:
@@ -93,28 +102,52 @@ class ProcessTeacherController(DomainController):
         process_teacher_in: ProcessTeacherUpdate,
         current_user: UserModel,
     ) -> ProcessTeacherPublic:
-        del current_user
         process, process_teacher = ProcessTeacherController._get_for_update_or_404(
             session, process_id, process_teacher_id
         )
         DomainController.ensure_process_mutable(process)
+        before = ProcessTeacher.model_validate(process_teacher.model_dump())
         process_teacher.sqlmodel_update(
             process_teacher_in.model_dump(exclude_unset=True)
         )
         session.add(process_teacher)
+        ProcessTeacherController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="process_teacher.updated",
+            entity_type="process_teacher",
+            entity_id=process_teacher.id,
+            before=before,
+            after=process_teacher,
+        )
         session.commit()
         session.refresh(process_teacher)
         return ProcessTeacherPublic.model_validate(process_teacher)
 
     @staticmethod
     def delete_process_teacher(
-        session: Session, process_id: uuid.UUID, process_teacher_id: uuid.UUID
+        session: Session,
+        process_id: uuid.UUID,
+        process_teacher_id: uuid.UUID,
+        current_user: UserModel,
     ) -> ProcessTeacherPublic:
         process, process_teacher = ProcessTeacherController._get_for_update_or_404(
             session, process_id, process_teacher_id
         )
         DomainController.ensure_process_mutable(process)
+        before = ProcessTeacher.model_validate(process_teacher.model_dump())
         session.delete(process_teacher)
+        ProcessTeacherController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="process_teacher.deleted",
+            entity_type="process_teacher",
+            entity_id=process_teacher.id,
+            before=before,
+            after=None,
+        )
         session.commit()
         return ProcessTeacherPublic.model_validate(process_teacher)
 

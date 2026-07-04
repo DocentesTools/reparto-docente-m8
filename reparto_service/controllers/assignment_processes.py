@@ -104,6 +104,16 @@ class AssignmentProcessController(DomainController):
             update={"created_by_user_id": current_user.id},
         )
         session.add(process)
+        AssignmentProcessController.record_audit_event(
+            session,
+            process_id=process.id,
+            current_user=current_user,
+            event_type="process.created",
+            entity_type="assignment_process",
+            entity_id=process.id,
+            before=None,
+            after=process,
+        )
         session.commit()
         session.refresh(process)
         return AssignmentProcessPublic.model_validate(process)
@@ -113,8 +123,10 @@ class AssignmentProcessController(DomainController):
         session: Session,
         process_id: uuid.UUID,
         process_in: AssignmentProcessUpdate,
+        current_user: UserModel,
     ) -> AssignmentProcessPublic:
         process = DomainController.get_process_or_404(session, process_id)
+        before = AssignmentProcess.model_validate(process.model_dump())
         update_dict = process_in.model_dump(exclude_unset=True)
         if "status" in update_dict:
             raise HTTPException(
@@ -126,6 +138,16 @@ class AssignmentProcessController(DomainController):
             )
         process.sqlmodel_update(update_dict)
         session.add(process)
+        AssignmentProcessController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="process.updated",
+            entity_type="assignment_process",
+            entity_id=process.id,
+            before=before,
+            after=process,
+        )
         session.commit()
         session.refresh(process)
         return AssignmentProcessPublic.model_validate(process)
@@ -147,6 +169,7 @@ class AssignmentProcessController(DomainController):
         controller records ``closed_at`` and ``closed_by_user_id``.
         """
         process = DomainController.get_process_or_404(session, process_id)
+        before = AssignmentProcess.model_validate(process.model_dump())
         current = process.status
         target = request.target_status
         if is_reopen_edge(current, target):
@@ -169,6 +192,17 @@ class AssignmentProcessController(DomainController):
             process.closed_at = datetime.now(tz=timezone.utc)
             process.closed_by_user_id = uuid.UUID(str(current_user.id))
         session.add(process)
+        AssignmentProcessController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="process.transitioned",
+            entity_type="assignment_process",
+            entity_id=process.id,
+            before=before,
+            after=process,
+            reason=target.value,
+        )
         session.commit()
         session.refresh(process)
         return AssignmentProcessPublic.model_validate(process)
@@ -190,9 +224,8 @@ class AssignmentProcessController(DomainController):
         integration; today they are unused apart from validating the
         reason at the schema layer.
         """
-        del current_user
-        del request
         process = DomainController.get_process_or_404(session, process_id)
+        before = AssignmentProcess.model_validate(process.model_dump())
         current = process.status
         target = AssignmentProcessStatus.REOPENED
         if not is_reopen_edge(current, target):
@@ -204,6 +237,17 @@ class AssignmentProcessController(DomainController):
         process.closed_at = None
         process.closed_by_user_id = None
         session.add(process)
+        AssignmentProcessController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="process.reopened",
+            entity_type="assignment_process",
+            entity_id=process.id,
+            before=before,
+            after=process,
+            reason=request.reason,
+        )
         session.commit()
         session.refresh(process)
         return AssignmentProcessPublic.model_validate(process)
@@ -231,9 +275,9 @@ class AssignmentProcessController(DomainController):
         ``copy_assignments`` is true, each copied assignment is
         re-marked as ``draft`` with the source-original author cleared.
         """
-        del current_user
         target = DomainController.get_process_or_404(session, target_process_id)
         source = DomainController.get_process_or_404(session, source_process_id)
+        before = AssignmentProcess.model_validate(target.model_dump())
         if target.id == source.id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -255,6 +299,17 @@ class AssignmentProcessController(DomainController):
             AssignmentProcessController._copy_assignments(session, source, target)
         target.created_from_process_id = source.id
         session.add(target)
+        AssignmentProcessController.record_audit_event(
+            session,
+            process_id=target_process_id,
+            current_user=current_user,
+            event_type="process.copied_from_previous_year",
+            entity_type="assignment_process",
+            entity_id=target.id,
+            before=before,
+            after=target,
+            reason=str(source.id),
+        )
         session.commit()
         session.refresh(target)
         return AssignmentProcessPublic.model_validate(target)

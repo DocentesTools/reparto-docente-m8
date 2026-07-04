@@ -77,5 +77,5 @@ def delete_process_teacher(
 ) -> ProcessTeacherPublic:
     ProcessTeacherController.require_process_writer(session, current_user, process_id)
     return ProcessTeacherController.delete_process_teacher(
-        session, process_id, process_teacher_id
+        session, process_id, process_teacher_id, current_user
     )

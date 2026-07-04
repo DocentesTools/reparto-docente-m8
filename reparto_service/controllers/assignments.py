@@ -97,6 +97,17 @@ class AssignmentController(DomainController):
             update={"chosen_by_user_id": current_user.id},
         )
         session.add(assignment)
+        AssignmentController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="assignment.created",
+            entity_type="assignment",
+            entity_id=assignment.id,
+            before=None,
+            after=assignment,
+            reason=assignment.override_reason,
+        )
         session.commit()
         session.refresh(assignment)
         return AssignmentPublic.model_validate(assignment)
@@ -109,11 +120,11 @@ class AssignmentController(DomainController):
         assignment_in: AssignmentUpdate,
         current_user: UserModel,
     ) -> AssignmentPublic:
-        del current_user
         process = AssignmentController._ensure_open(session, process_id)
         assignment = AssignmentController._get_or_404(
             session, process_id, assignment_id
         )
+        before = Assignment.model_validate(assignment.model_dump())
         update_dict = assignment_in.model_dump(exclude_unset=True)
         new_hours = update_dict.get("assigned_hours", assignment.assigned_hours)
         new_override = update_dict.get("override_reason", assignment.override_reason)
@@ -128,6 +139,17 @@ class AssignmentController(DomainController):
         )
         assignment.sqlmodel_update(update_dict)
         session.add(assignment)
+        AssignmentController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="assignment.updated",
+            entity_type="assignment",
+            entity_id=assignment.id,
+            before=before,
+            after=assignment,
+            reason=assignment.override_reason,
+        )
         session.commit()
         session.refresh(assignment)
         return AssignmentPublic.model_validate(assignment)
@@ -137,12 +159,24 @@ class AssignmentController(DomainController):
         session: Session,
         process_id: uuid.UUID,
         assignment_id: uuid.UUID,
+        current_user: UserModel,
     ) -> AssignmentPublic:
         AssignmentController._ensure_open(session, process_id)
         assignment = AssignmentController._get_or_404(
             session, process_id, assignment_id
         )
+        before = Assignment.model_validate(assignment.model_dump())
         session.delete(assignment)
+        AssignmentController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="assignment.deleted",
+            entity_type="assignment",
+            entity_id=assignment.id,
+            before=before,
+            after=None,
+        )
         session.commit()
         return AssignmentPublic.model_validate(assignment)
 
@@ -186,6 +220,16 @@ class AssignmentController(DomainController):
         session.add(assignment)
         AssignmentController._complete_active_turn_if_needed(
             session, meeting, process_teacher.id
+        )
+        AssignmentController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="assignment.direct_choice",
+            entity_type="assignment",
+            entity_id=assignment.id,
+            before=None,
+            after=assignment,
         )
         session.commit()
         session.refresh(assignment)
