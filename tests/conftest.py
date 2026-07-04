@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import Generator
 from unittest.mock import MagicMock
 
 _TEST_ENV: dict[str, str] = {
@@ -164,7 +165,7 @@ def _make_client(session: Session, user: UserModel | None) -> TestClient:
 def client(
     session: Session,
     current_user: UserModel,
-) -> TestClient:
+) -> Generator[TestClient]:
     """TestClient authenticated as a regular writer user."""
     tc = _make_client(session, current_user)
     with tc as c:
@@ -176,7 +177,7 @@ def client(
 def superuser_client(
     session: Session,
     superuser: UserModel,
-) -> TestClient:
+) -> Generator[TestClient]:
     """TestClient authenticated as a superuser."""
     tc = _make_client(session, superuser)
     with tc as c:
@@ -188,7 +189,7 @@ def superuser_client(
 def reader_client(
     session: Session,
     reader: UserModel,
-) -> TestClient:
+) -> Generator[TestClient]:
     """TestClient authenticated as a reader (read-only) user."""
     tc = _make_client(session, reader)
     with tc as c:
@@ -197,7 +198,7 @@ def reader_client(
 
 
 @pytest.fixture
-def unauth_client(session: Session) -> TestClient:
+def unauth_client(session: Session) -> Generator[TestClient]:
     """TestClient with no auth override (the default test auth dep returns
     whatever the test client is configured with — but here we explicitly
     raise 401 to simulate unauthenticated requests)."""

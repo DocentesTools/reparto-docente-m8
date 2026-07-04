@@ -18,6 +18,7 @@ from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.assignments import Assignment
 from reparto_service.db_models.departments import Department
 from reparto_service.db_models.hour_requirements import HourRequirement
+from reparto_service.db_models.meeting_sessions import MeetingSession
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.schools import School
 from reparto_service.db_models.subjects import Subject
@@ -29,8 +30,10 @@ from reparto_service.enums import (
     AssignmentSource,
     AssignmentStatus,
     AssignmentType,
+    MeetingSessionStatus,
     ProcessTeacherStatus,
     RequirementType,
+    SelectionOrderMode,
 )
 
 
@@ -256,3 +259,25 @@ def make_assignment(
     session.commit()
     session.refresh(assignment)
     return assignment
+
+
+def make_meeting_session(
+    session: Session,
+    process: AssignmentProcess,
+    *,
+    status: MeetingSessionStatus = MeetingSessionStatus.PREPARED,
+    lan_access_enabled: bool = True,
+    direct_teacher_selection_enabled: bool = False,
+    selection_mode: SelectionOrderMode = SelectionOrderMode.NONE,
+) -> MeetingSession:
+    meeting_session = MeetingSession(
+        assignment_process_id=process.id,
+        status=status,
+        lan_access_enabled=lan_access_enabled,
+        direct_teacher_selection_enabled=direct_teacher_selection_enabled,
+        selection_mode=selection_mode,
+    )
+    session.add(meeting_session)
+    session.commit()
+    session.refresh(meeting_session)
+    return meeting_session

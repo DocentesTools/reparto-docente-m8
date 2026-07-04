@@ -14,6 +14,7 @@ from reparto_service.app.routes import (
     assignments,
     departments,
     hour_requirements,
+    meeting_sessions,
     process_teachers,
     schools,
     subjects,
@@ -32,3 +33,4 @@ api_router.include_router(subjects.router)
 api_router.include_router(teaching_groups.router)
 api_router.include_router(hour_requirements.router)
 api_router.include_router(assignments.router)
+api_router.include_router(meeting_sessions.router)

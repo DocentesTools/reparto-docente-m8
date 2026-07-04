@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from reparto_service.db_models.assignment_processes import AssignmentProcess
+from reparto_service.db_models.teacher_profiles import TeacherProfile
 from reparto_service.enums import AssignmentProcessStatus
 from tests import factories
 
@@ -181,7 +182,7 @@ def test_reopen_requires_reason(client: TestClient, session: Session) -> None:
 
 def _populate_source_process(
     session: Session,
-) -> tuple[AssignmentProcess, object, object]:
+) -> tuple[AssignmentProcess, TeacherProfile, TeacherProfile]:
     source = factories.make_assignment_process(
         session, status=AssignmentProcessStatus.FINAL
     )

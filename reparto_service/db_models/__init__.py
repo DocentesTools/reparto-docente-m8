@@ -45,6 +45,13 @@ from .hour_requirements import (
     HourRequirementsPublic,
     HourRequirementUpdate,
 )
+from .meeting_sessions import (
+    MeetingSession,
+    MeetingSessionCreate,
+    MeetingSessionPublic,
+    MeetingSessionsPublic,
+    MeetingSessionUpdate,
+)
 from .process_teachers import (
     ProcessTeacher,
     ProcessTeacherCreate,
@@ -108,6 +115,11 @@ __all__ = [
     "HourRequirementPublic",
     "HourRequirementUpdate",
     "HourRequirementsPublic",
+    "MeetingSession",
+    "MeetingSessionCreate",
+    "MeetingSessionPublic",
+    "MeetingSessionUpdate",
+    "MeetingSessionsPublic",
     "ProcessCopyRequest",
     "ProcessReopenRequest",
     "ProcessTeacher",

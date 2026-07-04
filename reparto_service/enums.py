@@ -55,6 +55,17 @@ class SelectionOrderMode(str, Enum):
     STRICT = "strict"
 
 
+class MeetingSessionStatus(str, Enum):
+    """Status of an assignment meeting session."""
+
+    PREPARED = "prepared"
+    OPEN = "open"
+    SELECTING = "selecting"
+    PAUSED = "paused"
+    CLOSED = "closed"
+    REOPENED = "reopened"
+
+
 class RequirementType(str, Enum):
     """Type of required hours communicated by school leadership."""
 
