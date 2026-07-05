@@ -37,10 +37,13 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
     networks:
-      - m8_app_network
+      - m8_reparto_network
 
   m8_db:
-    image: postgres:18.4-alpine
+    # Debian variant (not -alpine): ships bash, which shared/db_init/init-db.sh
+    # requires (Bash 4+: associative arrays, ${var,,}). Alpine has only busybox
+    # ash, so init-db.sh silently fails and per-service users are never created.
+    image: postgres:18.4
     volumes:
       - ./db_data:/var/lib/postgresql
       - ../shared/db_init:/docker-entrypoint-initdb.d:ro
@@ -61,7 +64,7 @@ services:
       start_interval: 2s
     restart: unless-stopped
     networks:
-      - m8_app_network
+      - m8_reparto_network
 
   redis_cache:
     image: redis:8.8.0-alpine
@@ -88,18 +91,61 @@ services:
       retries: 5
     restart: unless-stopped
     networks:
-      - m8_app_network
+      - m8_reparto_network
+
+  prometheus:
+    image: ubuntu/prometheus:3.11-26.04_stable
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - m8_reparto_network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.1.0-25530058790
+    depends_on:
+      - prometheus
+    env_file:
+      - ./grafana.env
+    volumes:
+      - ./grafana/data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - m8_reparto_network
+    restart: unless-stopped
 
   auth_user_service:
-    build:
-      context: ../../../fa-auth-m8
-      dockerfile: ./auth_user_service/Dockerfile
-    env_file:
-      - ./auth.env
+    image: tepochtli/fa-auth-m8:1.1.0
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+    # No env_file here: auth.env holds secrets with a literal '$' (e.g.
+    # PRIVATE_API_CONSUMERS = sha256$salt$digest). Docker Compose interpolates
+    # '$digest' as a variable and injects a corrupted value that would override
+    # the file. The app reads its config straight from the mounted .env below
+    # (pydantic-settings, which does not do '$' expansion), so the file is the
+    # single source of truth and stays byte-accurate.
     volumes:
-      - ../../../fa-auth-m8/auth_user_service:/opt/auth_user_service
       - ./auth.env:/opt/auth_user_service/.env:ro
       - ./shared_migrations:/opt/shared_migrations
+      - ./keys:/opt/keys:ro
     depends_on:
       m8_db:
         condition: service_healthy
@@ -113,17 +159,17 @@ services:
       start_period: 30s
     restart: unless-stopped
     networks:
-      - m8_app_network
+      - m8_reparto_network
 
   reparto_service:
     build:
-      context: ../../..
+      context: ../../
       dockerfile: ./reparto_service/Dockerfile
     env_file:
-      - ./api.env
+      - ./reparto.env
     volumes:
       - ../../reparto_service:/opt/reparto_service
-      - ./api.env:/opt/reparto_service/.env:ro
+      - ./reparto.env:/opt/reparto_service/.env:ro
       - ./shared_migrations:/opt/shared_migrations
     depends_on:
       m8_db:
@@ -138,10 +184,10 @@ services:
       start_period: 30s
     restart: unless-stopped
     networks:
-      - m8_app_network
+      - m8_reparto_network
 
 networks:
-  m8_app_network:
+  m8_reparto_network:
     driver: bridge
     ipam:
       config:

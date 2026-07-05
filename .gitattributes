@@ -1,0 +1,4 @@
+# Shell scripts must keep LF endings: several run inside Linux containers via
+# docker-entrypoint-initdb.d (e.g. docker_compose/shared/db_init/init-db.sh).
+# A CRLF shebang makes the kernel look for `bash\r`, which fails to execute.
+*.sh text eol=lf
