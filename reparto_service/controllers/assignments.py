@@ -257,7 +257,11 @@ class AssignmentController(DomainController):
     def _get_requirement_or_404(
         session: Session, process_id: uuid.UUID, requirement_id: uuid.UUID
     ) -> HourRequirement:
-        statement = select(HourRequirement).where(HourRequirement.id == requirement_id)
+        statement = (
+            select(HourRequirement)
+            .where(HourRequirement.id == requirement_id)
+            .with_for_update()
+        )
         requirement = session.exec(statement).first()
         if requirement is None or requirement.assignment_process_id != process_id:
             raise HTTPException(
