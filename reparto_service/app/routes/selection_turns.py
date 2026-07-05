@@ -55,7 +55,7 @@ def start_turn(
 ) -> SelectionTurnPublic:
     SelectionTurnController.require_process_writer(session, current_user, process_id)
     return SelectionTurnController.start_turn(
-        session, process_id, meeting_session_id, turn_id
+        session, process_id, meeting_session_id, turn_id, current_user
     )
 
 
@@ -85,7 +85,7 @@ def skip_turn(
 ) -> SelectionTurnPublic:
     SelectionTurnController.require_process_writer(session, current_user, process_id)
     return SelectionTurnController.skip_turn(
-        session, process_id, meeting_session_id, turn_id, payload
+        session, process_id, meeting_session_id, turn_id, current_user, payload
     )
 
 

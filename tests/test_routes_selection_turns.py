@@ -128,6 +128,27 @@ def test_start_turn_enforces_one_active_turn(
     assert active.status == SelectionTurnStatus.ACTIVE
 
 
+def test_start_turn_writes_audit_event(
+    client: TestClient, session: Session, current_user
+) -> None:
+    process, meeting = _open_meeting(session)
+    teacher = _teacher(session, process, "A", 0)
+    turn = factories.make_selection_turn(session, meeting, teacher)
+
+    resp = client.post(f"{_turns_path(process, meeting)}/{turn.id}/start")
+
+    assert resp.status_code == 200
+    audit_resp = client.get(f"/reparto/assignment-processes/{process.id}/audit-events/")
+    assert audit_resp.status_code == 200
+    event = audit_resp.json()["data"][0]
+    assert event["event_type"] == "selection_turn.started"
+    assert event["entity_type"] == "selection_turn"
+    assert event["entity_id"] == str(turn.id)
+    assert event["actor_user_id"] == str(current_user.id)
+    assert event["before_json"]["status"] == "pending"
+    assert event["after_json"]["status"] == "active"
+
+
 def test_start_turn_rejects_non_pending_turn(
     client: TestClient, session: Session
 ) -> None:
@@ -195,6 +216,12 @@ def test_skip_turn_records_reason(client: TestClient, session: Session) -> None:
     assert resp.json()["status"] == "skipped"
     assert resp.json()["skip_reason"] == "Absent"
     assert resp.json()["skipped_at"] is not None
+    audit_resp = client.get(f"/reparto/assignment-processes/{process.id}/audit-events/")
+    event = audit_resp.json()["data"][0]
+    assert event["event_type"] == "selection_turn.skipped"
+    assert event["before_json"]["status"] == "active"
+    assert event["after_json"]["status"] == "skipped"
+    assert event["reason"] == "Absent"
 
 
 def test_skip_rejects_finished_turn(client: TestClient, session: Session) -> None:
@@ -243,6 +270,11 @@ def test_override_records_actor(
     assert body["status"] == "overridden"
     assert body["skip_reason"] == "Department head decision"
     assert body["forced_by_user_id"] == str(current_user.id)
+    audit_resp = client.get(f"/reparto/assignment-processes/{process.id}/audit-events/")
+    event = audit_resp.json()["data"][0]
+    assert event["event_type"] == "selection_turn.overridden"
+    assert event["after_json"]["forced_by_user_id"] == str(current_user.id)
+    assert event["reason"] == "Department head decision"
 
 
 def test_override_preserves_existing_skipped_timestamp(
@@ -332,6 +364,11 @@ def test_complete_turn_records_assignment_and_actor_metadata(
     assert assignment.status == AssignmentStatus.CONFIRMED
     assert assignment.chosen_by_user_id == uuid.UUID(str(current_user.id))
     assert assignment.confirmed_by_user_id == uuid.UUID(str(current_user.id))
+    audit_resp = client.get(f"/reparto/assignment-processes/{process.id}/audit-events/")
+    assert [event["event_type"] for event in audit_resp.json()["data"]] == [
+        "assignment.created",
+        "selection_turn.completed",
+    ]
 
 
 def test_complete_turn_rejects_assignment_for_other_teacher(

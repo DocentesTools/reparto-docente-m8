@@ -83,6 +83,7 @@ class SelectionTurnController(DomainController):
         process_id: uuid.UUID,
         meeting_session_id: uuid.UUID,
         turn_id: uuid.UUID,
+        current_user: UserModel,
     ) -> SelectionTurnPublic:
         meeting_session = SelectionTurnController._ensure_session_can_select(
             session, process_id, meeting_session_id
@@ -94,11 +95,20 @@ class SelectionTurnController(DomainController):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Only pending turns can be started.",
             )
+        before = SelectionTurnController._snapshot_turn(turn)
         turn.status = SelectionTurnStatus.ACTIVE
         turn.started_at = datetime.now(tz=timezone.utc)
         meeting_session.status = MeetingSessionStatus.SELECTING
         session.add(meeting_session)
         session.add(turn)
+        SelectionTurnController._record_turn_audit(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="selection_turn.started",
+            before=before,
+            after=turn,
+        )
         session.commit()
         session.refresh(turn)
         return SelectionTurnPublic.model_validate(turn)
@@ -117,6 +127,7 @@ class SelectionTurnController(DomainController):
         )
         turn = SelectionTurnController._get_or_404(session, meeting_session.id, turn_id)
         SelectionTurnController._ensure_active_turn(turn)
+        before = SelectionTurnController._snapshot_turn(turn)
         if payload.assignment is not None:
             SelectionTurnController._record_turn_assignment(
                 session, process_id, current_user, turn, payload.assignment
@@ -125,6 +136,14 @@ class SelectionTurnController(DomainController):
         turn.completed_at = datetime.now(tz=timezone.utc)
         turn.notes = payload.notes if payload.notes is not None else turn.notes
         session.add(turn)
+        SelectionTurnController._record_turn_audit(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="selection_turn.completed",
+            before=before,
+            after=turn,
+        )
         session.commit()
         session.refresh(turn)
         return SelectionTurnPublic.model_validate(turn)
@@ -135,6 +154,7 @@ class SelectionTurnController(DomainController):
         process_id: uuid.UUID,
         meeting_session_id: uuid.UUID,
         turn_id: uuid.UUID,
+        current_user: UserModel,
         payload: SelectionTurnAction,
     ) -> SelectionTurnPublic:
         SelectionTurnController._ensure_session_can_select(
@@ -149,11 +169,21 @@ class SelectionTurnController(DomainController):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Only pending or active turns can be skipped.",
             )
+        before = SelectionTurnController._snapshot_turn(turn)
         turn.status = SelectionTurnStatus.SKIPPED
         turn.skip_reason = payload.reason
         turn.notes = payload.notes if payload.notes is not None else turn.notes
         turn.skipped_at = datetime.now(tz=timezone.utc)
         session.add(turn)
+        SelectionTurnController._record_turn_audit(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="selection_turn.skipped",
+            before=before,
+            after=turn,
+            reason=payload.reason,
+        )
         session.commit()
         session.refresh(turn)
         return SelectionTurnPublic.model_validate(turn)
@@ -171,12 +201,22 @@ class SelectionTurnController(DomainController):
             session, process_id, meeting_session_id
         )
         turn = SelectionTurnController._get_or_404(session, meeting_session_id, turn_id)
+        before = SelectionTurnController._snapshot_turn(turn)
         turn.status = SelectionTurnStatus.OVERRIDDEN
         turn.skip_reason = payload.reason
         turn.notes = payload.notes if payload.notes is not None else turn.notes
         turn.forced_by_user_id = uuid.UUID(str(current_user.id))
         turn.skipped_at = turn.skipped_at or datetime.now(tz=timezone.utc)
         session.add(turn)
+        SelectionTurnController._record_turn_audit(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="selection_turn.overridden",
+            before=before,
+            after=turn,
+            reason=payload.reason,
+        )
         session.commit()
         session.refresh(turn)
         return SelectionTurnPublic.model_validate(turn)
@@ -221,6 +261,44 @@ class SelectionTurnController(DomainController):
         )
         session.add(assignment)
         session.flush()
+        SelectionTurnController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="assignment.created",
+            entity_type="assignment",
+            entity_id=assignment.id,
+            before=None,
+            after=assignment,
+            reason=assignment.override_reason,
+        )
+
+    @staticmethod
+    def _record_turn_audit(
+        session: Session,
+        *,
+        process_id: uuid.UUID,
+        current_user: UserModel,
+        event_type: str,
+        before: SelectionTurn,
+        after: SelectionTurn,
+        reason: str | None = None,
+    ) -> None:
+        SelectionTurnController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type=event_type,
+            entity_type="selection_turn",
+            entity_id=after.id,
+            before=before,
+            after=after,
+            reason=reason,
+        )
+
+    @staticmethod
+    def _snapshot_turn(turn: SelectionTurn) -> SelectionTurn:
+        return SelectionTurn.model_validate(turn.model_dump())
 
     @staticmethod
     def _ordered_teachers(
