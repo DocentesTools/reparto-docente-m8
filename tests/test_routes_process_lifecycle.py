@@ -485,11 +485,12 @@ def test_cannot_add_group_to_final_process(
     process = factories.make_assignment_process(
         session, status=AssignmentProcessStatus.FINAL
     )
+    stage = factories.make_classroom_stage(session)
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/groups/",
         json={
             "assignment_process_id": str(process.id),
-            "stage": "ESO",
+            "classroom_stage_id": str(stage.id),
             "grade": 1,
             "group_code": "A",
             "label": "1 ESO A",

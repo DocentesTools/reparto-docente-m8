@@ -32,6 +32,14 @@ from .assignments import (
     AssignmentUpdate,
 )
 from .audit_events import AuditEvent, AuditEventPublic, AuditEventsPublic
+from .classroom_stages import (
+    ClassroomStage,
+    ClassroomStageCreate,
+    ClassroomStagePublic,
+    ClassroomStageSummary,
+    ClassroomStagesPublic,
+    ClassroomStageUpdate,
+)
 from .export_artifacts import (
     ExportArtifact,
     ExportArtifactCreate,
@@ -106,6 +114,7 @@ from .teacher_profiles import (
 )
 from .teaching_groups import (
     TeachingGroup,
+    TeachingGroupBulkCreate,
     TeachingGroupCreate,
     TeachingGroupPublic,
     TeachingGroupsPublic,
@@ -132,6 +141,12 @@ __all__ = [
     "AuditEvent",
     "AuditEventPublic",
     "AuditEventsPublic",
+    "ClassroomStage",
+    "ClassroomStageCreate",
+    "ClassroomStagePublic",
+    "ClassroomStageSummary",
+    "ClassroomStageUpdate",
+    "ClassroomStagesPublic",
     "ExportArtifact",
     "ExportArtifactCreate",
     "ExportArtifactPublic",
@@ -187,6 +202,7 @@ __all__ = [
     "TeacherProfileUpdate",
     "TeacherProfilesPublic",
     "TeachingGroup",
+    "TeachingGroupBulkCreate",
     "TeachingGroupCreate",
     "TeachingGroupPublic",
     "TeachingGroupUpdate",

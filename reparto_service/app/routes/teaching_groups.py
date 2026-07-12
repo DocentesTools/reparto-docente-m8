@@ -10,6 +10,7 @@ from reparto_service.app.deps import CurrentUser, SessionDep
 from reparto_service.controllers.teaching_groups import TeachingGroupController
 from reparto_service.db_models.teaching_groups import (
     TeachingGroupCreate,
+    TeachingGroupBulkCreate,
     TeachingGroupPublic,
     TeachingGroupsPublic,
     TeachingGroupUpdate,
@@ -19,6 +20,20 @@ router = APIRouter(
     prefix="/assignment-processes/{process_id}/groups",
     tags=["teaching-groups"],
 )
+
+
+@router.post("/bulk", response_model=TeachingGroupsPublic, status_code=201)
+def bulk_create_groups(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+    bulk_in: TeachingGroupBulkCreate,
+) -> TeachingGroupsPublic:
+    """Atomically create an inclusive classroom group range."""
+    TeachingGroupController.require_process_writer(session, current_user, process_id)
+    return TeachingGroupController.bulk_create(
+        session, process_id, bulk_in, current_user
+    )
 
 
 @router.get("/", response_model=TeachingGroupsPublic)

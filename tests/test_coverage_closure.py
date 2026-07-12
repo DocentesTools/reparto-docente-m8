@@ -123,11 +123,12 @@ def test_create_child_resources_reject_wrong_process_payload(
         f"/reparto/assignment-processes/{process.id}/subjects/",
         json={"assignment_process_id": str(uuid.uuid4()), "name": "Math"},
     )
+    stage = factories.make_classroom_stage(session)
     group_resp = client.post(
         f"/reparto/assignment-processes/{process.id}/groups/",
         json={
             "assignment_process_id": str(uuid.uuid4()),
-            "stage": "ESO",
+            "classroom_stage_id": str(stage.id),
             "grade": 1,
             "group_code": "A",
             "label": "1 ESO A",
@@ -208,7 +209,7 @@ def test_duplicate_updates_are_rejected(client: TestClient, session: Session) ->
 
     assert department_resp.status_code == 400
     assert subject_resp.status_code == 400
-    assert group_resp.status_code == 400
+    assert group_resp.status_code == 409
 
 
 def test_duplicate_create_group_is_rejected_and_delete_group_succeeds(
@@ -221,7 +222,7 @@ def test_duplicate_create_group_is_rejected_and_delete_group_succeeds(
         f"/reparto/assignment-processes/{process.id}/groups/",
         json={
             "assignment_process_id": str(process.id),
-            "stage": "ESO",
+            "classroom_stage_id": str(group.classroom_stage_id),
             "grade": 1,
             "group_code": "B",
             "label": group.label,
@@ -231,7 +232,7 @@ def test_duplicate_create_group_is_rejected_and_delete_group_succeeds(
         f"/reparto/assignment-processes/{process.id}/groups/{group.id}"
     )
 
-    assert duplicate.status_code == 400
+    assert duplicate.status_code == 409
     assert deleted.status_code == 200
 
 

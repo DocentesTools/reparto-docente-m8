@@ -1,5 +1,31 @@
 # reparto-docente-m8
 
+## Classroom stages and classroom creation
+
+`ClassroomStage` is global reference data. It is not scoped to a school,
+academic year, department, or active assignment process. Authenticated users
+can read stages; only existing `admin` and `superadmin` roles can create,
+update, or delete them. A stage referenced by a teaching group cannot be
+deleted.
+
+Teaching groups (shown as classrooms in the UI) keep their existing assignment
+process scope and now reference one stage through the required
+`classroom_stage_id`. Grades must fall inside that stage's inclusive range.
+When no custom label is supplied, the service generates
+`{grade}° {stage.label} {group_code}`. Omitted labels remain unchanged on
+partial updates; clearing a label regenerates it.
+
+Stage CRUD is exposed at `/reparto/classroom-stages/`. Atomic bulk classroom
+creation is exposed at
+`/reparto/assignment-processes/{process_id}/groups/bulk` and accepts an
+inclusive single-letter A-Z range. Any validation or uniqueness conflict rolls
+back the complete batch.
+
+No default stage catalogue is seeded. An administrator must create the initial
+global stages. The established Compose startup generates/applies the Alembic
+revision from SQLModel metadata; this repository does not keep hand-authored
+migration revisions.
+
 Local-first FastAPI backend for the **Docentes** teaching-assignment
 tool. The first release is a department-head-only product: no LAN
 participation, no turns, no exports — just a working process, teachers,

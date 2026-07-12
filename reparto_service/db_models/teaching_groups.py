@@ -1,74 +1,76 @@
-"""TeachingGroup table model and request/response schemas.
-
-A teaching group represents the teaching group/class context (e.g.
-'1 ESO A' = stage 'ESO', grade 1, group code 'A').
-"""
-
-from __future__ import annotations
+"""Process-scoped teaching groups exposed as classrooms in the UI."""
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from pydantic import Field
-from sqlalchemy import UniqueConstraint
-from sqlmodel import Column, Field as SQLField, SQLModel
+from pydantic import Field, field_validator
+from sqlalchemy import ForeignKey, UniqueConstraint
+from sqlmodel import Column, Field as SQLField, Relationship, SQLModel
 
 from auth_sdk_m8.models.shared import TimestampMixin
 from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.db_models.classroom_stages import ClassroomStageSummary
 
-
-# ── Base, Create, Update schemas ──────────────────────────────────────────────
+if TYPE_CHECKING:
+    from reparto_service.db_models.classroom_stages import ClassroomStage
 
 
 class TeachingGroupBase(SQLModel):
-    """Shared fields for teaching group schemas."""
+    """Shared fields for process-scoped classroom schemas."""
 
-    assignment_process_id: uuid.UUID = Field(
-        description="Owning assignment process ID."
-    )
-    stage: str = Field(
-        min_length=1,
-        max_length=50,
-        description="Educational stage, e.g. 'ESO', 'Bachillerato'.",
-    )
-    grade: int = Field(
-        ge=0,
-        le=20,
-        description="Grade within the stage, e.g. 1, 2, 3, 4.",
-    )
-    group_code: str = Field(
-        min_length=1,
-        max_length=10,
-        description="Group code inside the grade, e.g. 'A', 'B'.",
-    )
-    label: str = Field(
-        min_length=1,
-        max_length=100,
-        description="Human-readable label, e.g. '1 ESO A'.",
-    )
-    notes: Optional[str] = Field(default=None, description="Free-form notes.")
+    assignment_process_id: uuid.UUID
+    classroom_stage_id: uuid.UUID
+    grade: int = Field(gt=0)
+    group_code: str = Field(min_length=1, max_length=10)
+    notes: Optional[str] = None
+
+    @field_validator("group_code", mode="before")
+    @classmethod
+    def normalize_group_code(cls, value: object) -> object:
+        """Store group codes trimmed and uppercase."""
+        return value.strip().upper() if isinstance(value, str) else value
 
 
 class TeachingGroupCreate(TeachingGroupBase):
-    """Schema for creating a new teaching group."""
+    """Create payload; an omitted or blank label is generated server-side."""
+
+    label: Optional[str] = Field(default=None, max_length=100)
 
 
 class TeachingGroupUpdate(SQLModel):
-    """Partial update schema — every field is optional."""
+    """Partial update payload for a teaching group."""
 
-    stage: Optional[str] = Field(default=None, min_length=1, max_length=50)
-    grade: Optional[int] = Field(default=None, ge=0, le=20)
+    classroom_stage_id: Optional[uuid.UUID] = None
+    grade: Optional[int] = Field(default=None, gt=0)
     group_code: Optional[str] = Field(default=None, min_length=1, max_length=10)
-    label: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    notes: Optional[str] = Field(default=None)
+    label: Optional[str] = Field(default=None, max_length=100)
+    notes: Optional[str] = None
+
+    @field_validator("group_code", mode="before")
+    @classmethod
+    def normalize_group_code(cls, value: object) -> object:
+        """Normalize a supplied group code."""
+        return value.strip().upper() if isinstance(value, str) else value
 
 
-# ── Database model ───────────────────────────────────────────────────────────
+class TeachingGroupBulkCreate(SQLModel):
+    """Atomic inclusive group-range creation payload."""
+
+    classroom_stage_id: uuid.UUID
+    grade: int = Field(gt=0)
+    group_start: str = Field(min_length=1, max_length=1)
+    group_end: str = Field(min_length=1, max_length=1)
+
+    @field_validator("group_start", "group_end", mode="before")
+    @classmethod
+    def normalize_group_code(cls, value: object) -> object:
+        """Normalize bulk range endpoints."""
+        return value.strip().upper() if isinstance(value, str) else value
 
 
 class TeachingGroup(TimestampMixin, TeachingGroupBase, SQLModel, table=True):
-    """SQLModel table for a teaching group."""
+    """Database teaching group with one mandatory global stage."""
 
     __tablename__ = prefixed_tables("teaching_group")
     __table_args__ = (
@@ -82,29 +84,50 @@ class TeachingGroup(TimestampMixin, TeachingGroupBase, SQLModel, table=True):
     id: uuid.UUID = SQLField(
         default_factory=uuid.uuid4,
         sa_column=Column("id", UUIDString(), primary_key=True),
-        description="Teaching group ID.",
     )
     assignment_process_id: uuid.UUID = SQLField(
         sa_column=Column(
             "assignment_process_id", UUIDString(), nullable=False, index=True
-        ),
-        description="Owning assignment process ID.",
+        )
     )
+    classroom_stage_id: uuid.UUID = SQLField(
+        sa_column=Column(
+            "classroom_stage_id",
+            UUIDString(),
+            ForeignKey(
+                f"{prefixed_tables('classroom_stage')}.id",
+                ondelete="RESTRICT",
+            ),
+            nullable=False,
+            index=True,
+        )
+    )
+    label: str = SQLField(min_length=1, max_length=100)
+    classroom_stage: "ClassroomStage" = Relationship(back_populates="classrooms")
 
 
-# ── Public/read schemas ──────────────────────────────────────────────────────
+class TeachingGroupPublic(TeachingGroupBase):
+    """Public teaching-group representation with nested stage data."""
 
-
-class TeachingGroupPublic(TeachingGroupBase, SQLModel):
-    """Public representation of a teaching group."""
-
-    id: uuid.UUID = Field(description="Teaching group ID.")
-    created_at: datetime = Field(description="Creation timestamp (UTC).")
-    updated_at: datetime = Field(description="Last update timestamp (UTC).")
+    id: uuid.UUID
+    label: str
+    classroom_stage: ClassroomStageSummary
+    created_at: datetime
+    updated_at: datetime
 
 
 class TeachingGroupsPublic(SQLModel):
-    """List wrapper for public teaching groups."""
+    """List wrapper for teaching groups."""
 
-    data: list[TeachingGroupPublic] = Field(description="List of teaching groups.")
-    count: int = Field(description="Total teaching groups count.")
+    data: list[TeachingGroupPublic]
+    count: int
+
+
+__all__ = [
+    "TeachingGroup",
+    "TeachingGroupBulkCreate",
+    "TeachingGroupCreate",
+    "TeachingGroupPublic",
+    "TeachingGroupsPublic",
+    "TeachingGroupUpdate",
+]

@@ -66,6 +66,18 @@ class DomainController(BaseController):
         )
 
     @staticmethod
+    def require_admin(current_user: UserModel) -> None:
+        """Raise 403 unless the caller has the existing admin role."""
+        role = current_user.role
+        role_value = role.value if hasattr(role, "value") else str(role)
+        if current_user.is_superuser or role_value in {"admin", "superadmin"}:
+            return
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator role required to mutate classroom stages.",
+        )
+
+    @staticmethod
     def get_or_404(session: Session, model: type[SQLModel], item_id: uuid.UUID) -> Any:
         """Return the row with ``item_id`` or raise a 404."""
         item = session.get(model, item_id)

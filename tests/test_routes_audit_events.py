@@ -82,11 +82,12 @@ def test_setup_resource_mutations_are_audited(
     )
     assert subject_resp.status_code == 201
 
+    stage = factories.make_classroom_stage(session)
     group_resp = client.post(
         f"/reparto/assignment-processes/{process.id}/groups/",
         json={
             "assignment_process_id": str(process.id),
-            "stage": "ESO",
+            "classroom_stage_id": str(stage.id),
             "grade": 1,
             "group_code": "A",
             "label": "1 ESO A",

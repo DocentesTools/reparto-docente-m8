@@ -137,6 +137,14 @@ def superuser() -> UserModel:
 
 
 @pytest.fixture
+def admin_user() -> UserModel:
+    """Authenticated user with the existing admin role."""
+    user = _make_user()
+    user.role = "admin"  # type: ignore[assignment]
+    return user
+
+
+@pytest.fixture
 def reader() -> UserModel:
     """Reader-role user (read-only access)."""
 
@@ -180,6 +188,18 @@ def superuser_client(
 ) -> Generator[TestClient]:
     """TestClient authenticated as a superuser."""
     tc = _make_client(session, superuser)
+    with tc as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def admin_client(
+    session: Session,
+    admin_user: UserModel,
+) -> Generator[TestClient]:
+    """TestClient authenticated as an administrator."""
+    tc = _make_client(session, admin_user)
     with tc as c:
         yield c
     app.dependency_overrides.clear()

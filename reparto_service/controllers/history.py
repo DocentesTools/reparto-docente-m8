@@ -377,7 +377,7 @@ class HistoryController(DomainController):
         for row in HistoryController._list_section(snapshot, "teaching_groups"):
             group = TeachingGroup(
                 assignment_process_id=target.id,
-                stage=row["stage"],
+                classroom_stage_id=uuid.UUID(str(row["classroom_stage_id"])),
                 grade=row["grade"],
                 group_code=row["group_code"],
                 label=row["label"],

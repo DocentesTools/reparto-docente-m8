@@ -132,11 +132,12 @@ def test_delete_subject(client: TestClient, session: Session) -> None:
 
 def test_create_teaching_group(client: TestClient, session: Session) -> None:
     process = factories.make_assignment_process(session)
+    stage = factories.make_classroom_stage(session)
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/groups/",
         json={
             "assignment_process_id": str(process.id),
-            "stage": "ESO",
+            "classroom_stage_id": str(stage.id),
             "grade": 1,
             "group_code": "A",
             "label": "1 ESO A",

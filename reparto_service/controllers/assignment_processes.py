@@ -412,7 +412,7 @@ class AssignmentProcessController(DomainController):
             session.add(
                 TeachingGroup(
                     assignment_process_id=target.id,
-                    stage=group.stage,
+                    classroom_stage_id=group.classroom_stage_id,
                     grade=group.grade,
                     group_code=group.group_code,
                     label=group.label,

@@ -13,6 +13,7 @@ from reparto_service.app.routes import (
     assignment_processes,
     assignments,
     audit_events,
+    classroom_stages,
     departments,
     history,
     hour_requirements,
@@ -28,6 +29,7 @@ from reparto_service.app.routes import (
 api_router = APIRouter()
 api_router.include_router(academic_years.router)
 api_router.include_router(schools.router)
+api_router.include_router(classroom_stages.router)
 api_router.include_router(departments.router)
 api_router.include_router(teacher_profiles.router)
 api_router.include_router(assignment_processes.router)

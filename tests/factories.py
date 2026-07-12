@@ -11,11 +11,12 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import Optional
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from reparto_service.db_models.academic_years import AcademicYear
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.assignments import Assignment
+from reparto_service.db_models.classroom_stages import ClassroomStage
 from reparto_service.db_models.departments import Department
 from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.meeting_sessions import MeetingSession
@@ -193,22 +194,56 @@ def make_teaching_group(
     session: Session,
     process: AssignmentProcess,
     *,
-    stage: str = "ESO",
+    stage: str = "Secundaria",
+    stage_label: str = "ESO",
     grade: int = 1,
     group_code: str = "A",
     label: Optional[str] = None,
 ) -> TeachingGroup:
+    classroom_stage = make_classroom_stage(
+        session,
+        stage=stage,
+        label=stage_label,
+        min_grade=min(grade, 1),
+        max_grade=max(grade, 4),
+    )
     group = TeachingGroup(
         assignment_process_id=process.id,
-        stage=stage,
+        classroom_stage_id=classroom_stage.id,
         grade=grade,
         group_code=group_code,
-        label=label or f"{grade} {stage} {group_code}",
+        label=label or f"{grade}° {stage_label} {group_code}",
     )
     session.add(group)
     session.commit()
     session.refresh(group)
     return group
+
+
+def make_classroom_stage(
+    session: Session,
+    *,
+    stage: str = "Secundaria",
+    label: str = "ESO",
+    min_grade: int = 1,
+    max_grade: int = 4,
+) -> ClassroomStage:
+    """Create or return a global classroom stage used by tests."""
+    existing = session.exec(
+        select(ClassroomStage).where(ClassroomStage.stage == stage)
+    ).first()
+    if existing is not None:
+        return existing
+    classroom_stage = ClassroomStage(
+        stage=stage,
+        label=label,
+        min_grade=min_grade,
+        max_grade=max_grade,
+    )
+    session.add(classroom_stage)
+    session.commit()
+    session.refresh(classroom_stage)
+    return classroom_stage
 
 
 def make_hour_requirement(
