@@ -1,15 +1,16 @@
 #!/bin/sh
 set -e
 
-# Run migrations
-# Check if alembic/versions has no .py files (ignores .gitkeep)
-if [ -z "$(find /opt/shared_migrations/reparto_docentes/versions -maxdepth 1 -name '*.py' -print -quit)" ]; then
-    echo "Generating Alembic migration..."
-    if ! alembic -c /opt/reparto_service/alembic.ini revision --autogenerate -m "Initial m8 migration"; then
-        echo "Failed to generate initial migration"
+# Generate a revision whenever the mounted database schema differs from the
+# service metadata. `alembic check` avoids producing empty revisions on normal
+# restarts while still supporting upgrades after the initial migration.
+if ! alembic -c /opt/reparto_service/alembic.ini check; then
+    echo "Schema drift detected; generating Alembic migration..."
+    if ! alembic -c /opt/reparto_service/alembic.ini revision --autogenerate -m "Automatic reparto migration"; then
+        echo "Failed to generate migration"
         exit 1
     else
-        echo "Initial migration generated..."
+        echo "Migration generated..."
     fi
 fi
 
