@@ -1,0 +1,211 @@
+"""reparto_service SQLModel table models.
+
+Every domain table the FastAPI app and Alembic autogenerate know about
+must be importable from this package so the SQLModel metadata is
+populated before ``alembic upgrade`` runs and before any test engine
+calls ``SQLModel.metadata.create_all``.
+"""
+
+from .academic_years import (
+    AcademicYear,
+    AcademicYearCreate,
+    AcademicYearPublic,
+    AcademicYearsPublic,
+    AcademicYearUpdate,
+)
+from .assignment_processes import (
+    AssignmentProcess,
+    AssignmentProcessCreate,
+    AssignmentProcessPublic,
+    AssignmentProcessesPublic,
+    AssignmentProcessUpdate,
+    ProcessCopyRequest,
+    ProcessReopenRequest,
+    ProcessTransitionRequest,
+)
+from .assignments import (
+    Assignment,
+    AssignmentCreate,
+    AssignmentDirectChoice,
+    AssignmentPublic,
+    AssignmentsPublic,
+    AssignmentUpdate,
+)
+from .audit_events import AuditEvent, AuditEventPublic, AuditEventsPublic
+from .classroom_stages import (
+    ClassroomStage,
+    ClassroomStageCreate,
+    ClassroomStagePublic,
+    ClassroomStageSummary,
+    ClassroomStagesPublic,
+    ClassroomStageUpdate,
+)
+from .export_artifacts import (
+    ExportArtifact,
+    ExportArtifactCreate,
+    ExportArtifactPublic,
+    ExportArtifactsPublic,
+)
+from .departments import (
+    Department,
+    DepartmentCreate,
+    DepartmentGenerators,
+    DepartmentPublic,
+    DepartmentsPublic,
+    DepartmentUpdate,
+)
+from .hour_requirements import (
+    HourRequirement,
+    HourRequirementCreate,
+    HourRequirementPublic,
+    HourRequirementsPublic,
+    HourRequirementUpdate,
+)
+from .meeting_sessions import (
+    MeetingSession,
+    MeetingSessionCreate,
+    MeetingSessionPublic,
+    MeetingSessionsPublic,
+    MeetingSessionUpdate,
+)
+from .process_versions import (
+    ProcessVersion,
+    ProcessVersionCreate,
+    ProcessVersionPublic,
+    ProcessVersionsPublic,
+    VersionComparison,
+)
+from .selection_turns import (
+    SelectionTurn,
+    SelectionTurnAction,
+    SelectionTurnComplete,
+    SelectionTurnCreate,
+    SelectionTurnPublic,
+    SelectionTurnsPublic,
+)
+from .process_teachers import (
+    ProcessTeacher,
+    ProcessTeacherCreate,
+    ProcessTeacherPublic,
+    ProcessTeachersPublic,
+    ProcessTeacherUpdate,
+)
+from .schools import (
+    School,
+    SchoolCreate,
+    SchoolPublic,
+    SchoolsPublic,
+    SchoolUpdate,
+)
+from .subjects import (
+    Subject,
+    SubjectCreate,
+    SubjectPublic,
+    SubjectsPublic,
+    SubjectUpdate,
+)
+from .teacher_profiles import (
+    TeacherProfile,
+    TeacherProfileCreate,
+    TeacherProfileLinkUser,
+    TeacherProfilePublic,
+    TeacherProfilesPublic,
+    TeacherProfileUpdate,
+)
+from .teaching_groups import (
+    TeachingGroup,
+    TeachingGroupBulkCreate,
+    TeachingGroupCreate,
+    TeachingGroupPublic,
+    TeachingGroupsPublic,
+    TeachingGroupUpdate,
+)
+
+__all__ = [
+    "AcademicYear",
+    "AcademicYearCreate",
+    "AcademicYearPublic",
+    "AcademicYearUpdate",
+    "AcademicYearsPublic",
+    "Assignment",
+    "AssignmentCreate",
+    "AssignmentDirectChoice",
+    "AssignmentProcess",
+    "AssignmentProcessCreate",
+    "AssignmentProcessPublic",
+    "AssignmentProcessUpdate",
+    "AssignmentProcessesPublic",
+    "AssignmentPublic",
+    "AssignmentUpdate",
+    "AssignmentsPublic",
+    "AuditEvent",
+    "AuditEventPublic",
+    "AuditEventsPublic",
+    "ClassroomStage",
+    "ClassroomStageCreate",
+    "ClassroomStagePublic",
+    "ClassroomStageSummary",
+    "ClassroomStageUpdate",
+    "ClassroomStagesPublic",
+    "ExportArtifact",
+    "ExportArtifactCreate",
+    "ExportArtifactPublic",
+    "ExportArtifactsPublic",
+    "Department",
+    "DepartmentCreate",
+    "DepartmentGenerators",
+    "DepartmentPublic",
+    "DepartmentUpdate",
+    "DepartmentsPublic",
+    "HourRequirement",
+    "HourRequirementCreate",
+    "HourRequirementPublic",
+    "HourRequirementUpdate",
+    "HourRequirementsPublic",
+    "MeetingSession",
+    "MeetingSessionCreate",
+    "MeetingSessionPublic",
+    "MeetingSessionUpdate",
+    "MeetingSessionsPublic",
+    "ProcessCopyRequest",
+    "ProcessReopenRequest",
+    "ProcessTeacher",
+    "ProcessTeacherCreate",
+    "ProcessTeacherPublic",
+    "ProcessTeacherUpdate",
+    "ProcessTeachersPublic",
+    "ProcessTransitionRequest",
+    "ProcessVersion",
+    "ProcessVersionCreate",
+    "ProcessVersionPublic",
+    "ProcessVersionsPublic",
+    "SelectionTurn",
+    "SelectionTurnAction",
+    "SelectionTurnComplete",
+    "SelectionTurnCreate",
+    "SelectionTurnPublic",
+    "SelectionTurnsPublic",
+    "School",
+    "SchoolCreate",
+    "SchoolPublic",
+    "SchoolUpdate",
+    "SchoolsPublic",
+    "Subject",
+    "SubjectCreate",
+    "SubjectPublic",
+    "SubjectUpdate",
+    "SubjectsPublic",
+    "TeacherProfile",
+    "TeacherProfileCreate",
+    "TeacherProfileLinkUser",
+    "TeacherProfilePublic",
+    "TeacherProfileUpdate",
+    "TeacherProfilesPublic",
+    "TeachingGroup",
+    "TeachingGroupBulkCreate",
+    "TeachingGroupCreate",
+    "TeachingGroupPublic",
+    "TeachingGroupUpdate",
+    "TeachingGroupsPublic",
+    "VersionComparison",
+]
