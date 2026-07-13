@@ -1,5 +1,5 @@
 # ---------- BUILD STAGE ----------
-FROM python:3.14-slim@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97 AS builder
+FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1 AS builder
 
 WORKDIR /install
 
@@ -11,8 +11,9 @@ COPY ./reparto_service/requirements_dev.txt .
 COPY ./reparto_service/requirements_prod.txt .
 
 RUN pip install --upgrade "pip==26.1.1" && \
-    pip install --prefix=/install --no-cache-dir -r requirements_base.txt && \
+    
     if [ "$ENVIRONMENT" = "development" ]; then \
+        pip install --prefix=/install --no-cache-dir -r requirements_base.txt && \
         pip install --prefix=/install --no-cache-dir -r requirements_dev.txt ; \
     else \
         pip install --prefix=/install --no-cache-dir -r requirements_prod.txt ; \
@@ -20,12 +21,12 @@ RUN pip install --upgrade "pip==26.1.1" && \
 
 
 # ---------- RUNTIME STAGE ----------
-FROM python:3.14-slim@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97
+FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PATH="/home/appuser/.local/bin:$PATH"
-ENV PYTHONPATH=/opt/reparto_service
+ENV PYTHONPATH=/opt:/opt/reparto_service
 
 RUN apt-get update \
     && apt-get upgrade -y \
@@ -39,6 +40,9 @@ WORKDIR /opt
 
 COPY --from=builder /install /usr/local
 COPY --chown=appuser:appuser ./reparto_service ./reparto_service
+
+RUN find /opt/reparto_service/scripts -name "*.sh" -exec sed -i 's/\r$//' {} + && \
+    chmod +x /opt/reparto_service/scripts/*.sh
 
 USER appuser
 
