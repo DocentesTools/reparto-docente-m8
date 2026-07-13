@@ -16,4 +16,4 @@ mypy>=2.1.0
 # Build tools (optional but OK in dev)
 setuptools>=82.0.1
 wheel>=0.47.0
-build>=1.5.0
+build>=1.5.1
