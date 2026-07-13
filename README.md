@@ -1,146 +1,102 @@
 # reparto-docente-m8
 
-## Classroom stages and classroom creation
+![CI](https://github.com/DocentesTools/reparto-docente-m8/actions/workflows/CI.yaml/badge.svg?branch=main)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/15450e364eff4ad09695c4910153f7bb)](https://app.codacy.com/gh/DocentesTools/reparto-docente-m8/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+[![codecov](https://codecov.io/github/DocentesTools/reparto-docente-m8/graph/badge.svg?token=9SIK5LAQPQ)](https://codecov.io/github/DocentesTools/reparto-docente-m8)
+[![Docker Pulls](https://img.shields.io/docker/pulls/tepochtli/reparto-docente-m8)](https://hub.docker.com/r/tepochtli/reparto-docente-m8)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-`ClassroomStage` is global reference data. It is not scoped to a school,
-academic year, department, or active assignment process. Authenticated users
-can read stages; only existing `admin` and `superadmin` roles can create,
-update, or delete them. A stage referenced by a teaching group cannot be
-deleted.
+Local-first FastAPI service for the Docentes teaching-assignment domain. It is
+an authenticated consumer of `fa-auth-m8`: it validates access tokens over the
+auth contract and owns no auth-service database or private signing keys.
 
-Teaching groups (shown as classrooms in the UI) keep their existing assignment
-process scope and now reference one stage through the required
-`classroom_stage_id`. Grades must fall inside that stage's inclusive range.
-When no custom label is supplied, the service generates
-`{grade}° {stage.label} {group_code}`. Omitted labels remain unchanged on
-partial updates; clearing a label regenerates it.
+## What it provides
 
-Stage CRUD is exposed at `/reparto/classroom-stages/`. Atomic bulk classroom
-creation is exposed at
-`/reparto/assignment-processes/{process_id}/groups/bulk` and accepts an
-inclusive single-letter A-Z range. Any validation or uniqueness conflict rolls
-back the complete batch.
+- School, academic-year, department, teacher-profile, classroom-stage, and
+  assignment-process administration.
+- Per-process teachers, subjects, teaching groups, hour requirements, and
+  capacity-enforced assignments.
+- Process lifecycle transitions, reopening, draft restoration, summaries,
+  dashboards, audit events, and a server-sent event stream.
+- LAN teacher read access, meeting sessions, ordered selection turns, and
+  direct assignment choices.
+- Process versions, previous-year comparison, and export artifact endpoints.
 
-No default stage catalogue is seeded. An administrator must create the initial
-global stages. The established Compose startup generates/applies the Alembic
-revision from SQLModel metadata; this repository does not keep hand-authored
-migration revisions.
+The API prefix defaults to `/reparto`. Interactive OpenAPI documentation is
+available when `SET_DOCS=true` in the service environment.
 
-Local-first FastAPI backend for the **Docentes** teaching-assignment
-tool. The first release is a department-head-only product: no LAN
-participation, no turns, no exports — just a working process, teachers,
-requirements, assignments, and a live-recalculated balance.
+## Quick start (Windows)
 
-This backend follows the [`fa-auth-m8` `examples/fastapi_full`](https://github.com/DocentesTools/fa-auth-m8/tree/main/examples/fastapi_full)
-consumer-service shape (consumer of auth tokens, `fastapi-m8` app
-lifecycle, alembic migrations, Postgres, Traefik-friendly local stack).
+Use the repository's required conda environment:
 
-The plan that drives this repo is
-[`.claude/plans/docentes/todo/2026-06-26-docentes-local-first-lan-auth-plan.md`](../.claude/plans/docentes/todo/2026-06-26-docentes-local-first-lan-auth-plan.md).
-See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for the technical
-decisions behind the current slice.
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+. C:\Users\mexse\anaconda3\shell\condabin\conda-hook.ps1
+conda activate fa_auth_m8
 
-## Quick start (local Python)
+pip install -r reparto_service\requirements_dev.txt
+Copy-Item reparto_service\.example_env reparto_service\.env
+# Replace every changethis value in reparto_service\.env.
 
-```bash
-# 1. install the local M8 packages (editable, from /opt/fa_m8)
-pip install -e ../auth-sdk-m8 ../fastapi-m8
-
-# 2. install this service's runtime + dev dependencies
-pip install -r reparto_service/requirements_dev.txt
-
-# 3. copy the example env and edit (every "changethis" → real value)
-cp reparto_service/.example_env reparto_service/.env
-
-# 4. run the unit tests
-PYTHONPATH=. pytest tests/
-
-# 5. start the service (Postgres-backed; see docker_compose/dev_reparto_m8)
-cd reparto_service
-alembic upgrade head
-uvicorn reparto_service.main:app --reload --port 8000
+$env:PYTHONPATH = "."
+pytest --cov --cov-fail-under=100
+uvicorn reparto_service.main:app --reload --port 9000
 ```
 
-## Quick start (Docker stack)
+The application validates its configuration at startup. Do not use global
+Python or manually author Alembic revisions; the Compose workflow generates
+and applies schema migrations from the models.
+
+## Docker development stack
 
 ```bash
 cd docker_compose/dev_reparto_m8
-cp api.env.example api.env
+cp reparto.env.example reparto.env
 cp auth.env.example auth.env
-# replace every "changethis" → real value
+# Replace every changethis value before starting the stack.
 bash init.sh
 docker compose up -d
 ```
 
-The stack serves:
+The stack includes PostgreSQL, Redis, the `fa-auth-m8` issuer, this service,
+and Traefik. It is localhost-only by default; follow
+[the stack guide](docker_compose/dev_reparto_m8/README.md) before exposing it
+to a LAN.
 
-* `https://localhost:4430/user` — `fa-auth-m8` issuer (auth + tokens)
-* `https://localhost:4430/reparto` — this service (domain APIs)
-* `http://localhost:8080` — Traefik dashboard (loopback only)
+## API map
 
-## API prefix and structure
+| Area | Base path |
+| --- | --- |
+| Reference administration | `/reparto/academic-years`, `/schools`, `/classroom-stages`, `/departments`, `/teacher-profiles` |
+| Assignment process | `/reparto/assignment-processes` |
+| Per-process resources | `/reparto/assignment-processes/{process_id}/teachers`, `/subjects`, `/groups`, `/requirements`, `/assignments` |
+| Lifecycle and read models | `/transition`, `/reopen`, `/copy-previous-year`, `/summary`, `/dashboard`, `/lan/me`, `/events` under an assignment process |
+| Audit and history | `/audit-events`, `/versions`, `/compare-previous-year`, `/exports`, `/restore-draft` under an assignment process |
+| Meeting turns | `/reparto/assignment-processes/{process_id}/meeting-sessions/{meeting_session_id}/turns` |
 
-The service mounts every route under the configured `API_PREFIX`
-(default `/reparto`). The canonical endpoints are:
-
-```
-GET    /reparto/academic-years/                         (CRUD)
-POST   /reparto/academic-years/
-GET    /reparto/academic-years/{id}
-PATCH  /reparto/academic-years/{id}
-POST   /reparto/academic-years/{id}/archive
-
-GET    /reparto/schools/                                (CRUD)
-POST   /reparto/schools/
-GET    /reparto/schools/{id}
-PATCH  /reparto/schools/{id}
-
-GET    /reparto/departments/                            (CRUD)
-POST   /reparto/departments/
-GET    /reparto/departments/{id}
-PATCH  /reparto/departments/{id}
-
-GET    /reparto/teacher-profiles/                       (CRUD, cross-process)
-POST   /reparto/teacher-profiles/
-GET    /reparto/teacher-profiles/{id}
-PATCH  /reparto/teacher-profiles/{id}
-DELETE /reparto/teacher-profiles/{id}
-
-GET    /reparto/assignment-processes/                   (CRUD, parent)
-POST   /reparto/assignment-processes/
-GET    /reparto/assignment-processes/{id}
-PATCH  /reparto/assignment-processes/{id}
-GET    /reparto/assignment-processes/{id}/summary       (lightweight balance)
-GET    /reparto/assignment-processes/{id}/dashboard     (full balance + validations)
-
-GET    /reparto/assignment-processes/{pid}/teachers/    (per-process teachers)
-POST   /reparto/assignment-processes/{pid}/teachers/
-GET    /reparto/assignment-processes/{pid}/teachers/{id}
-PATCH  /reparto/assignment-processes/{pid}/teachers/{id}
-DELETE /reparto/assignment-processes/{pid}/teachers/{id}
-
-GET    /reparto/assignment-processes/{pid}/subjects/     (CRUD)
-GET    /reparto/assignment-processes/{pid}/groups/      (teaching groups, CRUD)
-GET    /reparto/assignment-processes/{pid}/requirements/ (hour requirements, CRUD)
-GET    /reparto/assignment-processes/{pid}/assignments/ (CRUD, with cap-enforcement)
-```
+Assignment endpoints include `POST /assignments/direct-choice`. Selection-turn
+endpoints support initialization plus start, complete, skip, and override
+actions. Consult the OpenAPI schema for request and response models.
 
 ## Quality gates
+
+Run these commands from the repository root in the `fa_auth_m8` conda
+environment:
 
 ```bash
 ruff format .
 ruff check .
 mypy . --ignore-missing-imports
-pytest --cov=reparto_service --cov-fail-under=90
-bandit -r reparto_service --severity-level medium
+pytest --cov --cov-fail-under=100
+bandit -r . --severity-level medium
 ```
 
-Tests are pure unit + API tests against an in-memory SQLite engine
-(see `tests/conftest.py`). The first slice targets ~90 % coverage on
-the new code (100 % is the long-term policy per workspace rules; the
-remaining gaps are the auth event-stream wiring in `core/events.py`
-which only matters once LAN read mode ships in Phase 2).
+## Architecture
+
+The service communicates with `fa-auth-m8` over HTTP and keeps domain logic in
+controllers and services, separate from FastAPI route transport. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed design.
 
 ## License
 
-See [`LICENSE`](LICENSE).
+Licensed under the [Apache License 2.0](LICENSE).
