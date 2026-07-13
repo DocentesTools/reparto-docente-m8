@@ -480,15 +480,14 @@ class HistoryController(DomainController):
                     ["assignment", row["id"], row["assigned_hours"], row["status"]]
                 )
             return output.getvalue()
-        return "\n".join(
-            [
-                "Reparto docente export",
-                f"Process: {snapshot['process']['id']}",
-                f"Status: {snapshot['process']['status']}",
-                f"Required hours: {snapshot['summary']['global_balance']['total_required_hours']}",
-                f"Assigned hours: {snapshot['summary']['global_balance']['total_assigned_hours']}",
-            ]
-        )
+        if artifact_format == ExportArtifactFormat.PDF:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail="PDF export is not implemented.",
+            )
+        raise AssertionError(
+            f"Unsupported export format: {artifact_format}"
+        )  # pragma: no cover
 
     @staticmethod
     def _ensure_no_blocking_validations(

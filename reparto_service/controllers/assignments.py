@@ -78,19 +78,8 @@ class AssignmentController(DomainController):
         process = AssignmentController._ensure_open(
             session, process_id, assignment_in.assignment_process_id
         )
-        AssignmentController._get_requirement_or_404(
-            session, process_id, assignment_in.hour_requirement_id
-        )
-        AssignmentController._get_process_teacher_or_404(
-            session, process_id, assignment_in.process_teacher_id
-        )
-        # Enforce over-assignment cap unless this row itself records an override.
-        AssignmentController._enforce_requirement_cap(
-            session=session,
-            process=process,
-            requirement_id=assignment_in.hour_requirement_id,
-            incoming_hours=assignment_in.assigned_hours,
-            incoming_has_override=assignment_in.override_reason is not None,
+        AssignmentController._validate_assignment_creation(
+            session, process_id, assignment_in, process
         )
         assignment = Assignment.model_validate(
             assignment_in.model_dump(),
@@ -313,6 +302,28 @@ class AssignmentController(DomainController):
         return process
 
     @staticmethod
+    def _validate_assignment_creation(
+        session: Session,
+        process_id: uuid.UUID,
+        assignment_in: AssignmentCreate,
+        process: AssignmentProcess,
+    ) -> None:
+        """Validate assignment references and requirement capacity before create."""
+        AssignmentController._get_requirement_or_404(
+            session, process_id, assignment_in.hour_requirement_id
+        )
+        AssignmentController._get_process_teacher_or_404(
+            session, process_id, assignment_in.process_teacher_id
+        )
+        AssignmentController._enforce_requirement_cap(
+            session=session,
+            process=process,
+            requirement_id=assignment_in.hour_requirement_id,
+            incoming_hours=assignment_in.assigned_hours,
+            incoming_has_override=assignment_in.override_reason is not None,
+        )
+
+    @staticmethod
     def _enforce_requirement_cap(
         *,
         session: Session,
@@ -334,22 +345,15 @@ class AssignmentController(DomainController):
             Assignment.hour_requirement_id == requirement_id
         )
         rows = list(session.exec(statement).all())
-        totals_by_requirement: dict[uuid.UUID, tuple[float, bool]] = {}
+        current_hours: float = 0.0
+        has_any_override: bool = False
         for row in rows:
             if row.status == AssignmentStatus.CANCELLED:
                 continue
             if exclude_assignment_id is not None and row.id == exclude_assignment_id:
                 continue
-            current, has_override = totals_by_requirement.get(
-                row.hour_requirement_id, (0.0, False)
-            )
-            totals_by_requirement[row.hour_requirement_id] = (
-                current + row.assigned_hours,
-                has_override or row.override_reason is not None,
-            )
-        current_hours, has_override = totals_by_requirement.get(
-            requirement_id, (0.0, False)
-        )
+            current_hours += row.assigned_hours
+            has_any_override = has_any_override or row.override_reason is not None
         projected = current_hours + incoming_hours
         # Fetch the requirement to know its cap.
         requirement = session.get(HourRequirement, requirement_id)
@@ -361,7 +365,7 @@ class AssignmentController(DomainController):
         cap = requirement.required_hours
         if projected <= cap:
             return
-        if incoming_has_override or has_override:
+        if incoming_has_override or has_any_override:
             return
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

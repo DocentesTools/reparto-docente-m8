@@ -294,9 +294,13 @@ class AssignmentProcessController(DomainController):
                 detail=("Copy is only allowed into a process in status 'draft'."),
             )
         AssignmentProcessController._ensure_target_empty(session, target.id)
-        AssignmentProcessController._copy_structure(session, source, target)
+        requirement_map = AssignmentProcessController._copy_structure(
+            session, source, target
+        )
         if request.copy_assignments:
-            AssignmentProcessController._copy_assignments(session, source, target)
+            AssignmentProcessController._copy_assignments(
+                session, source, target, requirement_map
+            )
         target.created_from_process_id = source.id
         session.add(target)
         AssignmentProcessController.record_audit_event(
@@ -383,7 +387,7 @@ class AssignmentProcessController(DomainController):
     @staticmethod
     def _copy_structure(
         session: Session, source: AssignmentProcess, target: AssignmentProcess
-    ) -> None:
+    ) -> dict[uuid.UUID, uuid.UUID]:
         """Copy subjects, teaching groups and hour requirements.
 
         ``ProcessTeacher`` rows are copied one-to-one: the same
@@ -393,32 +397,35 @@ class AssignmentProcessController(DomainController):
         ``0`` so the head must re-enter the contract values for the new
         academic year.
         """
+        subject_map: dict[uuid.UUID, uuid.UUID] = {}
+        group_map: dict[uuid.UUID, uuid.UUID] = {}
+        requirement_map: dict[uuid.UUID, uuid.UUID] = {}
         for subject in session.exec(
             select(Subject).where(Subject.assignment_process_id == source.id)
         ).all():
-            session.add(
-                Subject(
-                    assignment_process_id=target.id,
-                    name=subject.name,
-                    stage=subject.stage,
-                    notes=subject.notes,
-                )
+            copied_subject = Subject(
+                assignment_process_id=target.id,
+                name=subject.name,
+                stage=subject.stage,
+                notes=subject.notes,
             )
+            subject_map[subject.id] = copied_subject.id
+            session.add(copied_subject)
         for group in session.exec(
             select(TeachingGroup).where(
                 TeachingGroup.assignment_process_id == source.id
             )
         ).all():
-            session.add(
-                TeachingGroup(
-                    assignment_process_id=target.id,
-                    classroom_stage_id=group.classroom_stage_id,
-                    grade=group.grade,
-                    group_code=group.group_code,
-                    label=group.label,
-                    notes=group.notes,
-                )
+            copied_group = TeachingGroup(
+                assignment_process_id=target.id,
+                classroom_stage_id=group.classroom_stage_id,
+                grade=group.grade,
+                group_code=group.group_code,
+                label=group.label,
+                notes=group.notes,
             )
+            group_map[group.id] = copied_group.id
+            session.add(copied_group)
         for teacher in session.exec(
             select(ProcessTeacher).where(
                 ProcessTeacher.assignment_process_id == source.id
@@ -443,22 +450,26 @@ class AssignmentProcessController(DomainController):
                 HourRequirement.assignment_process_id == source.id
             )
         ).all():
-            session.add(
-                HourRequirement(
-                    assignment_process_id=target.id,
-                    teaching_group_id=requirement.teaching_group_id,
-                    subject_id=requirement.subject_id,
-                    required_hours=requirement.required_hours,
-                    requirement_type=requirement.requirement_type,
-                    flags=requirement.flags,
-                    notes=requirement.notes,
-                )
+            copied_requirement = HourRequirement(
+                assignment_process_id=target.id,
+                teaching_group_id=group_map[requirement.teaching_group_id],
+                subject_id=subject_map[requirement.subject_id],
+                required_hours=requirement.required_hours,
+                requirement_type=requirement.requirement_type,
+                flags=requirement.flags,
+                notes=requirement.notes,
             )
+            requirement_map[requirement.id] = copied_requirement.id
+            session.add(copied_requirement)
         session.flush()
+        return requirement_map
 
     @staticmethod
     def _copy_assignments(
-        session: Session, source: AssignmentProcess, target: AssignmentProcess
+        session: Session,
+        source: AssignmentProcess,
+        target: AssignmentProcess,
+        requirement_map: dict[uuid.UUID, uuid.UUID] | None = None,
     ) -> None:
         """Copy assignments from the source to the target process.
 
@@ -497,11 +508,15 @@ class AssignmentProcessController(DomainController):
             )
             if source_requirement is None:
                 continue
-            new_requirement_id = target_requirements.get(
-                (
-                    source_requirement.teaching_group_id,
-                    source_requirement.subject_id,
-                    source_requirement.requirement_type.value,
+            new_requirement_id = (
+                requirement_map.get(source_requirement.id)
+                if requirement_map is not None
+                else target_requirements.get(
+                    (
+                        source_requirement.teaching_group_id,
+                        source_requirement.subject_id,
+                        source_requirement.requirement_type.value,
+                    )
                 )
             )
             source_teacher = session.get(

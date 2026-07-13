@@ -11,9 +11,10 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from reparto_service.db_models.assignment_processes import AssignmentProcess
+from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.teacher_profiles import TeacherProfile
 from reparto_service.enums import AssignmentProcessStatus
 from tests import factories
@@ -276,6 +277,18 @@ def test_copy_from_copies_structure_only_by_default(
     assert positions == [1, 2]
     resp = client.get(f"/reparto/assignment-processes/{target.id}/requirements/")
     assert resp.json()["count"] == 1
+    source_requirement = session.exec(
+        select(HourRequirement).where(
+            HourRequirement.assignment_process_id == source.id
+        )
+    ).one()
+    target_requirement = session.exec(
+        select(HourRequirement).where(
+            HourRequirement.assignment_process_id == target.id
+        )
+    ).one()
+    assert target_requirement.subject_id != source_requirement.subject_id
+    assert target_requirement.teaching_group_id != source_requirement.teaching_group_id
     resp = client.get(f"/reparto/assignment-processes/{target.id}/assignments/")
     assert resp.json()["count"] == 0
 

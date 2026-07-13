@@ -295,7 +295,7 @@ def test_final_export_blocked_by_validations(
     assert "blocking validations" in resp.json()["detail"]
 
 
-def test_final_export_archives_balanced_process(
+def test_pdf_export_returns_not_implemented_for_balanced_process(
     client: TestClient, session: Session
 ) -> None:
     process = factories.make_assignment_process(session)
@@ -309,6 +309,28 @@ def test_final_export_archives_balanced_process(
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/exports",
         json={"export_type": "final", "format": "pdf"},
+    )
+
+    assert resp.status_code == 501
+    assert resp.json()["detail"] == "PDF export is not implemented."
+    session.refresh(process)
+    assert process.status != AssignmentProcessStatus.ARCHIVED
+
+
+def test_final_json_export_archives_balanced_process(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    profile = factories.make_teacher_profile(session)
+    teacher = factories.make_process_teacher(session, process, profile)
+    subject = factories.make_subject(session, process)
+    group = factories.make_teaching_group(session, process)
+    requirement = factories.make_hour_requirement(session, process, group, subject)
+    factories.make_assignment(session, process, requirement, teacher)
+
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/exports",
+        json={"export_type": "final", "format": "json"},
     )
 
     assert resp.status_code == 201

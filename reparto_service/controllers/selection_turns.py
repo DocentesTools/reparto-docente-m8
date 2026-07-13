@@ -237,18 +237,8 @@ class SelectionTurnController(DomainController):
         process = AssignmentController._ensure_open(
             session, process_id, assignment_in.assignment_process_id
         )
-        AssignmentController._get_requirement_or_404(
-            session, process_id, assignment_in.hour_requirement_id
-        )
-        AssignmentController._get_process_teacher_or_404(
-            session, process_id, assignment_in.process_teacher_id
-        )
-        AssignmentController._enforce_requirement_cap(
-            session=session,
-            process=process,
-            requirement_id=assignment_in.hour_requirement_id,
-            incoming_hours=assignment_in.assigned_hours,
-            incoming_has_override=assignment_in.override_reason is not None,
+        AssignmentController._validate_assignment_creation(
+            session, process_id, assignment_in, process
         )
         assignment = Assignment.model_validate(
             assignment_in.model_dump(),
