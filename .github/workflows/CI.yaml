@@ -43,10 +43,10 @@ jobs:
           python-version: "3.14"
 
       - name: Install dependencies
-        run: pip install -r promt_engine_service/requirements_dev.txt
+        run: pip install -r reparto_service/requirements_dev.txt
 
-      - name: Type check promt_engine_service
-        run: mypy promt_engine_service --ignore-missing-imports
+      - name: Type check reparto_service
+        run: mypy reparto_service --ignore-missing-imports
 
   security:
     runs-on: ubuntu-latest
@@ -62,7 +62,7 @@ jobs:
         run: pip install bandit
 
       - name: Run bandit (grade A - no MEDIUM/HIGH issues)
-        run: bandit -r promt_engine_service -x promt_engine_service/alembic --severity-level medium -f json -o bandit-report.json
+        run: bandit -r reparto_service -x reparto_service/alembic --severity-level medium -f json -o bandit-report.json
 
       - name: Upload bandit report
         if: always()
@@ -75,7 +75,7 @@ jobs:
         run: pip install pip-audit
 
       - name: Run pip-audit (dependency vulnerability scan)
-        run: pip-audit -r promt_engine_service/requirements_dev.txt
+        run: pip-audit -r reparto_service/requirements_dev.txt
 
       - name: Trivy filesystem scan (CRITICAL/HIGH CVEs and secrets)
         uses: aquasecurity/trivy-action@bfa4b33a029b9aa80ddb784b45574c30e072c59e # master
@@ -102,10 +102,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
-          cache-dependency-path: promt_engine_service/requirements_dev.txt
+          cache-dependency-path: reparto_service/requirements_dev.txt
 
       - name: Install dependencies
-        run: pip install -r promt_engine_service/requirements_dev.txt
+        run: pip install -r reparto_service/requirements_dev.txt
 
       - name: Run tests
         run: pytest --cov-report=xml --cov-fail-under=100
@@ -137,7 +137,7 @@ jobs:
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: .
-          file: promt_engine_service/Dockerfile
+          file: reparto_service/Dockerfile
           platforms: linux/amd64
           push: false
           load: true
