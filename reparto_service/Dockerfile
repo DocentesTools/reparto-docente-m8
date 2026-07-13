@@ -11,7 +11,6 @@ COPY ./reparto_service/requirements_dev.txt .
 COPY ./reparto_service/requirements_prod.txt .
 
 RUN pip install --upgrade "pip==26.1.1" && \
-    
     if [ "$ENVIRONMENT" = "development" ]; then \
         pip install --prefix=/install --no-cache-dir -r requirements_base.txt && \
         pip install --prefix=/install --no-cache-dir -r requirements_dev.txt ; \
@@ -30,7 +29,7 @@ ENV PYTHONPATH=/opt:/opt/reparto_service
 
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends curl=8.14.1-2+deb13u3 \
+    && apt-get install -y --no-install-recommends curl=8.14.1-2+deb13u4 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 1000 appuser && \
