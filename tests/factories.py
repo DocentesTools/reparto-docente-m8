@@ -17,6 +17,9 @@ from reparto_service.db_models.academic_years import AcademicYear
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.assignments import Assignment
 from reparto_service.db_models.classroom_stages import ClassroomStage
+from reparto_service.db_models.department_hour_allocation_revisions import (
+    DepartmentHourAllocationRevision,
+)
 from reparto_service.db_models.departments import Department
 from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.meeting_sessions import MeetingSession
@@ -32,6 +35,7 @@ from reparto_service.enums import (
     AssignmentSource,
     AssignmentStatus,
     AssignmentType,
+    DepartmentHourAllocationSource,
     MeetingSessionStatus,
     ProcessTeacherStatus,
     RequirementType,
@@ -123,6 +127,36 @@ def make_assignment_process(
     session.commit()
     session.refresh(process)
     return process
+
+
+def make_allocation_revision(
+    session: Session,
+    process: AssignmentProcess,
+    *,
+    revision_number: int = 1,
+    allocated_group_weekly_hours: float = 120.0,
+    reason: str = "Initial leadership allocation",
+    source: DepartmentHourAllocationSource = (
+        DepartmentHourAllocationSource.MANUAL_TRANSCRIPTION
+    ),
+    source_reference: Optional[str] = None,
+    superseded_at: Optional[datetime] = None,
+    creator_id: Optional[uuid.UUID] = None,
+) -> DepartmentHourAllocationRevision:
+    revision = DepartmentHourAllocationRevision(
+        assignment_process_id=process.id,
+        revision_number=revision_number,
+        allocated_group_weekly_hours=allocated_group_weekly_hours,
+        reason=reason,
+        source=source,
+        source_reference=source_reference,
+        superseded_at=superseded_at,
+        created_by_user_id=creator_id or uuid.uuid4(),
+    )
+    session.add(revision)
+    session.commit()
+    session.refresh(revision)
+    return revision
 
 
 def make_teacher_profile(

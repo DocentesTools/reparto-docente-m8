@@ -12,6 +12,9 @@ from .assignment_processes import AssignmentProcessController
 from .assignments import AssignmentController
 from .base import DomainController
 from .dashboard import DashboardController
+from .department_hour_allocation_revisions import (
+    DepartmentHourAllocationRevisionController,
+)
 from .departments import DepartmentController
 from .hour_requirements import HourRequirementController
 from .process_teachers import ProcessTeacherController
@@ -26,6 +29,7 @@ __all__ = [
     "AssignmentProcessController",
     "DashboardController",
     "DepartmentController",
+    "DepartmentHourAllocationRevisionController",
     "DomainController",
     "HourRequirementController",
     "ProcessTeacherController",

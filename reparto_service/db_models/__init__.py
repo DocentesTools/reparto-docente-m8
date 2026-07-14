@@ -46,6 +46,12 @@ from .export_artifacts import (
     ExportArtifactPublic,
     ExportArtifactsPublic,
 )
+from .department_hour_allocation_revisions import (
+    DepartmentHourAllocationRevision,
+    DepartmentHourAllocationRevisionCreate,
+    DepartmentHourAllocationRevisionPublic,
+    DepartmentHourAllocationRevisionsPublic,
+)
 from .departments import (
     Department,
     DepartmentCreate,
@@ -154,6 +160,10 @@ __all__ = [
     "Department",
     "DepartmentCreate",
     "DepartmentGenerators",
+    "DepartmentHourAllocationRevision",
+    "DepartmentHourAllocationRevisionCreate",
+    "DepartmentHourAllocationRevisionPublic",
+    "DepartmentHourAllocationRevisionsPublic",
     "DepartmentPublic",
     "DepartmentUpdate",
     "DepartmentsPublic",
