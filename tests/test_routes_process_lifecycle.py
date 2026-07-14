@@ -15,8 +15,13 @@ from sqlmodel import Session, select
 
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.hour_requirements import HourRequirement
+from reparto_service.db_models.subjects import Subject
 from reparto_service.db_models.teacher_profiles import TeacherProfile
-from reparto_service.enums import AssignmentProcessStatus
+from reparto_service.enums import (
+    ActivityType,
+    AssignmentProcessStatus,
+    SubjectAllocationCategory,
+)
 from tests import factories
 
 
@@ -291,6 +296,46 @@ def test_copy_from_copies_structure_only_by_default(
     assert target_requirement.teaching_group_id != source_requirement.teaching_group_id
     resp = client.get(f"/reparto/assignment-processes/{target.id}/assignments/")
     assert resp.json()["count"] == 0
+
+
+def test_copy_from_preserves_subject_planning_fields(
+    client: TestClient, session: Session
+) -> None:
+    source, _, _ = _populate_source_process(session)
+    # A secondary co-teaching subject with non-default planning defaults.
+    factories.make_subject(
+        session,
+        source,
+        name="Co-teaching support",
+        allocation_category=SubjectAllocationCategory.SECONDARY,
+        activity_type=ActivityType.CO_TEACHING,
+        default_group_weekly_hours=2.0,
+        default_teacher_weekly_hours_per_position=2.0,
+        default_required_teacher_count=2,
+        allows_multiple_groups=True,
+        allows_zero_groups=True,
+    )
+    target = _make_target_in_same_school(
+        session, source, status=AssignmentProcessStatus.DRAFT
+    )
+    resp = client.post(
+        f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
+        json={"copy_assignments": False},
+    )
+    assert resp.status_code == 200
+    copied = session.exec(
+        select(Subject).where(
+            Subject.assignment_process_id == target.id,
+            Subject.name == "Co-teaching support",
+        )
+    ).one()
+    assert copied.allocation_category == SubjectAllocationCategory.SECONDARY
+    assert copied.activity_type == ActivityType.CO_TEACHING
+    assert copied.default_group_weekly_hours == 2.0
+    assert copied.default_teacher_weekly_hours_per_position == 2.0
+    assert copied.default_required_teacher_count == 2
+    assert copied.allows_multiple_groups is True
+    assert copied.allows_zero_groups is True
 
 
 def test_copy_from_with_assignments_copies_assignments(

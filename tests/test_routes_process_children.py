@@ -127,6 +127,91 @@ def test_delete_subject(client: TestClient, session: Session) -> None:
     assert resp.status_code == 200
 
 
+def test_create_subject_defaults_planning_fields(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/subjects/",
+        json={"assignment_process_id": str(process.id), "name": "Math"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    # Sensible planning defaults per plan §5.3; no legacy ``stage`` field.
+    assert "stage" not in body
+    assert body["allocation_category"] == "main"
+    assert body["activity_type"] == "ordinary"
+    assert body["default_group_weekly_hours"] is None
+    assert body["default_teacher_weekly_hours_per_position"] is None
+    assert body["default_required_teacher_count"] == 1
+    assert body["allows_multiple_groups"] is False
+    assert body["allows_zero_groups"] is False
+
+
+def test_create_subject_with_planning_fields(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/subjects/",
+        json={
+            "assignment_process_id": str(process.id),
+            "name": "Co-teaching support",
+            "allocation_category": "secondary",
+            "activity_type": "co_teaching",
+            "default_group_weekly_hours": 2.0,
+            "default_teacher_weekly_hours_per_position": 2.0,
+            "default_required_teacher_count": 2,
+            "allows_multiple_groups": True,
+            "allows_zero_groups": True,
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["allocation_category"] == "secondary"
+    assert body["activity_type"] == "co_teaching"
+    assert body["default_group_weekly_hours"] == 2.0
+    assert body["default_teacher_weekly_hours_per_position"] == 2.0
+    assert body["default_required_teacher_count"] == 2
+    assert body["allows_multiple_groups"] is True
+    assert body["allows_zero_groups"] is True
+
+
+def test_create_subject_rejects_zero_teacher_count(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/subjects/",
+        json={
+            "assignment_process_id": str(process.id),
+            "name": "Math",
+            "default_required_teacher_count": 0,
+        },
+    )
+    assert resp.status_code == 422
+
+
+def test_update_subject_planning_fields(client: TestClient, session: Session) -> None:
+    process = factories.make_assignment_process(session)
+    subject = factories.make_subject(session, process, name="Old")
+    resp = client.patch(
+        f"/reparto/assignment-processes/{process.id}/subjects/{subject.id}",
+        json={
+            "allocation_category": "secondary",
+            "activity_type": "tutoring",
+            "default_required_teacher_count": 3,
+            "allows_zero_groups": True,
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["allocation_category"] == "secondary"
+    assert body["activity_type"] == "tutoring"
+    assert body["default_required_teacher_count"] == 3
+    assert body["allows_zero_groups"] is True
+
+
 # ── Teaching groups ─────────────────────────────────────────────────────────
 
 

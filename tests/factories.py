@@ -32,6 +32,7 @@ from reparto_service.db_models.teaching_groups import TeachingGroup
 from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
     AcademicYearStatus,
+    ActivityType,
     AssignmentProcessStatus,
     AssignmentSource,
     AssignmentStatus,
@@ -43,6 +44,7 @@ from reparto_service.enums import (
     RequirementType,
     SelectionOrderMode,
     SelectionTurnStatus,
+    SubjectAllocationCategory,
     TeachingPlanStatus,
 )
 
@@ -238,10 +240,26 @@ def make_subject(
     process: AssignmentProcess,
     *,
     name: str = "Mathematics",
+    allocation_category: SubjectAllocationCategory = SubjectAllocationCategory.MAIN,
+    activity_type: ActivityType = ActivityType.ORDINARY,
+    default_group_weekly_hours: float | None = None,
+    default_teacher_weekly_hours_per_position: float | None = None,
+    default_required_teacher_count: int = 1,
+    allows_multiple_groups: bool = False,
+    allows_zero_groups: bool = False,
 ) -> Subject:
     subject = Subject(
         assignment_process_id=process.id,
         name=name,
+        allocation_category=allocation_category,
+        activity_type=activity_type,
+        default_group_weekly_hours=default_group_weekly_hours,
+        default_teacher_weekly_hours_per_position=(
+            default_teacher_weekly_hours_per_position
+        ),
+        default_required_teacher_count=default_required_teacher_count,
+        allows_multiple_groups=allows_multiple_groups,
+        allows_zero_groups=allows_zero_groups,
     )
     session.add(subject)
     session.commit()

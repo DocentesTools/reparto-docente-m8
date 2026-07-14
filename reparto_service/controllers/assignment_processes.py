@@ -406,7 +406,15 @@ class AssignmentProcessController(DomainController):
             copied_subject = Subject(
                 assignment_process_id=target.id,
                 name=subject.name,
-                stage=subject.stage,
+                allocation_category=subject.allocation_category,
+                activity_type=subject.activity_type,
+                default_group_weekly_hours=subject.default_group_weekly_hours,
+                default_teacher_weekly_hours_per_position=(
+                    subject.default_teacher_weekly_hours_per_position
+                ),
+                default_required_teacher_count=subject.default_required_teacher_count,
+                allows_multiple_groups=subject.allows_multiple_groups,
+                allows_zero_groups=subject.allows_zero_groups,
                 notes=subject.notes,
             )
             subject_map[subject.id] = copied_subject.id

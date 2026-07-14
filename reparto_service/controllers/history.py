@@ -40,12 +40,14 @@ from reparto_service.db_models.process_versions import (
 from reparto_service.db_models.subjects import Subject
 from reparto_service.db_models.teaching_groups import TeachingGroup
 from reparto_service.enums import (
+    ActivityType,
     AssignmentProcessStatus,
     AssignmentSource,
     AssignmentStatus,
     ExportArtifactFormat,
     ExportArtifactType,
     SelectionOrderMode,
+    SubjectAllocationCategory,
     ValidationSeverity,
 )
 from reparto_service.services.summary import SummaryService
@@ -361,7 +363,19 @@ class HistoryController(DomainController):
             subject = Subject(
                 assignment_process_id=target.id,
                 name=row["name"],
-                stage=row.get("stage"),
+                allocation_category=row.get(
+                    "allocation_category", SubjectAllocationCategory.MAIN
+                ),
+                activity_type=row.get("activity_type", ActivityType.ORDINARY),
+                default_group_weekly_hours=row.get("default_group_weekly_hours"),
+                default_teacher_weekly_hours_per_position=row.get(
+                    "default_teacher_weekly_hours_per_position"
+                ),
+                default_required_teacher_count=row.get(
+                    "default_required_teacher_count", 1
+                ),
+                allows_multiple_groups=row.get("allows_multiple_groups", False),
+                allows_zero_groups=row.get("allows_zero_groups", False),
                 notes=row.get("notes"),
             )
             session.add(subject)
