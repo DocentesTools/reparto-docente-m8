@@ -60,6 +60,13 @@ from .departments import (
     DepartmentsPublic,
     DepartmentUpdate,
 )
+from .group_subjects import (
+    GroupSubject,
+    GroupSubjectCreate,
+    GroupSubjectPublic,
+    GroupSubjectsPublic,
+    GroupSubjectUpdate,
+)
 from .hour_requirements import (
     HourRequirement,
     HourRequirementCreate,
@@ -172,6 +179,11 @@ __all__ = [
     "DepartmentPublic",
     "DepartmentUpdate",
     "DepartmentsPublic",
+    "GroupSubject",
+    "GroupSubjectCreate",
+    "GroupSubjectPublic",
+    "GroupSubjectUpdate",
+    "GroupSubjectsPublic",
     "HourRequirement",
     "HourRequirementCreate",
     "HourRequirementPublic",

@@ -16,6 +16,7 @@ from reparto_service.app.routes import (
     classroom_stages,
     department_hour_allocation_revisions,
     departments,
+    group_subjects,
     history,
     hour_requirements,
     meeting_sessions,
@@ -40,6 +41,7 @@ api_router.include_router(audit_events.router)
 api_router.include_router(process_teachers.router)
 api_router.include_router(subjects.router)
 api_router.include_router(teaching_groups.router)
+api_router.include_router(group_subjects.router)
 api_router.include_router(teaching_plans.router)
 api_router.include_router(hour_requirements.router)
 api_router.include_router(assignments.router)

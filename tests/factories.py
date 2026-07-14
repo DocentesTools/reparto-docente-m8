@@ -21,6 +21,7 @@ from reparto_service.db_models.department_hour_allocation_revisions import (
     DepartmentHourAllocationRevision,
 )
 from reparto_service.db_models.departments import Department
+from reparto_service.db_models.group_subjects import GroupSubject
 from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.meeting_sessions import MeetingSession
 from reparto_service.db_models.process_teachers import ProcessTeacher
@@ -295,6 +296,34 @@ def make_teaching_group(
     session.commit()
     session.refresh(group)
     return group
+
+
+def make_group_subject(
+    session: Session,
+    process: AssignmentProcess,
+    group: TeachingGroup,
+    subject: Subject,
+    *,
+    group_weekly_hours: float | None = None,
+    teacher_weekly_hours_per_position: float | None = None,
+    required_teacher_count: int = 1,
+    active: bool = True,
+    notes: Optional[str] = None,
+) -> GroupSubject:
+    group_subject = GroupSubject(
+        assignment_process_id=process.id,
+        teaching_group_id=group.id,
+        subject_id=subject.id,
+        group_weekly_hours=group_weekly_hours,
+        teacher_weekly_hours_per_position=teacher_weekly_hours_per_position,
+        required_teacher_count=required_teacher_count,
+        active=active,
+        notes=notes,
+    )
+    session.add(group_subject)
+    session.commit()
+    session.refresh(group_subject)
+    return group_subject
 
 
 def make_classroom_stage(
