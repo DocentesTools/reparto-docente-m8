@@ -70,6 +70,7 @@ to a LAN.
 | Reference administration | `/reparto/academic-years`, `/schools`, `/classroom-stages`, `/departments`, `/teacher-profiles` |
 | Assignment process | `/reparto/assignment-processes` |
 | Per-process resources | `/reparto/assignment-processes/{process_id}/teachers`, `/subjects`, `/groups`, `/requirements`, `/assignments` |
+| Teaching-load planning | `/reparto/assignment-processes/{process_id}/allocation-revisions`, `/teaching-plan` |
 | Lifecycle and read models | `/transition`, `/reopen`, `/copy-previous-year`, `/summary`, `/dashboard`, `/lan/me`, `/events` under an assignment process |
 | Audit and history | `/audit-events`, `/versions`, `/compare-previous-year`, `/exports`, `/restore-draft` under an assignment process |
 | Meeting turns | `/reparto/assignment-processes/{process_id}/meeting-sessions/{meeting_session_id}/turns` |

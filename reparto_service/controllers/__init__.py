@@ -22,6 +22,7 @@ from .schools import SchoolController
 from .subjects import SubjectController
 from .teacher_profiles import TeacherProfileController
 from .teaching_groups import TeachingGroupController
+from .teaching_plans import TeachingPlanController
 
 __all__ = [
     "AcademicYearController",
@@ -37,4 +38,5 @@ __all__ = [
     "SubjectController",
     "TeacherProfileController",
     "TeachingGroupController",
+    "TeachingPlanController",
 ]

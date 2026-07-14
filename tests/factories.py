@@ -29,6 +29,7 @@ from reparto_service.db_models.schools import School
 from reparto_service.db_models.subjects import Subject
 from reparto_service.db_models.teacher_profiles import TeacherProfile
 from reparto_service.db_models.teaching_groups import TeachingGroup
+from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
     AcademicYearStatus,
     AssignmentProcessStatus,
@@ -36,11 +37,13 @@ from reparto_service.enums import (
     AssignmentStatus,
     AssignmentType,
     DepartmentHourAllocationSource,
+    FeasibilityStatus,
     MeetingSessionStatus,
     ProcessTeacherStatus,
     RequirementType,
     SelectionOrderMode,
     SelectionTurnStatus,
+    TeachingPlanStatus,
 )
 
 
@@ -157,6 +160,28 @@ def make_allocation_revision(
     session.commit()
     session.refresh(revision)
     return revision
+
+
+def make_teaching_plan(
+    session: Session,
+    process: AssignmentProcess,
+    *,
+    status: TeachingPlanStatus = TeachingPlanStatus.DRAFT,
+    current_generation_number: int = 0,
+    feasibility_status: FeasibilityStatus = FeasibilityStatus.NOT_EVALUATED,
+    stale_reason: Optional[str] = None,
+) -> TeachingPlan:
+    plan = TeachingPlan(
+        assignment_process_id=process.id,
+        status=status,
+        current_generation_number=current_generation_number,
+        feasibility_status=feasibility_status,
+        stale_reason=stale_reason,
+    )
+    session.add(plan)
+    session.commit()
+    session.refresh(plan)
+    return plan
 
 
 def make_teacher_profile(

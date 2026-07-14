@@ -25,6 +25,7 @@ from reparto_service.app.routes import (
     subjects,
     teacher_profiles,
     teaching_groups,
+    teaching_plans,
 )
 
 api_router = APIRouter()
@@ -39,6 +40,7 @@ api_router.include_router(audit_events.router)
 api_router.include_router(process_teachers.router)
 api_router.include_router(subjects.router)
 api_router.include_router(teaching_groups.router)
+api_router.include_router(teaching_plans.router)
 api_router.include_router(hour_requirements.router)
 api_router.include_router(assignments.router)
 api_router.include_router(meeting_sessions.router)

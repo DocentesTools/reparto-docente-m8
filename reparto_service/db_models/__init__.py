@@ -126,6 +126,11 @@ from .teaching_groups import (
     TeachingGroupsPublic,
     TeachingGroupUpdate,
 )
+from .teaching_plans import (
+    TeachingPlan,
+    TeachingPlanPublic,
+    TeachingPlansPublic,
+)
 
 __all__ = [
     "AcademicYear",
@@ -217,5 +222,8 @@ __all__ = [
     "TeachingGroupPublic",
     "TeachingGroupUpdate",
     "TeachingGroupsPublic",
+    "TeachingPlan",
+    "TeachingPlanPublic",
+    "TeachingPlansPublic",
     "VersionComparison",
 ]
