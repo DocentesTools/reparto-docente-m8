@@ -39,6 +39,7 @@ from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.group_subjects import GroupSubject
 from reparto_service.db_models.subjects import Subject
 from reparto_service.db_models.teaching_activities import (
+    MainMaterializationResult,
     TeachingActivitiesPublic,
     TeachingActivity,
     TeachingActivityCreate,
@@ -47,7 +48,11 @@ from reparto_service.db_models.teaching_activities import (
     TeachingActivityUpdate,
 )
 from reparto_service.db_models.teaching_plans import TeachingPlan
-from reparto_service.enums import TeachingActivitySource, TeachingPlanStatus
+from reparto_service.enums import (
+    SubjectAllocationCategory,
+    TeachingActivitySource,
+    TeachingPlanStatus,
+)
 
 # Plan statuses in which normal activity mutation is allowed (plan §5.6, §20.14):
 # still-planning states. LOCKED / REQUIREMENTS_GENERATED / STALE /
@@ -59,6 +64,22 @@ _MUTABLE_PLAN_STATUSES: frozenset[TeachingPlanStatus] = frozenset(
         TeachingPlanStatus.BALANCED,
     }
 )
+
+
+def _first_hours(override: float | None, default: float | None) -> float:
+    """Resolve an effective hour value for a materialised activity (plan §5.5).
+
+    A cell override wins; otherwise the subject default is inherited; when both
+    are unset the value materialises as ``0.0`` so a main cell always yields a
+    concrete activity (the resulting group imbalance is surfaced by the planning
+    validations, never silently blocked). Actual values stay ``float`` today
+    (§3.9 Decimal sweep deferred).
+    """
+    if override is not None:
+        return override
+    if default is not None:
+        return default
+    return 0.0
 
 
 class TeachingActivityController(DomainController):
@@ -235,6 +256,87 @@ class TeachingActivityController(DomainController):
         session.commit()
         return public
 
+    # ── Main-activity materialization (plan §7.3, §20.10) ────────────────────
+
+    @staticmethod
+    def materialize_main(
+        session: Session,
+        process_id: uuid.UUID,
+        current_user: UserModel,
+    ) -> MainMaterializationResult:
+        """Generate one MAIN_GENERATED activity per active main group-subject cell.
+
+        For every active MAIN ``GroupSubject`` cell that has no live
+        ``MAIN_GENERATED`` activity, materialise a single-group activity whose
+        planning values come from the cell (falling back to the subject default,
+        then ``0``) — one link, ``source_group_subject_id`` set (plan §5.6,
+        §20.10). The run is **idempotent and deterministic** (plan §19): cells
+        processed in ``id`` order, already-materialised cells skipped (never
+        duplicated — the active partial-unique index is the DB backstop), so
+        re-running yields no new rows.
+
+        Requires a mutable process and a mutable (unlocked) plan: a
+        ``LOCKED``/``REQUIREMENTS_GENERATED``/stale plan blocks materialisation
+        just like any other activity mutation (plan §5.6, §20.14).
+        """
+        DomainController.ensure_process_mutable(
+            DomainController.get_process_or_404(session, process_id)
+        )
+        plan = TeachingActivityController._require_mutable_plan(session, process_id)
+        already = TeachingActivityController._materialized_main_source_ids(
+            session, plan
+        )
+
+        created: list[TeachingActivityPublic] = []
+        skipped: list[uuid.UUID] = []
+        for cell, subject in TeachingActivityController._active_main_cells(
+            session, process_id
+        ):
+            if cell.id in already:
+                skipped.append(cell.id)
+                continue
+            activity = TeachingActivity(
+                teaching_plan_id=plan.id,
+                subject_id=cell.subject_id,
+                allocation_category=SubjectAllocationCategory.MAIN,
+                activity_type=subject.activity_type,
+                group_weekly_hours_per_group=_first_hours(
+                    cell.group_weekly_hours, subject.default_group_weekly_hours
+                ),
+                teacher_weekly_hours_per_position=_first_hours(
+                    cell.teacher_weekly_hours_per_position,
+                    subject.default_teacher_weekly_hours_per_position,
+                ),
+                required_teacher_count=cell.required_teacher_count,
+                source=TeachingActivitySource.MAIN_GENERATED,
+                source_group_subject_id=cell.id,
+            )
+            session.add(activity)
+            session.add(
+                TeachingActivityGroup(
+                    teaching_activity_id=activity.id, group_subject_id=cell.id
+                )
+            )
+            TeachingActivityController.record_audit_event(
+                session,
+                process_id=process_id,
+                current_user=current_user,
+                event_type="teaching_activity.materialized",
+                entity_type="teaching_activity",
+                entity_id=activity.id,
+                before=None,
+                after=activity,
+            )
+            created.append(TeachingActivityController._to_public(session, activity))
+
+        session.commit()
+        return MainMaterializationResult(
+            created=created,
+            created_count=len(created),
+            skipped_source_ids=skipped,
+            skipped_count=len(skipped),
+        )
+
     # ── Internal helpers ─────────────────────────────────────────────────────
 
     @staticmethod
@@ -280,6 +382,41 @@ class TeachingActivityController(DomainController):
                 ),
             )
         return activity
+
+    @staticmethod
+    def _materialized_main_source_ids(
+        session: Session, plan: TeachingPlan
+    ) -> set[uuid.UUID]:
+        """Source cell IDs of the plan's live MAIN_GENERATED activities (§20.10)."""
+        rows = session.exec(
+            select(TeachingActivity.source_group_subject_id)
+            .where(TeachingActivity.teaching_plan_id == plan.id)
+            .where(col(TeachingActivity.retired_at).is_(None))
+            .where(TeachingActivity.source == TeachingActivitySource.MAIN_GENERATED)
+            .where(col(TeachingActivity.source_group_subject_id).is_not(None))
+        ).all()
+        return {source_id for source_id in rows if source_id is not None}
+
+    @staticmethod
+    def _active_main_cells(
+        session: Session, process_id: uuid.UUID
+    ) -> list[tuple[GroupSubject, Subject]]:
+        """Active MAIN group-subject cells with their subjects, ordered by cell id.
+
+        A cell is a main planning candidate when its subject's
+        ``allocation_category`` is ``MAIN`` (plan §5.5); the ``id`` ordering makes
+        materialisation deterministic (plan §19).
+        """
+        return list(
+            session.exec(
+                select(GroupSubject, Subject)
+                .where(GroupSubject.assignment_process_id == process_id)
+                .where(col(GroupSubject.active).is_(True))
+                .where(GroupSubject.subject_id == Subject.id)
+                .where(Subject.allocation_category == SubjectAllocationCategory.MAIN)
+                .order_by(col(GroupSubject.id))
+            ).all()
+        )
 
     @staticmethod
     def _get_subject_or_404(

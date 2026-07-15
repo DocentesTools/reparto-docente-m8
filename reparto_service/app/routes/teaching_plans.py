@@ -1,9 +1,9 @@
 """Teaching-plan routes (nested under an assignment process, plan §7.3).
 
-This slice exposes the plan's ownership surface plus the read-only planning
-``validations`` endpoint (plan §7.3). The ``materialize-main``, ``summary``,
-``lock``/``unlock`` and ``feasibility`` endpoints (plan §7.3) depend on the
-activity, generation and feasibility services introduced by their dedicated
+This slice exposes the plan's ownership surface, the read-only planning
+``validations`` endpoint and the ``materialize-main`` action (plan §7.3). The
+``summary``, ``lock``/``unlock`` and ``feasibility`` endpoints (plan §7.3)
+depend on the generation and feasibility services introduced by their dedicated
 later tasks and are added there.
 """
 
@@ -14,7 +14,9 @@ import uuid
 from fastapi import APIRouter
 
 from reparto_service.app.deps import CurrentUser, SessionDep
+from reparto_service.controllers.teaching_activities import TeachingActivityController
 from reparto_service.controllers.teaching_plans import TeachingPlanController
+from reparto_service.db_models.teaching_activities import MainMaterializationResult
 from reparto_service.db_models.teaching_plans import TeachingPlanPublic
 from reparto_service.schemas.planning import PlanValidationReport
 
@@ -44,3 +46,15 @@ def create_teaching_plan(
 ) -> TeachingPlanPublic:
     TeachingPlanController.require_process_writer(session, current_user, process_id)
     return TeachingPlanController.create_plan(session, process_id, current_user)
+
+
+@router.post("/materialize-main", response_model=MainMaterializationResult)
+def materialize_main_activities(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+) -> MainMaterializationResult:
+    TeachingActivityController.require_process_writer(session, current_user, process_id)
+    return TeachingActivityController.materialize_main(
+        session, process_id, current_user
+    )

@@ -279,7 +279,30 @@ class TeachingActivitiesPublic(SQLModel):
     count: int = Field(description="Total teaching-activity count.")
 
 
+class MainMaterializationResult(SQLModel):
+    """Outcome of a main-activity materialisation run (plan §7.3, §20.10).
+
+    Materialisation is idempotent: every active MAIN group-subject cell with no
+    live ``MAIN_GENERATED`` activity yields one new single-group activity, while
+    cells already materialised are left untouched and reported in
+    ``skipped_source_ids`` — so re-running the endpoint never duplicates an
+    activity (plan §19 "main activities materialize deterministically").
+    """
+
+    created: list[TeachingActivityPublic] = Field(
+        description="Newly materialised MAIN_GENERATED activities."
+    )
+    created_count: int = Field(description="Number of activities created this run.")
+    skipped_source_ids: list[uuid.UUID] = Field(
+        description=(
+            "Active MAIN group-subject cells already materialised and skipped."
+        )
+    )
+    skipped_count: int = Field(description="Number of cells skipped as already live.")
+
+
 __all__ = [
+    "MainMaterializationResult",
     "TeachingActivitiesPublic",
     "TeachingActivity",
     "TeachingActivityCreate",

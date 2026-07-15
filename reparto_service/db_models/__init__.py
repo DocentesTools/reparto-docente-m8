@@ -125,6 +125,7 @@ from .teacher_profiles import (
     TeacherProfileUpdate,
 )
 from .teaching_activities import (
+    MainMaterializationResult,
     TeachingActivitiesPublic,
     TeachingActivity,
     TeachingActivityCreate,
@@ -235,6 +236,7 @@ __all__ = [
     "TeacherProfilePublic",
     "TeacherProfileUpdate",
     "TeacherProfilesPublic",
+    "MainMaterializationResult",
     "TeachingActivitiesPublic",
     "TeachingActivity",
     "TeachingActivityCreate",
