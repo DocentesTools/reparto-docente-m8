@@ -77,7 +77,10 @@ to a LAN.
 
 Assignment endpoints include `POST /assignments/direct-choice`. Selection-turn
 endpoints support initialization plus start, complete, skip, and override
-actions. Consult the OpenAPI schema for request and response models.
+actions. Group-subject endpoints include `POST /group-subjects/bulk-preview` and
+`POST /group-subjects/bulk-apply` for filtered create/update/upsert matrix
+operations with a confirmed affected-row count. Consult the OpenAPI schema for
+request and response models.
 
 ## Quality gates
 

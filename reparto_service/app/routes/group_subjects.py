@@ -1,7 +1,7 @@
 """Group-subject routes (nested under an assignment process).
 
-Exposes the plan §7.2 CRUD surface for the intermediate group-subject matrix.
-Bulk preview/apply endpoints are added by their own dedicated later task.
+Exposes the plan §7.2 CRUD surface plus the ``bulk-preview``/``bulk-apply``
+operations for the intermediate group-subject matrix.
 """
 
 from __future__ import annotations
@@ -13,6 +13,10 @@ from fastapi import APIRouter
 from reparto_service.app.deps import CurrentUser, SessionDep
 from reparto_service.controllers.group_subjects import GroupSubjectController
 from reparto_service.db_models.group_subjects import (
+    GroupSubjectBulkApplyRequest,
+    GroupSubjectBulkPreview,
+    GroupSubjectBulkRequest,
+    GroupSubjectBulkResult,
     GroupSubjectCreate,
     GroupSubjectPublic,
     GroupSubjectsPublic,
@@ -43,6 +47,28 @@ def create_group_subject(
     return GroupSubjectController.create_group_subject(
         session, process_id, group_subject_in, current_user
     )
+
+
+@router.post("/bulk-preview", response_model=GroupSubjectBulkPreview)
+def bulk_preview_group_subjects(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+    request: GroupSubjectBulkRequest,
+) -> GroupSubjectBulkPreview:
+    GroupSubjectController.require_process_writer(session, current_user, process_id)
+    return GroupSubjectController.bulk_preview(session, process_id, request)
+
+
+@router.post("/bulk-apply", response_model=GroupSubjectBulkResult)
+def bulk_apply_group_subjects(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+    request: GroupSubjectBulkApplyRequest,
+) -> GroupSubjectBulkResult:
+    GroupSubjectController.require_process_writer(session, current_user, process_id)
+    return GroupSubjectController.bulk_apply(session, process_id, request, current_user)
 
 
 @router.get("/{group_subject_id}", response_model=GroupSubjectPublic)

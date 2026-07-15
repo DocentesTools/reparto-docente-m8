@@ -216,6 +216,20 @@ class ActivityType(str, Enum):
     OTHER = "other"
 
 
+class GroupSubjectBulkMode(str, Enum):
+    """Mode for a group-subject matrix bulk operation (plan §7.2).
+
+    ``CREATE_MISSING`` only inserts cells for matched groups that have no row
+    for the subject yet (existing rows are left untouched). ``UPDATE_EXISTING``
+    only patches matched groups that already have a row (matched groups without
+    one are reported as conflicts). ``UPSERT`` does both.
+    """
+
+    CREATE_MISSING = "create_missing"
+    UPDATE_EXISTING = "update_existing"
+    UPSERT = "upsert"
+
+
 class TeachingActivitySource(str, Enum):
     """Origin of a teaching-plan activity (plan §5.6).
 

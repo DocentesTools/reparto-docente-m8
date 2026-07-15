@@ -35,6 +35,7 @@ from sqlmodel import Column, Field as SQLField, SQLModel
 
 from auth_sdk_m8.models.shared import TimestampMixin
 from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.enums import GroupSubjectBulkMode
 
 
 # ── Base, Create, Update schemas ──────────────────────────────────────────────
@@ -152,8 +153,116 @@ class GroupSubjectsPublic(SQLModel):
     count: int = Field(description="Total group-subject count.")
 
 
+# ── Bulk preview/apply schemas (plan §7.2, §8.4) ──────────────────────────────
+
+
+class GroupSubjectBulkRequest(SQLModel):
+    """Filters, mode and target values for a group-subject bulk operation.
+
+    The operation targets one ``subject_id`` across every teaching group in the
+    process that matches the (optional) ``stage`` / grade-range filters. The
+    three planning-value fields are *set values*: a field left unset is not
+    applied (an update leaves it untouched; a create falls back to the model
+    default — NULL hours inherit the subject default, ``required_teacher_count``
+    defaults to 1). Sending a hour field as ``null`` explicitly clears an
+    existing override.
+    """
+
+    subject_id: uuid.UUID = Field(description="Subject to configure across groups.")
+    mode: GroupSubjectBulkMode = Field(description="Bulk operation mode (plan §7.2).")
+    stage: Optional[str] = Field(
+        default=None,
+        description="Only match groups whose classroom stage equals this value.",
+    )
+    minimum_grade: Optional[int] = Field(
+        default=None, gt=0, description="Only match groups with grade >= this value."
+    )
+    maximum_grade: Optional[int] = Field(
+        default=None, gt=0, description="Only match groups with grade <= this value."
+    )
+    group_weekly_hours: Optional[float] = Field(default=None, ge=0)
+    teacher_weekly_hours_per_position: Optional[float] = Field(default=None, ge=0)
+    required_teacher_count: Optional[int] = Field(default=None, ge=1)
+
+
+class GroupSubjectBulkApplyRequest(GroupSubjectBulkRequest):
+    """Bulk apply payload — carries the previewed affected count for staleness.
+
+    ``expected_affected_count`` is the ``expected_affected_count`` a prior
+    ``bulk-preview`` returned; apply recomputes the plan and refuses (409) when
+    it no longer matches, so a changed underlying selection cannot be applied
+    blindly (plan §7.2 "fail if the underlying selection changed").
+    """
+
+    expected_affected_count: int = Field(
+        ge=0, description="Affected-row count the client previewed and confirmed."
+    )
+
+
+class GroupSubjectBulkChange(SQLModel):
+    """One create/update/unchanged row in a bulk preview.
+
+    ``group_subject_id`` is ``None`` for a to-create row; the value fields carry
+    the *resulting* cell state after the operation.
+    """
+
+    teaching_group_id: uuid.UUID = Field(description="Matched teaching group ID.")
+    group_subject_id: Optional[uuid.UUID] = Field(
+        default=None, description="Existing cell ID; NULL for a to-create row."
+    )
+    group_weekly_hours: Optional[float] = Field(default=None)
+    teacher_weekly_hours_per_position: Optional[float] = Field(default=None)
+    required_teacher_count: int = Field(default=1)
+
+
+class GroupSubjectBulkConflict(SQLModel):
+    """A matched group the requested mode cannot satisfy."""
+
+    teaching_group_id: uuid.UUID = Field(description="Matched teaching group ID.")
+    reason: str = Field(description="Why the group cannot be applied in this mode.")
+
+
+class GroupSubjectBulkPreview(SQLModel):
+    """Dry-run result of a bulk operation (plan §7.2 preview contract)."""
+
+    mode: GroupSubjectBulkMode = Field(description="Requested bulk mode.")
+    subject_id: uuid.UUID = Field(description="Targeted subject ID.")
+    matched_group_ids: list[uuid.UUID] = Field(
+        description="Every group matching the filters."
+    )
+    to_create: list[GroupSubjectBulkChange] = Field(description="Rows to be created.")
+    to_update: list[GroupSubjectBulkChange] = Field(description="Rows to be updated.")
+    unchanged: list[GroupSubjectBulkChange] = Field(
+        description="Matched rows left unchanged."
+    )
+    conflicts: list[GroupSubjectBulkConflict] = Field(
+        description="Matched groups the mode cannot satisfy."
+    )
+    validation_errors: list[str] = Field(
+        description="Selection-level validation problems blocking apply."
+    )
+    expected_affected_count: int = Field(
+        description="len(to_create) + len(to_update); echoed back to apply."
+    )
+
+
+class GroupSubjectBulkResult(SQLModel):
+    """Outcome of a committed bulk apply."""
+
+    created_count: int = Field(description="Number of created cells.")
+    updated_count: int = Field(description="Number of updated cells.")
+    data: list[GroupSubjectPublic] = Field(description="Affected cells after apply.")
+    count: int = Field(description="Total affected-cell count.")
+
+
 __all__ = [
     "GroupSubject",
+    "GroupSubjectBulkApplyRequest",
+    "GroupSubjectBulkChange",
+    "GroupSubjectBulkConflict",
+    "GroupSubjectBulkPreview",
+    "GroupSubjectBulkRequest",
+    "GroupSubjectBulkResult",
     "GroupSubjectCreate",
     "GroupSubjectPublic",
     "GroupSubjectsPublic",
