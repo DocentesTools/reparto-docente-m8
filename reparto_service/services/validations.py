@@ -27,6 +27,7 @@ from decimal import Decimal
 from sqlmodel import Session, col, select
 
 from reparto_service.core.decimals import quantize_hours
+from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.group_subjects import GroupSubject
 from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.process_teachers import ProcessTeacher
@@ -46,10 +47,14 @@ from reparto_service.enums import (
     ValidationSeverity,
 )
 from reparto_service.schemas.planning import (
+    AssignmentValidationReport,
     PlanValidationMessage,
     PlanValidationReport,
 )
-from reparto_service.services.calculations import PlanningCalculationService
+from reparto_service.services.calculations import (
+    AssignmentCalculationService,
+    PlanningCalculationService,
+)
 
 # ── Stable finding codes (single source of truth) ─────────────────────────────
 
@@ -79,6 +84,15 @@ CODE_FEASIBILITY_NOT_CONFIRMED = "plan.feasibility_not_confirmed"
 CODE_PARTICIPANT_OVERLOADED = "teacher.overloaded_authorized"
 #: Active secondary cells remain unmaterialized (plan §6.4 warning).
 CODE_SECONDARY_ACTIVITIES_AVAILABLE = "plan.secondary_activities_available"
+
+# ── Assignment-stage finding codes (plan §6.3, §6.4) ──────────────────────────
+
+#: One or more live requirement slots have no active assignment (plan §6.3).
+CODE_REQUIREMENTS_UNASSIGNED = "requirement.unassigned"
+#: A participant is assigned above their exact target (plan §3.8, §6.3).
+CODE_PARTICIPANT_OVER_TARGET = "participant.over_target"
+#: An active participant is still below their exact target (plan §3.8, §6.3).
+CODE_PARTICIPANT_BELOW_TARGET = "participant.below_target"
 
 _ZERO = Decimal("0.00")
 
@@ -446,6 +460,131 @@ class PlanValidationService:
         )
 
 
+class AssignmentValidationService:
+    """Cheap assignment-stage blocking/warning findings (plan §6.3, §6.4).
+
+    The assignment-stage twin of :class:`PlanValidationService`. It reads the
+    numeric assignment view of
+    :class:`~reparto_service.services.calculations.AssignmentCalculationService`
+    (per-participant assigned/remaining hours and the live-slot counts) and turns
+    it into stable-``code`` findings. Every check is O(rows) and **solver-free**
+    (plan §20.23): the exponential feasibility solver is never run here.
+
+    Findings enforce the plan §3.6/§3.8 assignment invariants at report level:
+
+    * **indivisibility / coverage** — a live requirement slot is either fully
+      assigned or unassigned (there is no partial state), so any unoccupied live
+      slot is a blocking ``requirement.unassigned`` finding that stops final
+      closure;
+    * **exact participant targets & no overload bypass** — an active participant
+      assigned *above* their target (``participant.over_target``) reveals an
+      overload that did not go through the extra-hours flow (plan §3.8), and an
+      active, participating teacher still *below* target
+      (``participant.below_target``) blocks final closure;
+    * **authorized overload** — an active participant with authorized extra hours
+      is surfaced as the §6.4 ``teacher.overloaded_authorized`` warning.
+
+    The distinct-teacher rule (plan §3.7) is enforced structurally at write time
+    (``AssignmentController._occupy_slot`` plus the DB active partial-unique
+    index), so it can never surface as a stored violation and needs no finding.
+    """
+
+    @staticmethod
+    def compute_assignment_validations(
+        session: Session, process: AssignmentProcess
+    ) -> AssignmentValidationReport:
+        """Return every assignment-stage finding for ``process``, blocking-first.
+
+        The process is ready for final closure (plan §3.10) only when the report
+        has no blocking finding. No feasibility solve is triggered (plan §20.23).
+        """
+        summary = AssignmentCalculationService.compute_assignment_summary(
+            session, process
+        )
+        teachers = {
+            teacher.id: teacher
+            for teacher in session.exec(
+                select(ProcessTeacher).where(
+                    ProcessTeacher.assignment_process_id == process.id
+                )
+            ).all()
+        }
+
+        over_target: list[PlanValidationMessage] = []
+        below_target: list[PlanValidationMessage] = []
+        overloaded: list[PlanValidationMessage] = []
+        for participant in summary.participants:
+            teacher = teachers[participant.process_teacher_id]
+            if teacher.status != ProcessTeacherStatus.ACTIVE:
+                continue
+            remaining = quantize_hours(participant.remaining_weekly_hours)
+            if remaining < _ZERO:
+                over_target.append(
+                    _teacher_msg(
+                        teacher.id,
+                        ValidationSeverity.BLOCKING,
+                        CODE_PARTICIPANT_OVER_TARGET,
+                        (
+                            f"Participant {teacher.id} is assigned "
+                            f"{participant.assigned_weekly_hours} hours, above the "
+                            f"target of {participant.target_weekly_hours}; increase "
+                            "authorized extra hours to allow the overload."
+                        ),
+                    )
+                )
+            elif remaining > _ZERO and teacher.participates_in_selection:
+                below_target.append(
+                    _teacher_msg(
+                        teacher.id,
+                        ValidationSeverity.BLOCKING,
+                        CODE_PARTICIPANT_BELOW_TARGET,
+                        (
+                            f"Participant {teacher.id} is {remaining} hours below "
+                            f"the target of {participant.target_weekly_hours}."
+                        ),
+                    )
+                )
+            if participant.is_overloaded:
+                overloaded.append(
+                    _teacher_msg(
+                        teacher.id,
+                        ValidationSeverity.WARNING,
+                        CODE_PARTICIPANT_OVERLOADED,
+                        (
+                            f"Participant {teacher.id} has authorized extra hours "
+                            f"({participant.extra_weekly_hours})."
+                        ),
+                    )
+                )
+
+        blocking: list[PlanValidationMessage] = []
+        if summary.available_slots > 0:
+            blocking.append(
+                PlanValidationMessage(
+                    severity=ValidationSeverity.BLOCKING,
+                    code=CODE_REQUIREMENTS_UNASSIGNED,
+                    message=(
+                        f"{summary.available_slots} live requirement slot(s) have no "
+                        "active assignment; every slot must be assigned in full."
+                    ),
+                    entity_type="assignment_process",
+                    entity_id=process.id,
+                )
+            )
+        blocking.extend(sorted(over_target, key=lambda m: str(m.entity_id)))
+        blocking.extend(sorted(below_target, key=lambda m: str(m.entity_id)))
+        warnings = sorted(overloaded, key=lambda m: str(m.entity_id))
+
+        messages = blocking + warnings
+        return AssignmentValidationReport(
+            assignment_process_id=process.id,
+            is_final_ready=not blocking,
+            blocking_count=len(blocking),
+            warning_count=len(warnings),
+            messages=messages,
+        )
+
+
 def _plan_msg(
     plan: TeachingPlan,
     severity: ValidationSeverity,
@@ -477,6 +616,22 @@ def _activity_msg(
     )
 
 
+def _teacher_msg(
+    teacher_id: uuid.UUID,
+    severity: ValidationSeverity,
+    code: str,
+    message: str,
+) -> PlanValidationMessage:
+    """Build a finding pointing at one process teacher."""
+    return PlanValidationMessage(
+        severity=severity,
+        code=code,
+        message=message,
+        entity_type="teacher",
+        entity_id=teacher_id,
+    )
+
+
 __all__ = [
     "CODE_ACTIVITY_LINKED_SUBJECT_MISMATCH",
     "CODE_ACTIVITY_MISSING_GROUPS",
@@ -485,11 +640,15 @@ __all__ = [
     "CODE_GROUP_HOURS_IMBALANCED",
     "CODE_MAIN_SUBJECT_NOT_MATERIALIZED",
     "CODE_MISSING_ALLOCATION",
+    "CODE_PARTICIPANT_BELOW_TARGET",
     "CODE_PARTICIPANT_OVERLOADED",
+    "CODE_PARTICIPANT_OVER_TARGET",
     "CODE_PLAN_STALE",
     "CODE_REQUIREMENTS_NOT_GENERATED",
     "CODE_REQUIREMENTS_STALE",
+    "CODE_REQUIREMENTS_UNASSIGNED",
     "CODE_SECONDARY_ACTIVITIES_AVAILABLE",
     "CODE_TEACHER_LOAD_IMBALANCED",
+    "AssignmentValidationService",
     "PlanValidationService",
 ]

@@ -93,7 +93,14 @@ activities are materialised from group subjects in a later flow).
 `GET /teaching-plan/validations` returns the plan's blocking and warning
 findings (missing allocation, group/teacher-load imbalance, unmaterialised main
 subjects, invalid activity/group links, ungenerated or stale requirements); it is
-read-only and never triggers a feasibility solve. Process
+read-only and never triggers a feasibility solve. `GET /assignments/validations`
+is its assignment-stage twin: it reports the blocking findings that stop final
+closure (unassigned indivisible slots, participants assigned above their exact
+target, and active participants still below target) plus the authorized-overload
+warning, and is likewise read-only and solver-free. Assignment creation enforces
+the exact target directly — an indivisible slot cannot be assigned if it would
+push a participant above `target_weekly_hours`; there is no override, so an
+overload must first be authorized by raising extra hours. Process
 teachers carry `base_weekly_hours` and department-head authorized
 `extra_weekly_hours`; their sum is the exposed `target_weekly_hours`, and a
 non-zero extra flags `is_overloaded`. Extra hours change only through the audited

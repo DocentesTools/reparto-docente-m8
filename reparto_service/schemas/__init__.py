@@ -7,6 +7,7 @@ and are re-exported from here.
 
 from .planning import (
     AssignmentSummary,
+    AssignmentValidationReport,
     GroupBalance,
     ParticipantBalance,
     PlanBalance,
@@ -25,6 +26,7 @@ from .summary import (
 
 __all__ = [
     "AssignmentSummary",
+    "AssignmentValidationReport",
     "GlobalBalance",
     "GroupBalance",
     "ParticipantBalance",

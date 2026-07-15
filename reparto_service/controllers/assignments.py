@@ -24,6 +24,7 @@ tasks; this task establishes the model and the complete-slot occupancy rules.
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
@@ -31,6 +32,7 @@ from sqlmodel import Session, select
 from auth_sdk_m8.schemas.user import UserModel
 
 from reparto_service.controllers.base import DomainController
+from reparto_service.core.decimals import quantize_hours
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.assignments import (
     Assignment,
@@ -53,6 +55,11 @@ from reparto_service.enums import (
     SelectionOrderMode,
     SelectionTurnStatus,
 )
+from reparto_service.schemas.planning import AssignmentValidationReport
+from reparto_service.services.calculations import AssignmentCalculationService
+from reparto_service.services.validations import AssignmentValidationService
+
+_ZERO = Decimal("0.00")
 
 
 class AssignmentController(DomainController):
@@ -81,6 +88,20 @@ class AssignmentController(DomainController):
         )
         return AssignmentPublic.model_validate(assignment)
 
+    @staticmethod
+    def get_validations(
+        session: Session, process_id: uuid.UUID
+    ) -> AssignmentValidationReport:
+        """Return the process's assignment-stage findings (plan §6.3, §6.4).
+
+        Read-only and solver-free (plan §20.23): it reports unassigned slots and
+        participants off their exact target but never triggers an evaluation.
+        """
+        process = DomainController.get_process_or_404(session, process_id)
+        return AssignmentValidationService.compute_assignment_validations(
+            session, process
+        )
+
     # ── Mutations ─────────────────────────────────────────────────────────────
 
     @staticmethod
@@ -94,14 +115,14 @@ class AssignmentController(DomainController):
         requirement = AssignmentController._get_requirement_or_404(
             session, process_id, assignment_in.hour_requirement_id
         )
-        AssignmentController._get_process_teacher_or_404(
+        process_teacher = AssignmentController._get_process_teacher_or_404(
             session, process_id, assignment_in.process_teacher_id
         )
         assignment = AssignmentController._occupy_slot(
             session,
             process_id=process_id,
             requirement=requirement,
-            process_teacher_id=assignment_in.process_teacher_id,
+            process_teacher=process_teacher,
             source=AssignmentSource.DEPARTMENT_HEAD,
             chosen_by_user_id=uuid.UUID(str(current_user.id)),
             confirmed_by_user_id=None,
@@ -144,7 +165,7 @@ class AssignmentController(DomainController):
             session,
             process_id=process_id,
             requirement=requirement,
-            process_teacher_id=process_teacher.id,
+            process_teacher=process_teacher,
             source=AssignmentSource.TEACHER_DIRECT,
             chosen_by_user_id=user_id,
             confirmed_by_user_id=user_id,
@@ -243,7 +264,7 @@ class AssignmentController(DomainController):
         *,
         process_id: uuid.UUID,
         requirement: HourRequirement,
-        process_teacher_id: uuid.UUID,
+        process_teacher: ProcessTeacher,
         source: AssignmentSource,
         chosen_by_user_id: uuid.UUID,
         confirmed_by_user_id: uuid.UUID | None,
@@ -265,13 +286,14 @@ class AssignmentController(DomainController):
             )
         AssignmentController._ensure_slot_unassigned(session, requirement.id)
         AssignmentController._ensure_distinct_teacher(
-            session, requirement.teaching_activity_id, process_teacher_id
+            session, requirement.teaching_activity_id, process_teacher.id
         )
+        AssignmentController._ensure_fits_target(session, process_teacher, requirement)
         assignment = Assignment(
             assignment_process_id=process_id,
             hour_requirement_id=requirement.id,
             teaching_activity_id=requirement.teaching_activity_id,
-            process_teacher_id=process_teacher_id,
+            process_teacher_id=process_teacher.id,
             source=source,
             status=AssignmentStatus.ACTIVE,
             chosen_by_user_id=chosen_by_user_id,
@@ -282,6 +304,37 @@ class AssignmentController(DomainController):
         requirement.status = HourRequirementStatus.ASSIGNED
         session.add(requirement)
         return assignment
+
+    @staticmethod
+    def _ensure_fits_target(
+        session: Session,
+        process_teacher: ProcessTeacher,
+        requirement: HourRequirement,
+    ) -> None:
+        """Reject an assignment that would push a teacher above target (plan §3.8).
+
+        A slot is indivisible (plan §3.6), so it fits only when the participant's
+        already-assigned hours plus the whole slot stay within
+        ``target_weekly_hours``. There is no override: an overload must first be
+        authorized by raising ``extra_weekly_hours`` (plan §3.8), which is why
+        this guard has no bypass path.
+        """
+        assigned = AssignmentCalculationService.compute_participant_assigned_hours(
+            session, process_teacher
+        )
+        slot_hours = quantize_hours(Decimal(str(requirement.required_teacher_hours)))
+        target = quantize_hours(Decimal(str(process_teacher.target_weekly_hours)))
+        if quantize_hours(assigned + slot_hours) > target:
+            remaining = quantize_hours(target - assigned)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Requirement {requirement.id} needs {slot_hours} hours but the "
+                    f"participant has only {remaining} remaining before the target "
+                    f"of {target}; a slot cannot be split, so authorize extra hours "
+                    "first."
+                ),
+            )
 
     @staticmethod
     def _ensure_slot_unassigned(session: Session, requirement_id: uuid.UUID) -> None:

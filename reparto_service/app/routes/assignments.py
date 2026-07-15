@@ -15,6 +15,7 @@ from reparto_service.db_models.assignments import (
     AssignmentsPublic,
     AssignmentUpdate,
 )
+from reparto_service.schemas.planning import AssignmentValidationReport
 
 router = APIRouter(
     prefix="/assignment-processes/{process_id}/assignments",
@@ -50,6 +51,13 @@ def create_direct_choice(
     return AssignmentController.create_direct_choice(
         session, process_id, current_user, choice
     )
+
+
+@router.get("/validations", response_model=AssignmentValidationReport)
+def get_assignment_validations(
+    session: SessionDep, process_id: uuid.UUID
+) -> AssignmentValidationReport:
+    return AssignmentController.get_validations(session, process_id)
 
 
 @router.get("/{assignment_id}", response_model=AssignmentPublic)

@@ -19,6 +19,7 @@ from sqlmodel import Session, select
 
 from reparto_service.db_models.assignments import Assignment
 from reparto_service.db_models.hour_requirements import HourRequirement
+from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
     AssignmentProcessStatus,
     AssignmentSource,
@@ -557,3 +558,133 @@ def test_db_blocks_same_teacher_two_positions(session: Session) -> None:
     with pytest.raises(IntegrityError):
         factories.make_assignment(session, process, slot1, teacher)
     session.rollback()
+
+
+# ── Exact-target / no-overload-bypass guard (plan §3.8) ───────────────────────
+
+
+def _teacher_with_hours(session, process, *, base=2.0, extra=0.0):
+    profile = factories.make_teacher_profile(session)
+    return factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=base, extra_weekly_hours=extra
+    )
+
+
+def _extra_activity_slot(session, process, *, hours=4.0):
+    """A second activity with one slot, on the process's single plan."""
+    plan = session.exec(
+        select(TeachingPlan).where(TeachingPlan.assignment_process_id == process.id)
+    ).first()
+    subject = factories.make_subject(session, process, name=f"Extra {uuid.uuid4()}")
+    activity = factories.make_teaching_activity(
+        session, plan, subject, required_teacher_count=1
+    )
+    return factories.make_hour_requirement(
+        session, process, activity, required_teacher_hours=hours
+    )
+
+
+def test_create_assignment_over_target_rejected(
+    client: TestClient, session: Session
+) -> None:
+    """An indivisible slot that exceeds the target is refused (no bypass)."""
+    process, _activity, slot0, _slot1 = _plan_setup(session)  # 4h slots
+    teacher = _teacher_with_hours(session, process, base=2.0)  # target 2 < 4
+    resp = client.post(
+        f"{_assignments_path(process.id)}/",
+        json={
+            "hour_requirement_id": str(slot0.id),
+            "process_teacher_id": str(teacher.id),
+        },
+    )
+    assert resp.status_code == 400
+    assert "authorize extra hours" in resp.json()["detail"]
+    # The slot stays available — nothing was occupied.
+    session.refresh(slot0)
+    assert slot0.status == HourRequirementStatus.AVAILABLE
+
+
+def test_create_assignment_fits_with_authorized_extra(
+    client: TestClient, session: Session
+) -> None:
+    """Raising extra hours lifts the target so the same slot now fits (plan §3.8)."""
+    process, _activity, slot0, _slot1 = _plan_setup(session)  # 4h slots
+    teacher = _teacher_with_hours(session, process, base=2.0, extra=2.0)  # target 4
+    resp = client.post(
+        f"{_assignments_path(process.id)}/",
+        json={
+            "hour_requirement_id": str(slot0.id),
+            "process_teacher_id": str(teacher.id),
+        },
+    )
+    assert resp.status_code == 201
+
+
+def test_create_assignment_accumulates_toward_target(
+    client: TestClient, session: Session
+) -> None:
+    """A second slot that would exceed the remaining target is refused."""
+    process, _activity, slot0, _slot1 = _plan_setup(session)  # 4h slots
+    teacher = _teacher_with_hours(session, process, base=6.0)  # target 6
+    first = client.post(
+        f"{_assignments_path(process.id)}/",
+        json={
+            "hour_requirement_id": str(slot0.id),
+            "process_teacher_id": str(teacher.id),
+        },
+    )
+    assert first.status_code == 201  # 4 <= 6
+    extra_slot = _extra_activity_slot(session, process, hours=4.0)
+    second = client.post(
+        f"{_assignments_path(process.id)}/",
+        json={
+            "hour_requirement_id": str(extra_slot.id),
+            "process_teacher_id": str(teacher.id),
+        },
+    )
+    assert second.status_code == 400  # 4 + 4 = 8 > 6
+
+
+# ── Assignment-stage validations endpoint (plan §6.3, §6.4, §7.7) ─────────────
+
+
+def test_get_assignment_validations_reports_findings(
+    client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)  # two unassigned slots
+    _teacher_with_hours(session, process, base=6.0)  # below target
+    resp = client.get(f"{_assignments_path(process.id)}/validations")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["assignment_process_id"] == str(process.id)
+    assert body["is_final_ready"] is False
+    assert body["blocking_count"] >= 1
+    codes = {m["code"] for m in body["messages"]}
+    assert "requirement.unassigned" in codes
+    assert "participant.below_target" in codes
+
+
+def test_get_assignment_validations_final_ready(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    factories.make_teaching_plan(session, process)
+    resp = client.get(f"{_assignments_path(process.id)}/validations")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["is_final_ready"] is True
+    assert body["messages"] == []
+
+
+def test_get_assignment_validations_process_not_found(client: TestClient) -> None:
+    resp = client.get(f"{_assignments_path(uuid.uuid4())}/validations")
+    assert resp.status_code == 404
+
+
+def test_get_assignment_validations_reader_allowed(
+    reader_client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    factories.make_teaching_plan(session, process)
+    resp = reader_client.get(f"{_assignments_path(process.id)}/validations")
+    assert resp.status_code == 200

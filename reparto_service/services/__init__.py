@@ -28,6 +28,7 @@ from .process_lifecycle import (
     is_terminal,
 )
 from .validations import (
+    AssignmentValidationService,
     PlanValidationService,
 )
 from .summary import (
@@ -47,6 +48,7 @@ from .summary import (
 __all__ = [
     "ALLOWED_TRANSITIONS",
     "AssignmentCalculationService",
+    "AssignmentValidationService",
     "CODE_PROCESS_BALANCED",
     "CODE_PROCESS_HAS_OVERAGE",
     "CODE_PROCESS_HAS_PENDING",

@@ -204,14 +204,17 @@ class AssignmentSummary(BaseModel):
 
 
 class PlanValidationMessage(BaseModel):
-    """One planning blocking/warning finding (plan §6.3, §6.4).
+    """One planning **or** assignment blocking/warning finding (plan §6.3, §6.4).
 
-    ``code`` is a stable machine identifier (the frontend keys off it and never
-    off the human ``message``); the ``CODE_*`` constants in
+    Shared by the planning-stage :class:`PlanValidationReport` and the
+    assignment-stage :class:`AssignmentValidationReport`. ``code`` is a stable
+    machine identifier (the frontend keys off it and never off the human
+    ``message``); the ``CODE_*`` constants in
     :mod:`reparto_service.services.validations` are the single source of truth.
     ``entity_type``/``entity_id`` point at the concrete row a finding is about
-    (a ``group_subject`` cell, a ``teaching_activity``, a ``teacher``) or at the
-    whole ``plan`` when the finding is plan-wide.
+    (a ``group_subject`` cell, a ``teaching_activity``, a ``teacher``,
+    a requirement slot) or at the whole ``plan``/``assignment_process`` when the
+    finding is process-wide.
     """
 
     severity: ValidationSeverity = Field(
@@ -253,8 +256,36 @@ class PlanValidationReport(BaseModel):
     )
 
 
+class AssignmentValidationReport(BaseModel):
+    """Aggregate assignment-stage validation result for one process (plan §6.3/§6.4).
+
+    The assignment-stage twin of :class:`PlanValidationReport`. It reuses
+    :class:`PlanValidationMessage` and reports the §6.3 assignment blockers —
+    unassigned indivisible slots, participants over their exact target (an
+    overload that bypassed the extra-hours flow), and participants still below
+    target — plus the §6.4 authorized-overload warning.
+
+    ``is_final_ready`` is ``True`` only when there is **no** blocking finding; it
+    mirrors the plan §3.10 gate for final closure / final assignment export
+    (every live slot assigned and every active participant sitting exactly on
+    their target). Like the planning report, it is cheap and solver-free
+    (plan §20.23): it never triggers a feasibility evaluation.
+    """
+
+    assignment_process_id: uuid.UUID = Field(description="Owning process ID.")
+    is_final_ready: bool = Field(
+        description="True when no blocking finding is present (plan §3.10)."
+    )
+    blocking_count: int = Field(ge=0, description="Number of blocking findings.")
+    warning_count: int = Field(ge=0, description="Number of warning findings.")
+    messages: list[PlanValidationMessage] = Field(
+        description="Blocking findings first, then warnings; deterministic order."
+    )
+
+
 __all__ = [
     "AssignmentSummary",
+    "AssignmentValidationReport",
     "GroupBalance",
     "HoursField",
     "OptionalHoursField",
