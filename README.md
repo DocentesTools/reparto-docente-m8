@@ -77,8 +77,13 @@ to a LAN.
 
 The `/requirements` endpoints are read-only: requirement rows are generated,
 indivisible teacher-position slots derived from teaching activities (one slot per
-required teacher position), never manually created or edited. Assignment
-endpoints include `POST /assignments/direct-choice`. Selection-turn
+required teacher position), never manually created or edited. An assignment
+binds one teacher to one complete, indivisible slot: create with just
+`{hour_requirement_id, process_teacher_id}` (no hour or share input), and the
+requirement's activity is denormalised server-side so the database enforces one
+active assignment per slot and a distinct teacher per activity. `DELETE`
+soft-cancels an assignment and frees its slot. Assignment endpoints also include
+`POST /assignments/direct-choice` for teacher LAN selection. Selection-turn
 endpoints support initialization plus start, complete, skip, and override
 actions. Group-subject endpoints include `POST /group-subjects/bulk-preview` and
 `POST /group-subjects/bulk-apply` for filtered create/update/upsert matrix

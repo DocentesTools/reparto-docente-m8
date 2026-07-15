@@ -1,14 +1,24 @@
 """Assignment controller.
 
-The assignment is the central mutation: it links a process teacher to an
-hour requirement. Controllers enforce the documented rules from the
-first-slice plan:
+Redesigned for the three-stage adaptation (plan §5.10, §20.9). An assignment
+binds one process teacher to one **complete, indivisible** requirement slot.
+Both entry points — the department-head manual assignment and the teacher LAN
+direct choice — go through the single shared complete-slot routine
+:meth:`AssignmentController._occupy_slot`, so there is no duplicated business
+logic (plan §7.7).
 
-* ``assigned_hours`` must be > 0 (schema-enforced).
-* Sum of ``assigned_hours`` for a requirement must not exceed
-  ``required_hours`` unless at least one assignment on the requirement
-  carries a department head override.
-* Mutations are blocked when the parent process is in a final state.
+Invariants enforced here (with the database as the final barrier, plan §20.9):
+
+* one ACTIVE assignment per requirement slot — a slot cannot be shared or split
+  (plan §3.6, §5.10);
+* a teacher can never occupy two positions of the same activity (plan §3.7);
+* the requirement's activity is denormalised onto the assignment from the
+  requirement itself, never trusted from the client;
+* mutations are blocked while the parent process is immutable (final/archived).
+
+The deeper LAN concurrency work (row-lock recheck of remaining target hours,
+witness repair) and the exact participant-target rules are their own later plan
+tasks; this task establishes the model and the complete-slot occupancy rules.
 """
 
 from __future__ import annotations
@@ -38,6 +48,7 @@ from reparto_service.db_models.teacher_profiles import TeacherProfile
 from reparto_service.enums import (
     AssignmentSource,
     AssignmentStatus,
+    HourRequirementStatus,
     MeetingSessionStatus,
     SelectionOrderMode,
     SelectionTurnStatus,
@@ -45,7 +56,9 @@ from reparto_service.enums import (
 
 
 class AssignmentController(DomainController):
-    """CRUD logic for assignments inside one assignment process."""
+    """Complete-slot assignment logic inside one assignment process."""
+
+    # ── Read ──────────────────────────────────────────────────────────────────
 
     @staticmethod
     def list_assignments(session: Session, process_id: uuid.UUID) -> AssignmentsPublic:
@@ -68,6 +81,8 @@ class AssignmentController(DomainController):
         )
         return AssignmentPublic.model_validate(assignment)
 
+    # ── Mutations ─────────────────────────────────────────────────────────────
+
     @staticmethod
     def create_assignment(
         session: Session,
@@ -75,17 +90,23 @@ class AssignmentController(DomainController):
         current_user: UserModel,
         assignment_in: AssignmentCreate,
     ) -> AssignmentPublic:
-        process = AssignmentController._ensure_open(
-            session, process_id, assignment_in.assignment_process_id
+        AssignmentController._ensure_open(session, process_id)
+        requirement = AssignmentController._get_requirement_or_404(
+            session, process_id, assignment_in.hour_requirement_id
         )
-        AssignmentController._validate_assignment_creation(
-            session, process_id, assignment_in, process
+        AssignmentController._get_process_teacher_or_404(
+            session, process_id, assignment_in.process_teacher_id
         )
-        assignment = Assignment.model_validate(
-            assignment_in.model_dump(),
-            update={"chosen_by_user_id": current_user.id},
+        assignment = AssignmentController._occupy_slot(
+            session,
+            process_id=process_id,
+            requirement=requirement,
+            process_teacher_id=assignment_in.process_teacher_id,
+            source=AssignmentSource.DEPARTMENT_HEAD,
+            chosen_by_user_id=uuid.UUID(str(current_user.id)),
+            confirmed_by_user_id=None,
+            notes=assignment_in.notes,
         )
-        session.add(assignment)
         AssignmentController.record_audit_event(
             session,
             process_id=process_id,
@@ -95,78 +116,9 @@ class AssignmentController(DomainController):
             entity_id=assignment.id,
             before=None,
             after=assignment,
-            reason=assignment.override_reason,
         )
         session.commit()
         session.refresh(assignment)
-        return AssignmentPublic.model_validate(assignment)
-
-    @staticmethod
-    def update_assignment(
-        session: Session,
-        process_id: uuid.UUID,
-        assignment_id: uuid.UUID,
-        assignment_in: AssignmentUpdate,
-        current_user: UserModel,
-    ) -> AssignmentPublic:
-        process = AssignmentController._ensure_open(session, process_id)
-        assignment = AssignmentController._get_or_404(
-            session, process_id, assignment_id
-        )
-        before = Assignment.model_validate(assignment.model_dump())
-        update_dict = assignment_in.model_dump(exclude_unset=True)
-        new_hours = update_dict.get("assigned_hours", assignment.assigned_hours)
-        new_override = update_dict.get("override_reason", assignment.override_reason)
-        # Re-check the cap with the post-update hours + override.
-        AssignmentController._enforce_requirement_cap(
-            session=session,
-            process=process,
-            requirement_id=assignment.hour_requirement_id,
-            incoming_hours=new_hours,
-            incoming_has_override=new_override is not None,
-            exclude_assignment_id=assignment.id,
-        )
-        assignment.sqlmodel_update(update_dict)
-        session.add(assignment)
-        AssignmentController.record_audit_event(
-            session,
-            process_id=process_id,
-            current_user=current_user,
-            event_type="assignment.updated",
-            entity_type="assignment",
-            entity_id=assignment.id,
-            before=before,
-            after=assignment,
-            reason=assignment.override_reason,
-        )
-        session.commit()
-        session.refresh(assignment)
-        return AssignmentPublic.model_validate(assignment)
-
-    @staticmethod
-    def delete_assignment(
-        session: Session,
-        process_id: uuid.UUID,
-        assignment_id: uuid.UUID,
-        current_user: UserModel,
-    ) -> AssignmentPublic:
-        AssignmentController._ensure_open(session, process_id)
-        assignment = AssignmentController._get_or_404(
-            session, process_id, assignment_id
-        )
-        before = Assignment.model_validate(assignment.model_dump())
-        session.delete(assignment)
-        AssignmentController.record_audit_event(
-            session,
-            process_id=process_id,
-            current_user=current_user,
-            event_type="assignment.deleted",
-            entity_type="assignment",
-            entity_id=assignment.id,
-            before=before,
-            after=None,
-        )
-        session.commit()
         return AssignmentPublic.model_validate(assignment)
 
     @staticmethod
@@ -176,7 +128,7 @@ class AssignmentController(DomainController):
         current_user: UserModel,
         choice: AssignmentDirectChoice,
     ) -> AssignmentPublic:
-        process = AssignmentController._ensure_open(session, process_id)
+        AssignmentController._ensure_open(session, process_id)
         meeting = AssignmentController._get_direct_selection_session(
             session, process_id, choice.meeting_session_id
         )
@@ -184,29 +136,20 @@ class AssignmentController(DomainController):
             session, process_id, current_user
         )
         AssignmentController._enforce_direct_turn(session, meeting, process_teacher.id)
-        AssignmentController._get_requirement_or_404(
+        requirement = AssignmentController._get_requirement_or_404(
             session, process_id, choice.hour_requirement_id
         )
-        AssignmentController._enforce_requirement_cap(
-            session=session,
-            process=process,
-            requirement_id=choice.hour_requirement_id,
-            incoming_hours=choice.assigned_hours,
-            incoming_has_override=False,
-        )
-        assignment = Assignment(
-            assignment_process_id=process_id,
-            hour_requirement_id=choice.hour_requirement_id,
+        user_id = uuid.UUID(str(current_user.id))
+        assignment = AssignmentController._occupy_slot(
+            session,
+            process_id=process_id,
+            requirement=requirement,
             process_teacher_id=process_teacher.id,
-            assigned_hours=choice.assigned_hours,
-            assignment_type=choice.assignment_type,
             source=AssignmentSource.TEACHER_DIRECT,
-            status=AssignmentStatus.CONFIRMED,
-            chosen_by_user_id=uuid.UUID(str(current_user.id)),
-            confirmed_by_user_id=uuid.UUID(str(current_user.id)),
+            chosen_by_user_id=user_id,
+            confirmed_by_user_id=user_id,
             notes=choice.notes,
         )
-        session.add(assignment)
         AssignmentController._complete_active_turn_if_needed(
             session, meeting, process_teacher.id
         )
@@ -224,7 +167,160 @@ class AssignmentController(DomainController):
         session.refresh(assignment)
         return AssignmentPublic.model_validate(assignment)
 
-    # ── Internal helpers ─────────────────────────────────────────────────────
+    @staticmethod
+    def update_assignment(
+        session: Session,
+        process_id: uuid.UUID,
+        assignment_id: uuid.UUID,
+        assignment_in: AssignmentUpdate,
+        current_user: UserModel,
+    ) -> AssignmentPublic:
+        AssignmentController._ensure_open(session, process_id)
+        assignment = AssignmentController._get_or_404(
+            session, process_id, assignment_id
+        )
+        before = Assignment.model_validate(assignment.model_dump())
+        assignment.sqlmodel_update(assignment_in.model_dump(exclude_unset=True))
+        session.add(assignment)
+        AssignmentController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="assignment.updated",
+            entity_type="assignment",
+            entity_id=assignment.id,
+            before=before,
+            after=assignment,
+        )
+        session.commit()
+        session.refresh(assignment)
+        return AssignmentPublic.model_validate(assignment)
+
+    @staticmethod
+    def delete_assignment(
+        session: Session,
+        process_id: uuid.UUID,
+        assignment_id: uuid.UUID,
+        current_user: UserModel,
+    ) -> AssignmentPublic:
+        """Cancel a live assignment, freeing its requirement slot (plan §20.12).
+
+        A soft cancel (rather than a hard delete) keeps the row traceable for
+        audit and versioning; the active partial-unique indexes ignore
+        CANCELLED rows, so the slot is immediately re-assignable.
+        """
+        AssignmentController._ensure_open(session, process_id)
+        assignment = AssignmentController._get_or_404(
+            session, process_id, assignment_id
+        )
+        before = Assignment.model_validate(assignment.model_dump())
+        if assignment.status == AssignmentStatus.ACTIVE:
+            assignment.status = AssignmentStatus.CANCELLED
+            requirement = session.get(HourRequirement, assignment.hour_requirement_id)
+            if requirement is not None:
+                requirement.status = HourRequirementStatus.AVAILABLE
+                session.add(requirement)
+            session.add(assignment)
+        AssignmentController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="assignment.cancelled",
+            entity_type="assignment",
+            entity_id=assignment.id,
+            before=before,
+            after=assignment,
+        )
+        session.commit()
+        session.refresh(assignment)
+        return AssignmentPublic.model_validate(assignment)
+
+    # ── Shared complete-slot routine ──────────────────────────────────────────
+
+    @staticmethod
+    def _occupy_slot(
+        session: Session,
+        *,
+        process_id: uuid.UUID,
+        requirement: HourRequirement,
+        process_teacher_id: uuid.UUID,
+        source: AssignmentSource,
+        chosen_by_user_id: uuid.UUID,
+        confirmed_by_user_id: uuid.UUID | None,
+        notes: str | None,
+    ) -> Assignment:
+        """Occupy one complete slot, enforcing the indivisible-slot invariants.
+
+        Shared by manual and direct assignment so both paths run identical rules
+        (plan §7.7). The requirement's activity is denormalised onto the row
+        (plan §20.9); the DB partial-unique indexes are the final barrier.
+        """
+        if requirement.status != HourRequirementStatus.AVAILABLE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Requirement {requirement.id} is not available for "
+                    f"assignment (status {requirement.status.value})."
+                ),
+            )
+        AssignmentController._ensure_slot_unassigned(session, requirement.id)
+        AssignmentController._ensure_distinct_teacher(
+            session, requirement.teaching_activity_id, process_teacher_id
+        )
+        assignment = Assignment(
+            assignment_process_id=process_id,
+            hour_requirement_id=requirement.id,
+            teaching_activity_id=requirement.teaching_activity_id,
+            process_teacher_id=process_teacher_id,
+            source=source,
+            status=AssignmentStatus.ACTIVE,
+            chosen_by_user_id=chosen_by_user_id,
+            confirmed_by_user_id=confirmed_by_user_id,
+            notes=notes,
+        )
+        session.add(assignment)
+        requirement.status = HourRequirementStatus.ASSIGNED
+        session.add(requirement)
+        return assignment
+
+    @staticmethod
+    def _ensure_slot_unassigned(session: Session, requirement_id: uuid.UUID) -> None:
+        """Reject a second live assignment on the same slot (plan §5.10)."""
+        statement = select(Assignment).where(
+            Assignment.hour_requirement_id == requirement_id,
+            Assignment.status == AssignmentStatus.ACTIVE,
+        )
+        if session.exec(statement).first() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Requirement {requirement_id} is already assigned; a slot "
+                    "cannot be shared or split."
+                ),
+            )
+
+    @staticmethod
+    def _ensure_distinct_teacher(
+        session: Session,
+        teaching_activity_id: uuid.UUID,
+        process_teacher_id: uuid.UUID,
+    ) -> None:
+        """Reject the same teacher in two positions of one activity (plan §3.7)."""
+        statement = select(Assignment).where(
+            Assignment.teaching_activity_id == teaching_activity_id,
+            Assignment.process_teacher_id == process_teacher_id,
+            Assignment.status == AssignmentStatus.ACTIVE,
+        )
+        if session.exec(statement).first() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Teacher already occupies a position of activity "
+                    f"{teaching_activity_id}; distinct teachers are required."
+                ),
+            )
+
+    # ── Internal lookups ──────────────────────────────────────────────────────
 
     @staticmethod
     def _get_or_404(
@@ -284,97 +380,12 @@ class AssignmentController(DomainController):
         return process_teacher
 
     @staticmethod
-    def _ensure_open(
-        session: Session,
-        process_id: uuid.UUID,
-        payload_process_id: uuid.UUID | None = None,
-    ) -> AssignmentProcess:
-        if payload_process_id is not None and payload_process_id != process_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "assignment_process_id in the payload does not match the "
-                    "URL process_id."
-                ),
-            )
+    def _ensure_open(session: Session, process_id: uuid.UUID) -> AssignmentProcess:
         process = DomainController.get_process_or_404(session, process_id)
         DomainController.ensure_process_mutable(process)
         return process
 
-    @staticmethod
-    def _validate_assignment_creation(
-        session: Session,
-        process_id: uuid.UUID,
-        assignment_in: AssignmentCreate,
-        process: AssignmentProcess,
-    ) -> None:
-        """Validate assignment references and requirement capacity before create."""
-        AssignmentController._get_requirement_or_404(
-            session, process_id, assignment_in.hour_requirement_id
-        )
-        AssignmentController._get_process_teacher_or_404(
-            session, process_id, assignment_in.process_teacher_id
-        )
-        AssignmentController._enforce_requirement_cap(
-            session=session,
-            process=process,
-            requirement_id=assignment_in.hour_requirement_id,
-            incoming_hours=assignment_in.assigned_hours,
-            incoming_has_override=assignment_in.override_reason is not None,
-        )
-
-    @staticmethod
-    def _enforce_requirement_cap(
-        *,
-        session: Session,
-        process: AssignmentProcess,
-        requirement_id: uuid.UUID,
-        incoming_hours: float,
-        incoming_has_override: bool,
-        exclude_assignment_id: uuid.UUID | None = None,
-    ) -> None:
-        """Block the mutation when it would push the requirement past the cap.
-
-        Cap rule (plan 9.3, 8.10): the sum of ``assigned_hours`` for a
-        requirement must not exceed ``required_hours`` unless at least
-        one assignment on the requirement (after the mutation) carries
-        a department head override. Cancellations are excluded from
-        the sum.
-        """
-        statement = select(Assignment).where(
-            Assignment.hour_requirement_id == requirement_id
-        )
-        rows = list(session.exec(statement).all())
-        current_hours: float = 0.0
-        has_any_override: bool = False
-        for row in rows:
-            if row.status == AssignmentStatus.CANCELLED:
-                continue
-            if exclude_assignment_id is not None and row.id == exclude_assignment_id:
-                continue
-            current_hours += row.assigned_hours
-            has_any_override = has_any_override or row.override_reason is not None
-        projected = current_hours + incoming_hours
-        # Fetch the requirement to know its cap.
-        requirement = session.get(HourRequirement, requirement_id)
-        if requirement is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"HourRequirement {requirement_id} not found.",
-            )
-        cap = requirement.required_hours
-        if projected <= cap:
-            return
-        if incoming_has_override or has_any_override:
-            return
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"Assignment would push requirement {requirement_id} above its "
-                f"required hours ({projected:.2f} > {cap:.2f}). "
-                "Provide an override_reason to exceed the cap."
-            ),
-        )
+    # ── Direct-selection helpers ──────────────────────────────────────────────
 
     @staticmethod
     def _get_direct_selection_session(

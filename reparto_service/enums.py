@@ -107,11 +107,23 @@ class AssignmentSource(str, Enum):
 
 
 class AssignmentStatus(str, Enum):
-    """Status of a single assignment record."""
+    """Lifecycle status of a single assignment record.
 
-    DRAFT = "draft"
-    CONFIRMED = "confirmed"
-    OVERRIDDEN = "overridden"
+    Redesigned for the three-stage adaptation (plan §5.10, §20.9). An
+    assignment is one teacher occupying one complete, indivisible requirement
+    slot: it is either ``ACTIVE`` (the live occupancy) or ``CANCELLED`` (undone
+    or reassigned away, retained for audit/version traceability). The obsolete
+    two-stage ``DRAFT``/``CONFIRMED``/``OVERRIDDEN`` states — which modelled
+    partial coverage and over-assignment overrides — are gone (plan §3.6, §5.10).
+
+    SQLAlchemy stores the enum *member name*, so ``ACTIVE`` is the literal the
+    active partial-unique indexes on
+    :class:`~reparto_service.db_models.assignments.Assignment` filter on
+    (one active assignment per requirement; one teacher per activity; plan
+    §20.9); that name is part of the schema contract.
+    """
+
+    ACTIVE = "active"
     CANCELLED = "cancelled"
 
 

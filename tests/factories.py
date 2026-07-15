@@ -41,7 +41,6 @@ from reparto_service.enums import (
     AssignmentProcessStatus,
     AssignmentSource,
     AssignmentStatus,
-    AssignmentType,
     DepartmentHourAllocationSource,
     FeasibilityStatus,
     HourRequirementStatus,
@@ -449,23 +448,27 @@ def make_assignment(
     requirement: HourRequirement,
     process_teacher: ProcessTeacher,
     *,
-    assigned_hours: float = 4.0,
-    assignment_type: AssignmentType = AssignmentType.MAIN,
     source: AssignmentSource = AssignmentSource.DEPARTMENT_HEAD,
-    status: AssignmentStatus = AssignmentStatus.CONFIRMED,
+    status: AssignmentStatus = AssignmentStatus.ACTIVE,
     chosen_by_user_id: Optional[uuid.UUID] = None,
-    override_reason: Optional[str] = None,
+    confirmed_by_user_id: Optional[uuid.UUID] = None,
+    notes: Optional[str] = None,
 ) -> Assignment:
+    """Insert one complete-slot assignment (plan §5.10, §20.9).
+
+    ``teaching_activity_id`` is denormalised from the requirement, matching the
+    controller and the composite FK / active partial-unique indexes.
+    """
     assignment = Assignment(
         assignment_process_id=process.id,
         hour_requirement_id=requirement.id,
+        teaching_activity_id=requirement.teaching_activity_id,
         process_teacher_id=process_teacher.id,
-        assigned_hours=assigned_hours,
-        assignment_type=assignment_type,
         source=source,
         status=status,
         chosen_by_user_id=chosen_by_user_id or uuid.uuid4(),
-        override_reason=override_reason,
+        confirmed_by_user_id=confirmed_by_user_id,
+        notes=notes,
     )
     session.add(assignment)
     session.commit()
