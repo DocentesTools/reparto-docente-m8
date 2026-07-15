@@ -65,6 +65,7 @@ from reparto_service.enums import (
 )
 from reparto_service.schemas.planning import AssignmentValidationReport
 from reparto_service.services.calculations import AssignmentCalculationService
+from reparto_service.services.lifecycle_gates import PlanReadinessGate
 from reparto_service.services.validations import AssignmentValidationService
 
 _ZERO = Decimal("0.00")
@@ -158,6 +159,11 @@ class AssignmentController(DomainController):
         can commit it together with its own changes.
         """
         AssignmentController._ensure_open(session, process_id)
+        # A new assignment is blocked while an allocation change leaves the plan
+        # awaiting reconciliation (plan §3.11.9, §9.7).
+        PlanReadinessGate.ensure_assignments_unblocked(
+            session, process_id, operation="create an assignment"
+        )
         requirement = AssignmentController._get_requirement_or_404(
             session, process_id, hour_requirement_id
         )
@@ -194,6 +200,13 @@ class AssignmentController(DomainController):
         choice: AssignmentDirectChoice,
     ) -> AssignmentPublic:
         AssignmentController._ensure_open(session, process_id)
+        # Direct selection is a meeting-time assignment operation: block it while
+        # an allocation change leaves the plan awaiting reconciliation (plan
+        # §3.11.9, §9.7). The strict stage-entry contract (plan §3.10) was already
+        # enforced when the meeting was opened.
+        PlanReadinessGate.ensure_assignments_unblocked(
+            session, process_id, operation="select a teacher directly"
+        )
         meeting = AssignmentController._get_direct_selection_session(
             session, process_id, choice.meeting_session_id
         )

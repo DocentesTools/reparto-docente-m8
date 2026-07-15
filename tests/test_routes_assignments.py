@@ -28,8 +28,21 @@ from reparto_service.enums import (
     MeetingSessionStatus,
     SelectionOrderMode,
     SelectionTurnStatus,
+    TeachingPlanStatus,
 )
 from tests import factories
+
+
+def _set_plan_status(
+    session: Session, process_id: uuid.UUID, plan_status: TeachingPlanStatus
+) -> None:
+    """Force the process's teaching plan into ``plan_status`` for gate tests."""
+    plan = session.exec(
+        select(TeachingPlan).where(TeachingPlan.assignment_process_id == process_id)
+    ).one()
+    plan.status = plan_status
+    session.add(plan)
+    session.commit()
 
 
 def _plan_setup(session: Session, *, required_teacher_count: int = 2):
@@ -795,3 +808,72 @@ def test_direct_choice_with_assigned_sibling_succeeds(
         .where(Assignment.status == AssignmentStatus.ACTIVE)
     ).all()
     assert {row.process_teacher_id for row in rows} == {other.id, teacher.id}
+
+
+# ── Plan-readiness gate on assignment operations (plan §3.11.9, §9.7) ──────────
+
+
+def test_manual_assignment_blocked_when_plan_stale(
+    client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    teacher = _make_teacher(session, process)
+    _set_plan_status(session, process.id, TeachingPlanStatus.STALE)
+    resp = client.post(
+        f"{_assignments_path(process.id)}/",
+        json={
+            "hour_requirement_id": str(slot0.id),
+            "process_teacher_id": str(teacher.id),
+        },
+    )
+    assert resp.status_code == 409
+    assert "stale" in resp.json()["detail"]
+    session.refresh(slot0)
+    assert slot0.status == HourRequirementStatus.AVAILABLE
+
+
+def test_manual_assignment_blocked_when_reconciliation_required(
+    client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    teacher = _make_teacher(session, process)
+    _set_plan_status(session, process.id, TeachingPlanStatus.RECONCILIATION_REQUIRED)
+    resp = client.post(
+        f"{_assignments_path(process.id)}/",
+        json={
+            "hour_requirement_id": str(slot0.id),
+            "process_teacher_id": str(teacher.id),
+        },
+    )
+    assert resp.status_code == 409
+    assert "reconciliation" in resp.json()["detail"]
+
+
+def test_manual_assignment_allowed_when_requirements_generated(
+    client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    teacher = _make_teacher(session, process)
+    _set_plan_status(session, process.id, TeachingPlanStatus.REQUIREMENTS_GENERATED)
+    resp = client.post(
+        f"{_assignments_path(process.id)}/",
+        json={
+            "hour_requirement_id": str(slot0.id),
+            "process_teacher_id": str(teacher.id),
+        },
+    )
+    assert resp.status_code == 201
+
+
+def test_direct_choice_blocked_when_plan_stale(
+    client: TestClient, session: Session, current_user
+) -> None:
+    _p, _m, _teacher, slot0, path, payload = _direct_setup(
+        session, uuid.UUID(str(current_user.id))
+    )
+    _set_plan_status(session, _p.id, TeachingPlanStatus.STALE)
+    resp = client.post(path, json=payload)
+    assert resp.status_code == 409
+    assert "stale" in resp.json()["detail"]
+    session.refresh(slot0)
+    assert slot0.status == HourRequirementStatus.AVAILABLE

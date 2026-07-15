@@ -130,8 +130,14 @@ teachers carry `base_weekly_hours` and department-head authorized
 `extra_weekly_hours`; their sum is the exposed `target_weekly_hours`, and a
 non-zero extra flags `is_overloaded`. Extra hours change only through the audited
 `POST /teachers/{process_teacher_id}/extra-hours` action (reason required, blocked
-below already-assigned hours), never through the generic teacher `PATCH`. Consult
-the OpenAPI schema for request and response models.
+below already-assigned hours), never through the generic teacher `PATCH`.
+Meeting and assignment operations are gated on plan readiness: opening a meeting
+requires a balanced, locked and generated plan (`REQUIREMENTS_GENERATED`) — an
+inexact, unlocked, un-generated or missing plan is refused with `409` — and new
+assignment operations (manual, direct selection and meeting-turn choices) are
+refused while an allocation change leaves the plan `STALE` or
+`RECONCILIATION_REQUIRED`, so an assignment is never taken against a plan pending
+reconciliation. Consult the OpenAPI schema for request and response models.
 
 ## Quality gates
 
