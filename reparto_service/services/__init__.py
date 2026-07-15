@@ -6,6 +6,10 @@ Pydantic schemas (or raise domain-specific exceptions) so they can be
 unit-tested without an HTTP client.
 """
 
+from .calculations import (
+    AssignmentCalculationService,
+    PlanningCalculationService,
+)
 from .planning_lifecycle import (
     FEASIBILITY_LIFECYCLE,
     HOUR_REQUIREMENT_LIFECYCLE,
@@ -39,6 +43,7 @@ from .summary import (
 
 __all__ = [
     "ALLOWED_TRANSITIONS",
+    "AssignmentCalculationService",
     "CODE_PROCESS_BALANCED",
     "CODE_PROCESS_HAS_OVERAGE",
     "CODE_PROCESS_HAS_PENDING",
@@ -53,6 +58,7 @@ __all__ = [
     "HOUR_REQUIREMENT_LIFECYCLE",
     "IllegalStateTransitionError",
     "IllegalTransitionError",
+    "PlanningCalculationService",
     "SummaryService",
     "TEACHING_PLAN_LIFECYCLE",
     "TransitionTable",

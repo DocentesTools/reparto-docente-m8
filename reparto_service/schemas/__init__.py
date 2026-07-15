@@ -5,6 +5,13 @@ Domain request/response schemas that are not bound to a database table
 and are re-exported from here.
 """
 
+from .planning import (
+    AssignmentSummary,
+    GroupBalance,
+    ParticipantBalance,
+    PlanBalance,
+    TeacherLoadBalance,
+)
 from .summary import (
     GlobalBalance,
     ProcessDashboard,
@@ -15,10 +22,15 @@ from .summary import (
 )
 
 __all__ = [
+    "AssignmentSummary",
     "GlobalBalance",
+    "GroupBalance",
+    "ParticipantBalance",
+    "PlanBalance",
     "ProcessDashboard",
     "ProcessSummary",
     "RequirementBalance",
     "TeacherBalance",
+    "TeacherLoadBalance",
     "ValidationMessage",
 ]
