@@ -688,3 +688,110 @@ def test_get_assignment_validations_reader_allowed(
     factories.make_teaching_plan(session, process)
     resp = reader_client.get(f"{_assignments_path(process.id)}/validations")
     assert resp.status_code == 200
+
+
+# ── Direct-selection concurrency: lock + in-transaction recheck (plan §20.5) ───
+
+
+def _direct_concurrency_setup(
+    session: Session,
+    user_id: uuid.UUID,
+    *,
+    selection_position: int = 0,
+    base_weekly_hours: float = 18.0,
+):
+    """Process/plan with two co-teaching slots and the current user linked.
+
+    Unlike ``_direct_setup`` this exposes both slots and lets the caller tune
+    the linked participant's target hours, so the distinct-teacher and
+    remaining-target rechecks can be exercised on the direct path.
+    """
+    process, activity, slot0, slot1 = _plan_setup(session)
+    profile = factories.make_teacher_profile(session, user_id=user_id)
+    teacher = factories.make_process_teacher(
+        session,
+        process,
+        profile,
+        selection_position=selection_position,
+        base_weekly_hours=base_weekly_hours,
+    )
+    meeting = factories.make_meeting_session(
+        session,
+        process,
+        status=MeetingSessionStatus.SELECTING,
+        direct_teacher_selection_enabled=True,
+    )
+    path = f"{_assignments_path(process.id)}/direct-choice"
+    return process, activity, slot0, slot1, teacher, meeting, path
+
+
+def test_direct_choice_rechecks_distinct_teacher_under_lock(
+    client: TestClient, session: Session, current_user
+) -> None:
+    """A teacher already holding one position is refused a sibling position.
+
+    The activity's live occupancy is locked, then the distinct-teacher rule is
+    rechecked inside the transaction (plan §3.7, §20.5) — a clean 400 before the
+    DB partial-unique barrier.
+    """
+    _p, _a, slot0, slot1, teacher, meeting, path = _direct_concurrency_setup(
+        session, uuid.UUID(str(current_user.id))
+    )
+    factories.make_assignment(session, _p, slot0, teacher)
+    resp = client.post(
+        path,
+        json={
+            "meeting_session_id": str(meeting.id),
+            "hour_requirement_id": str(slot1.id),
+        },
+    )
+    assert resp.status_code == 400
+    assert "distinct teachers" in resp.json()["detail"]
+    session.refresh(slot1)
+    assert slot1.status == HourRequirementStatus.AVAILABLE
+
+
+def test_direct_choice_rechecks_remaining_target_under_lock(
+    client: TestClient, session: Session, current_user
+) -> None:
+    """A slot exceeding the locked participant's remaining target is refused."""
+    _p, _a, slot0, _slot1, _t, meeting, path = _direct_concurrency_setup(
+        session, uuid.UUID(str(current_user.id)), base_weekly_hours=2.0
+    )  # target 2 < 4h slot
+    resp = client.post(
+        path,
+        json={
+            "meeting_session_id": str(meeting.id),
+            "hour_requirement_id": str(slot0.id),
+        },
+    )
+    assert resp.status_code == 400
+    assert "authorize extra hours" in resp.json()["detail"]
+    session.refresh(slot0)
+    assert slot0.status == HourRequirementStatus.AVAILABLE
+
+
+def test_direct_choice_with_assigned_sibling_succeeds(
+    client: TestClient, session: Session, current_user
+) -> None:
+    """Locking a non-empty sibling set still lets a distinct teacher take the
+    free position (plan §3.7)."""
+    process, activity, slot0, slot1, teacher, meeting, path = _direct_concurrency_setup(
+        session, uuid.UUID(str(current_user.id))
+    )
+    other = _make_teacher(session, process)
+    factories.make_assignment(session, process, slot0, other)
+    resp = client.post(
+        path,
+        json={
+            "meeting_session_id": str(meeting.id),
+            "hour_requirement_id": str(slot1.id),
+        },
+    )
+    assert resp.status_code == 201
+    rows = session.exec(
+        select(Assignment)
+        .where(Assignment.teaching_activity_id == activity.id)
+        .where(Assignment.status == AssignmentStatus.ACTIVE)
+    ).all()
+    assert {row.process_teacher_id for row in rows} == {other.id, teacher.id}

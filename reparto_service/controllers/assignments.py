@@ -16,9 +16,17 @@ Invariants enforced here (with the database as the final barrier, plan §20.9):
   requirement itself, never trusted from the client;
 * mutations are blocked while the parent process is immutable (final/archived).
 
-The deeper LAN concurrency work (row-lock recheck of remaining target hours,
-witness repair) and the exact participant-target rules are their own later plan
-tasks; this task establishes the model and the complete-slot occupancy rules.
+Concurrency (plan §20.5): direct teacher selection is a teacher-triggerable hot
+path, so every occupancy runs only *cheap* in-transaction guards under
+pessimistic row locks — never the NP-hard feasibility solver. Both entry points
+funnel through :meth:`AssignmentController._lock_selection_state`, which locks
+the requirement slot, the participant row and the activity's sibling occupancy
+in one canonical order (slot → participant → siblings, identical on the manual
+and direct paths so the two can never deadlock against each other). The
+slot-availability, distinct-teacher and exact-target rechecks then run against
+that serialized, freshly re-read view (plan §20.5 guards 1–2/4). The persisted
+witness repair and the full solver stay off this path — they are
+department-head-only (plan §20.24) and remain their own §20.20 tasks.
 """
 
 from __future__ import annotations
@@ -275,7 +283,18 @@ class AssignmentController(DomainController):
         Shared by manual and direct assignment so both paths run identical rules
         (plan §7.7). The requirement's activity is denormalised onto the row
         (plan §20.9); the DB partial-unique indexes are the final barrier.
+
+        Concurrency (plan §20.5): the slot, the participant and the activity's
+        sibling occupancy are pessimistically locked *before* the guards run, so
+        the slot-availability, distinct-teacher and exact-target checks below are
+        rechecked against a serialized, up-to-date view. Two concurrent
+        selections for the same slot, the same participant, or two positions of
+        the same activity therefore serialize here and one gets a clean domain
+        error instead of racing to the DB partial-unique barrier.
         """
+        AssignmentController._lock_selection_state(
+            session, requirement=requirement, process_teacher=process_teacher
+        )
         if requirement.status != HourRequirementStatus.AVAILABLE:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -304,6 +323,70 @@ class AssignmentController(DomainController):
         requirement.status = HourRequirementStatus.ASSIGNED
         session.add(requirement)
         return assignment
+
+    @staticmethod
+    def _lock_selection_state(
+        session: Session,
+        *,
+        requirement: HourRequirement,
+        process_teacher: ProcessTeacher,
+    ) -> None:
+        """Pessimistically lock the state a selection depends on (plan §20.5).
+
+        Acquired in one canonical order — the requirement slot, then the
+        participant, then the activity's sibling occupancy — shared by both the
+        manual and direct entry points so concurrent selections can never
+        deadlock against each other. Locking the slot serializes two teachers
+        racing for the *same* slot; locking the participant serializes one
+        teacher's concurrent selections (so the remaining-target recheck sees
+        every in-flight assignment); locking the activity's ACTIVE assignments
+        serializes the distinct-teacher recheck across sibling positions. Each
+        locked row is re-read so the guards run on current data.
+        """
+        AssignmentController._lock_requirement_row(session, requirement)
+        AssignmentController._lock_participant_row(session, process_teacher)
+        AssignmentController._lock_activity_assignments(
+            session, requirement.teaching_activity_id
+        )
+
+    @staticmethod
+    def _lock_requirement_row(session: Session, requirement: HourRequirement) -> None:
+        """Lock the requirement slot row FOR UPDATE and re-read it."""
+        session.exec(
+            select(HourRequirement)
+            .where(HourRequirement.id == requirement.id)
+            .with_for_update()
+        ).all()
+        session.refresh(requirement)
+
+    @staticmethod
+    def _lock_participant_row(
+        session: Session, process_teacher: ProcessTeacher
+    ) -> None:
+        """Lock the participant row FOR UPDATE and re-read it (fresh target)."""
+        session.exec(
+            select(ProcessTeacher)
+            .where(ProcessTeacher.id == process_teacher.id)
+            .with_for_update()
+        ).all()
+        session.refresh(process_teacher)
+
+    @staticmethod
+    def _lock_activity_assignments(
+        session: Session, teaching_activity_id: uuid.UUID
+    ) -> None:
+        """Lock the activity's ACTIVE sibling occupancy FOR UPDATE (plan §3.7).
+
+        Serializes the distinct-teacher recheck across the positions of one
+        activity; the DB partial-unique index stays the final barrier (plan
+        §20.9).
+        """
+        session.exec(
+            select(Assignment)
+            .where(Assignment.teaching_activity_id == teaching_activity_id)
+            .where(Assignment.status == AssignmentStatus.ACTIVE)
+            .with_for_update()
+        ).all()
 
     @staticmethod
     def _ensure_fits_target(
@@ -395,11 +478,9 @@ class AssignmentController(DomainController):
     def _get_requirement_or_404(
         session: Session, process_id: uuid.UUID, requirement_id: uuid.UUID
     ) -> HourRequirement:
-        statement = (
-            select(HourRequirement)
-            .where(HourRequirement.id == requirement_id)
-            .with_for_update()
-        )
+        # Identity/validation read only; the row is locked in canonical order
+        # by ``_lock_selection_state`` once occupancy actually begins (§20.5).
+        statement = select(HourRequirement).where(HourRequirement.id == requirement_id)
         requirement = session.exec(statement).first()
         if requirement is None or requirement.assignment_process_id != process_id:
             raise HTTPException(
