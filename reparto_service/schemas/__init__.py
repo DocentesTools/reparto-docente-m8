@@ -5,6 +5,13 @@ Domain request/response schemas that are not bound to a database table
 and are re-exported from here.
 """
 
+from .exchange import (
+    PlanningExportActivity,
+    PlanningExportArtifact,
+    PlanningImportActivity,
+    PlanningImportRequest,
+    PlanningImportResult,
+)
 from .planning import (
     AssignmentSummary,
     AssignmentValidationReport,
@@ -31,6 +38,11 @@ __all__ = [
     "GroupBalance",
     "ParticipantBalance",
     "PlanBalance",
+    "PlanningExportActivity",
+    "PlanningExportArtifact",
+    "PlanningImportActivity",
+    "PlanningImportRequest",
+    "PlanningImportResult",
     "PlanValidationMessage",
     "PlanValidationReport",
     "ProcessDashboard",

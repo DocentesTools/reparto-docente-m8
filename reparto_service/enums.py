@@ -145,6 +145,21 @@ class ExportArtifactFormat(str, Enum):
     JSON = "json"
 
 
+class PlanningExportMode(str, Enum):
+    """Strictness mode of a planning artifact export (plan §3.10, §7.8).
+
+    ``DRAFT`` and ``PROVISIONAL`` artifacts are **never blocked** by a plan being
+    inexact, unbalanced or stale — they carry the validation findings and both
+    balance states so leadership can review an in-progress plan. ``FINAL``
+    **retains blocking validation** (plan §7.8): a plan with any blocking finding
+    cannot be exported as final.
+    """
+
+    DRAFT = "draft"
+    PROVISIONAL = "provisional"
+    FINAL = "final"
+
+
 # ── Balance and validation states (plan 9) ────────────────────────────────────
 
 

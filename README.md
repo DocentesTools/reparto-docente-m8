@@ -71,6 +71,7 @@ to a LAN.
 | Assignment process | `/reparto/assignment-processes` |
 | Per-process resources | `/reparto/assignment-processes/{process_id}/teachers`, `/subjects`, `/groups`, `/requirements`, `/assignments` |
 | Teaching-load planning | `/reparto/assignment-processes/{process_id}/allocation-revisions`, `/teaching-plan`, `/teaching-plan/validations`, `/teaching-plan/materialize-main`, `/group-subjects`, `/teaching-activities` |
+| Planning exchange | `/reparto/assignment-processes/{process_id}/exports/planning-draft`, `/exports/planning-provisional`, `/exports/planning-final`, `/imports/planning` |
 | Lifecycle and read models | `/transition`, `/reopen`, `/copy-previous-year`, `/summary`, `/dashboard`, `/lan/me`, `/events` under an assignment process |
 | Audit and history | `/audit-events`, `/versions`, `/compare-previous-year`, `/exports`, `/restore-draft` under an assignment process |
 | Meeting turns | `/reparto/assignment-processes/{process_id}/meeting-sessions/{meeting_session_id}/turns` |
@@ -137,7 +138,18 @@ inexact, unlocked, un-generated or missing plan is refused with `409` — and ne
 assignment operations (manual, direct selection and meeting-turn choices) are
 refused while an allocation change leaves the plan `STALE` or
 `RECONCILIATION_REQUIRED`, so an assignment is never taken against a plan pending
-reconciliation. Consult the OpenAPI schema for request and response models.
+reconciliation. Planning artifacts can be exported and imported while the plan is
+still invalid: `POST /exports/planning-draft` and `POST /exports/planning-provisional`
+render a self-describing artifact — both balance states plus the full blocking and
+warning validation report and the live activities — and are **never blocked** by an
+inexact, unbalanced or stale plan, whereas `POST /exports/planning-final` retains
+the strict gate and is refused (`400`) while any blocking validation remains.
+`POST /imports/planning` ingests activities as `IMPORTED` teaching activities:
+every referenced subject and group-subject cell is validated against the target
+process, every hour must be a canonical decimal string (a binary float or a
+value with more than two decimal places is rejected), and an import never creates
+or activates an assignment. Consult the OpenAPI schema for request and response
+models.
 
 ## Quality gates
 

@@ -20,6 +20,7 @@ from reparto_service.app.routes import (
     history,
     hour_requirements,
     meeting_sessions,
+    planning_exchange,
     process_teachers,
     selection_turns,
     schools,
@@ -46,6 +47,7 @@ api_router.include_router(group_subjects.router)
 api_router.include_router(teaching_plans.router)
 api_router.include_router(teaching_activities.router)
 api_router.include_router(hour_requirements.router)
+api_router.include_router(planning_exchange.router)
 api_router.include_router(assignments.router)
 api_router.include_router(meeting_sessions.router)
 api_router.include_router(selection_turns.router)
