@@ -29,6 +29,10 @@ from reparto_service.db_models.selection_turns import SelectionTurn
 from reparto_service.db_models.schools import School
 from reparto_service.db_models.subjects import Subject
 from reparto_service.db_models.teacher_profiles import TeacherProfile
+from reparto_service.db_models.teaching_activities import (
+    TeachingActivity,
+    TeachingActivityGroup,
+)
 from reparto_service.db_models.teaching_groups import TeachingGroup
 from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
@@ -46,6 +50,8 @@ from reparto_service.enums import (
     SelectionOrderMode,
     SelectionTurnStatus,
     SubjectAllocationCategory,
+    TeachingActivitySource,
+    TeachingActivitySyncState,
     TeachingPlanStatus,
 )
 
@@ -324,6 +330,58 @@ def make_group_subject(
     session.commit()
     session.refresh(group_subject)
     return group_subject
+
+
+def make_teaching_activity(
+    session: Session,
+    plan: TeachingPlan,
+    subject: Subject,
+    *,
+    allocation_category: SubjectAllocationCategory = SubjectAllocationCategory.SECONDARY,
+    activity_type: ActivityType = ActivityType.ORDINARY,
+    group_weekly_hours_per_group: float = 2.0,
+    teacher_weekly_hours_per_position: float = 2.0,
+    required_teacher_count: int = 1,
+    source: TeachingActivitySource = TeachingActivitySource.SECONDARY_MANUAL,
+    source_group_subject_id: Optional[uuid.UUID] = None,
+    sync_state: TeachingActivitySyncState = TeachingActivitySyncState.IN_SYNC,
+    notes: Optional[str] = None,
+    group_subjects: Optional[list[GroupSubject]] = None,
+) -> TeachingActivity:
+    activity = TeachingActivity(
+        teaching_plan_id=plan.id,
+        subject_id=subject.id,
+        allocation_category=allocation_category,
+        activity_type=activity_type,
+        group_weekly_hours_per_group=group_weekly_hours_per_group,
+        teacher_weekly_hours_per_position=teacher_weekly_hours_per_position,
+        required_teacher_count=required_teacher_count,
+        source=source,
+        source_group_subject_id=source_group_subject_id,
+        sync_state=sync_state,
+        notes=notes,
+    )
+    session.add(activity)
+    session.commit()
+    session.refresh(activity)
+    for cell in group_subjects or []:
+        make_teaching_activity_group(session, activity, cell)
+    return activity
+
+
+def make_teaching_activity_group(
+    session: Session,
+    activity: TeachingActivity,
+    group_subject: GroupSubject,
+) -> TeachingActivityGroup:
+    link = TeachingActivityGroup(
+        teaching_activity_id=activity.id,
+        group_subject_id=group_subject.id,
+    )
+    session.add(link)
+    session.commit()
+    session.refresh(link)
+    return link
 
 
 def make_classroom_stage(

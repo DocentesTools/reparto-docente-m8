@@ -125,6 +125,15 @@ from .teacher_profiles import (
     TeacherProfilesPublic,
     TeacherProfileUpdate,
 )
+from .teaching_activities import (
+    TeachingActivitiesPublic,
+    TeachingActivity,
+    TeachingActivityCreate,
+    TeachingActivityGroup,
+    TeachingActivityGroupPublic,
+    TeachingActivityPublic,
+    TeachingActivityUpdate,
+)
 from .teaching_groups import (
     TeachingGroup,
     TeachingGroupBulkCreate,
@@ -228,6 +237,13 @@ __all__ = [
     "TeacherProfilePublic",
     "TeacherProfileUpdate",
     "TeacherProfilesPublic",
+    "TeachingActivitiesPublic",
+    "TeachingActivity",
+    "TeachingActivityCreate",
+    "TeachingActivityGroup",
+    "TeachingActivityGroupPublic",
+    "TeachingActivityPublic",
+    "TeachingActivityUpdate",
     "TeachingGroup",
     "TeachingGroupBulkCreate",
     "TeachingGroupCreate",

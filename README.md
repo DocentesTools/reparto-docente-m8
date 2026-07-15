@@ -70,7 +70,7 @@ to a LAN.
 | Reference administration | `/reparto/academic-years`, `/schools`, `/classroom-stages`, `/departments`, `/teacher-profiles` |
 | Assignment process | `/reparto/assignment-processes` |
 | Per-process resources | `/reparto/assignment-processes/{process_id}/teachers`, `/subjects`, `/groups`, `/requirements`, `/assignments` |
-| Teaching-load planning | `/reparto/assignment-processes/{process_id}/allocation-revisions`, `/teaching-plan`, `/group-subjects` |
+| Teaching-load planning | `/reparto/assignment-processes/{process_id}/allocation-revisions`, `/teaching-plan`, `/group-subjects`, `/teaching-activities` |
 | Lifecycle and read models | `/transition`, `/reopen`, `/copy-previous-year`, `/summary`, `/dashboard`, `/lan/me`, `/events` under an assignment process |
 | Audit and history | `/audit-events`, `/versions`, `/compare-previous-year`, `/exports`, `/restore-draft` under an assignment process |
 | Meeting turns | `/reparto/assignment-processes/{process_id}/meeting-sessions/{meeting_session_id}/turns` |
@@ -79,8 +79,10 @@ Assignment endpoints include `POST /assignments/direct-choice`. Selection-turn
 endpoints support initialization plus start, complete, skip, and override
 actions. Group-subject endpoints include `POST /group-subjects/bulk-preview` and
 `POST /group-subjects/bulk-apply` for filtered create/update/upsert matrix
-operations with a confirmed affected-row count. Consult the OpenAPI schema for
-request and response models.
+operations with a confirmed affected-row count. Teaching-activity endpoints
+manage manual secondary planning items and their multi-group links (main-subject
+activities are materialised from group subjects in a later flow). Consult the
+OpenAPI schema for request and response models.
 
 ## Quality gates
 
