@@ -13,7 +13,7 @@ from auth_sdk_m8.schemas.user import UserModel
 from reparto_service.controllers.assignments import AssignmentController
 from reparto_service.controllers.base import DomainController
 from reparto_service.controllers.meeting_sessions import MeetingSessionController
-from reparto_service.db_models.assignments import Assignment, AssignmentCreate
+from reparto_service.db_models.assignments import AssignmentCreate
 from reparto_service.db_models.meeting_sessions import MeetingSession
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.selection_turns import (
@@ -24,8 +24,6 @@ from reparto_service.db_models.selection_turns import (
     SelectionTurnsPublic,
 )
 from reparto_service.enums import (
-    AssignmentSource,
-    AssignmentStatus,
     MeetingSessionStatus,
     ProcessTeacherStatus,
     SelectionTurnStatus,
@@ -229,38 +227,31 @@ class SelectionTurnController(DomainController):
         turn: SelectionTurn,
         assignment_in: AssignmentCreate,
     ) -> None:
+        """Record the department head's manual choice for the active turn.
+
+        The meeting turn-completion flow is a department-head manual
+        assignment, so it goes through the **same** shared complete-slot
+        service as the standalone ``POST /assignments`` route and the teacher
+        LAN direct choice — no separate assignment business logic lives here
+        (plan §7.7). The only turn-specific rule is that the slot must be
+        recorded for the teacher whose turn is active; the complete-slot
+        invariants (slot availability, distinct teacher, exact target) are
+        enforced inside ``create_manual_assignment``. It records the
+        ``assignment.created`` audit event but does not commit — the enclosing
+        ``complete_turn`` owns the transaction.
+        """
         if assignment_in.process_teacher_id != turn.process_teacher_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Turn assignment must target the active turn teacher.",
             )
-        process = AssignmentController._ensure_open(
-            session, process_id, assignment_in.assignment_process_id
-        )
-        AssignmentController._validate_assignment_creation(
-            session, process_id, assignment_in, process
-        )
-        assignment = Assignment.model_validate(
-            assignment_in.model_dump(),
-            update={
-                "source": AssignmentSource.DEPARTMENT_HEAD,
-                "status": AssignmentStatus.CONFIRMED,
-                "chosen_by_user_id": uuid.UUID(str(current_user.id)),
-                "confirmed_by_user_id": uuid.UUID(str(current_user.id)),
-            },
-        )
-        session.add(assignment)
-        session.flush()
-        SelectionTurnController.record_audit_event(
+        AssignmentController.create_manual_assignment(
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="assignment.created",
-            entity_type="assignment",
-            entity_id=assignment.id,
-            before=None,
-            after=assignment,
-            reason=assignment.override_reason,
+            hour_requirement_id=assignment_in.hour_requirement_id,
+            process_teacher_id=assignment_in.process_teacher_id,
+            notes=assignment_in.notes,
         )
 
     @staticmethod

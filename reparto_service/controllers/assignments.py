@@ -119,12 +119,50 @@ class AssignmentController(DomainController):
         current_user: UserModel,
         assignment_in: AssignmentCreate,
     ) -> AssignmentPublic:
+        assignment = AssignmentController.create_manual_assignment(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            hour_requirement_id=assignment_in.hour_requirement_id,
+            process_teacher_id=assignment_in.process_teacher_id,
+            notes=assignment_in.notes,
+        )
+        session.commit()
+        session.refresh(assignment)
+        return AssignmentPublic.model_validate(assignment)
+
+    @staticmethod
+    def create_manual_assignment(
+        session: Session,
+        *,
+        process_id: uuid.UUID,
+        current_user: UserModel,
+        hour_requirement_id: uuid.UUID,
+        process_teacher_id: uuid.UUID,
+        notes: str | None,
+    ) -> Assignment:
+        """Department-head manual complete-slot occupancy (plan §7.7).
+
+        The single manual-assignment primitive. Both the standalone
+        ``POST /assignments`` route and the meeting turn-completion flow
+        (:class:`~reparto_service.controllers.selection_turns.SelectionTurnController`)
+        route through here, so the department-head manual path keeps **no
+        separate business logic** — it uses the same shared
+        :meth:`_occupy_slot` complete-slot service as the teacher LAN direct
+        choice, with the same availability/distinct-teacher/exact-target guards
+        under the same pessimistic locks.
+
+        The caller owns the transaction boundary: this records the
+        ``assignment.created`` audit event and returns the (uncommitted)
+        assignment so a wider operation — e.g. completing a selection turn —
+        can commit it together with its own changes.
+        """
         AssignmentController._ensure_open(session, process_id)
         requirement = AssignmentController._get_requirement_or_404(
-            session, process_id, assignment_in.hour_requirement_id
+            session, process_id, hour_requirement_id
         )
         process_teacher = AssignmentController._get_process_teacher_or_404(
-            session, process_id, assignment_in.process_teacher_id
+            session, process_id, process_teacher_id
         )
         assignment = AssignmentController._occupy_slot(
             session,
@@ -134,7 +172,7 @@ class AssignmentController(DomainController):
             source=AssignmentSource.DEPARTMENT_HEAD,
             chosen_by_user_id=uuid.UUID(str(current_user.id)),
             confirmed_by_user_id=None,
-            notes=assignment_in.notes,
+            notes=notes,
         )
         AssignmentController.record_audit_event(
             session,
@@ -146,9 +184,7 @@ class AssignmentController(DomainController):
             before=None,
             after=assignment,
         )
-        session.commit()
-        session.refresh(assignment)
-        return AssignmentPublic.model_validate(assignment)
+        return assignment
 
     @staticmethod
     def create_direct_choice(

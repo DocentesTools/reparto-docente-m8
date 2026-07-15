@@ -14,10 +14,34 @@ from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.enums import (
     AssignmentSource,
     AssignmentStatus,
+    HourRequirementStatus,
     MeetingSessionStatus,
     SelectionTurnStatus,
 )
 from tests import factories
+
+
+def _slot(
+    session: Session,
+    process: AssignmentProcess,
+    *,
+    position_index: int = 0,
+    required_teacher_hours: float = 4.0,
+    required_teacher_count: int = 1,
+):
+    """Build a plan + activity and return one generated teacher-position slot."""
+    plan = factories.make_teaching_plan(session, process)
+    subject = factories.make_subject(session, process)
+    activity = factories.make_teaching_activity(
+        session, plan, subject, required_teacher_count=required_teacher_count
+    )
+    return factories.make_hour_requirement(
+        session,
+        process,
+        activity,
+        position_index=position_index,
+        required_teacher_hours=required_teacher_hours,
+    )
 
 
 def _open_meeting(session: Session) -> tuple[AssignmentProcess, MeetingSession]:
@@ -332,26 +356,27 @@ def test_complete_turn_rejects_inactive_turn(
     assert "active turn" in resp.json()["detail"]
 
 
-def test_complete_turn_records_assignment_and_actor_metadata(
+def test_complete_turn_records_assignment_through_shared_service(
     client: TestClient, session: Session, current_user
 ) -> None:
+    # The department head completing a turn is a manual assignment: it must go
+    # through the same complete-slot service as direct selection, so the row
+    # lands ACTIVE (not a bespoke CONFIRMED), the activity is denormalised from
+    # the slot and the slot flips to ASSIGNED (plan §7.7).
     process, meeting = _open_meeting(session)
     teacher = _teacher(session, process, "A", 0)
     turn = factories.make_selection_turn(
         session, meeting, teacher, status=SelectionTurnStatus.ACTIVE
     )
-    subject = factories.make_subject(session, process)
-    group = factories.make_teaching_group(session, process)
-    requirement = factories.make_hour_requirement(session, process, group, subject)
+    requirement = _slot(session, process)
 
     resp = client.post(
         f"{_turns_path(process, meeting)}/{turn.id}/complete",
         json={
             "assignment": {
-                "assignment_process_id": str(process.id),
                 "hour_requirement_id": str(requirement.id),
                 "process_teacher_id": str(teacher.id),
-                "assigned_hours": 4,
+                "notes": "Chose the co-teaching slot",
             },
             "notes": "Chose first group",
         },
@@ -361,9 +386,13 @@ def test_complete_turn_records_assignment_and_actor_metadata(
     assert resp.json()["status"] == "completed"
     assignment = session.exec(select(Assignment)).one()
     assert assignment.source == AssignmentSource.DEPARTMENT_HEAD
-    assert assignment.status == AssignmentStatus.CONFIRMED
+    assert assignment.status == AssignmentStatus.ACTIVE
+    assert assignment.teaching_activity_id == requirement.teaching_activity_id
     assert assignment.chosen_by_user_id == uuid.UUID(str(current_user.id))
-    assert assignment.confirmed_by_user_id == uuid.UUID(str(current_user.id))
+    assert assignment.confirmed_by_user_id is None
+    assert assignment.notes == "Chose the co-teaching slot"
+    session.refresh(requirement)
+    assert requirement.status == HourRequirementStatus.ASSIGNED
     audit_resp = client.get(f"/reparto/assignment-processes/{process.id}/audit-events/")
     assert [event["event_type"] for event in audit_resp.json()["data"]] == [
         "assignment.created",
@@ -380,24 +409,89 @@ def test_complete_turn_rejects_assignment_for_other_teacher(
     turn = factories.make_selection_turn(
         session, meeting, first, status=SelectionTurnStatus.ACTIVE
     )
-    subject = factories.make_subject(session, process)
-    group = factories.make_teaching_group(session, process)
-    requirement = factories.make_hour_requirement(session, process, group, subject)
+    requirement = _slot(session, process)
 
     resp = client.post(
         f"{_turns_path(process, meeting)}/{turn.id}/complete",
         json={
             "assignment": {
-                "assignment_process_id": str(process.id),
                 "hour_requirement_id": str(requirement.id),
                 "process_teacher_id": str(second.id),
-                "assigned_hours": 4,
             }
         },
     )
 
     assert resp.status_code == 400
     assert "active turn teacher" in resp.json()["detail"]
+    # No assignment is created when the turn guard rejects the request.
+    assert session.exec(select(Assignment)).all() == []
+
+
+def test_complete_turn_enforces_shared_exact_target_guard(
+    client: TestClient, session: Session
+) -> None:
+    # Proof the shared complete-slot guards reach the turn path: a slot that
+    # would push the participant above their exact target is refused here just
+    # as it is on the standalone and direct paths (plan §3.8) — no separate
+    # turn-side capacity logic.
+    process, meeting = _open_meeting(session)
+    profile = factories.make_teacher_profile(session, display_name="A")
+    teacher = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=3.0, selection_position=0
+    )
+    turn = factories.make_selection_turn(
+        session, meeting, teacher, status=SelectionTurnStatus.ACTIVE
+    )
+    requirement = _slot(session, process, required_teacher_hours=4.0)
+
+    resp = client.post(
+        f"{_turns_path(process, meeting)}/{turn.id}/complete",
+        json={
+            "assignment": {
+                "hour_requirement_id": str(requirement.id),
+                "process_teacher_id": str(teacher.id),
+            }
+        },
+    )
+
+    assert resp.status_code == 400
+    assert "authorize extra hours first" in resp.json()["detail"]
+    assert session.exec(select(Assignment)).all() == []
+
+
+def test_complete_turn_rejects_already_assigned_slot(
+    client: TestClient, session: Session
+) -> None:
+    # The shared slot-availability guard also reaches the turn path: a slot that
+    # is already occupied cannot be recorded again (plan §5.10).
+    process, meeting = _open_meeting(session)
+    other_profile = factories.make_teacher_profile(session, display_name="Z")
+    other = factories.make_process_teacher(session, process, other_profile)
+    teacher = _teacher(session, process, "A", 0)
+    turn = factories.make_selection_turn(
+        session, meeting, teacher, status=SelectionTurnStatus.ACTIVE
+    )
+    requirement = _slot(session, process)
+    factories.make_assignment(
+        session, process, requirement, other, status=AssignmentStatus.ACTIVE
+    )
+    session.refresh(requirement)
+    requirement.status = HourRequirementStatus.ASSIGNED
+    session.add(requirement)
+    session.commit()
+
+    resp = client.post(
+        f"{_turns_path(process, meeting)}/{turn.id}/complete",
+        json={
+            "assignment": {
+                "hour_requirement_id": str(requirement.id),
+                "process_teacher_id": str(teacher.id),
+            }
+        },
+    )
+
+    assert resp.status_code == 400
+    assert "not available" in resp.json()["detail"]
 
 
 def test_summary_exposes_current_turn(client: TestClient, session: Session) -> None:

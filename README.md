@@ -103,7 +103,10 @@ active assignment per slot and a distinct teacher per activity. `DELETE`
 soft-cancels an assignment and frees its slot. Assignment endpoints also include
 `POST /assignments/direct-choice` for teacher LAN selection. Selection-turn
 endpoints support initialization plus start, complete, skip, and override
-actions. Group-subject endpoints include `POST /group-subjects/bulk-preview` and
+actions; completing a turn may carry the department head's manual slot choice,
+which is recorded through the same complete-slot service (identical
+availability, distinct-teacher and exact-target rules — no separate assignment
+logic). Group-subject endpoints include `POST /group-subjects/bulk-preview` and
 `POST /group-subjects/bulk-apply` for filtered create/update/upsert matrix
 operations with a confirmed affected-row count. Teaching-activity endpoints
 manage manual secondary planning items and their multi-group links.
