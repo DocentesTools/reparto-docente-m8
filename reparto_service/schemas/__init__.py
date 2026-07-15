@@ -10,6 +10,8 @@ from .planning import (
     GroupBalance,
     ParticipantBalance,
     PlanBalance,
+    PlanValidationMessage,
+    PlanValidationReport,
     TeacherLoadBalance,
 )
 from .summary import (
@@ -27,6 +29,8 @@ __all__ = [
     "GroupBalance",
     "ParticipantBalance",
     "PlanBalance",
+    "PlanValidationMessage",
+    "PlanValidationReport",
     "ProcessDashboard",
     "ProcessSummary",
     "RequirementBalance",

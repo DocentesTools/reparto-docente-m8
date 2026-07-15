@@ -118,6 +118,47 @@ def test_get_plan_process_not_found(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
+# ── Validations (plan §6.3, §6.4, §7.3) ───────────────────────────────────────
+
+
+def test_get_validations_reports_blocking_findings(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    factories.make_teaching_plan(session, process)
+    resp = client.get(f"{_BASE}/{process.id}/teaching-plan/validations")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["assignment_process_id"] == str(process.id)
+    assert body["is_assignment_ready"] is False
+    assert body["blocking_count"] >= 1
+    codes = {m["code"] for m in body["messages"]}
+    # A bare plan is missing its allocation and its requirement slots.
+    assert "plan.missing_allocation" in codes
+    assert "plan.requirements_not_generated" in codes
+    assert "plan.feasibility_not_confirmed" in codes
+
+
+def test_get_validations_plan_not_found(client: TestClient, session: Session) -> None:
+    process = factories.make_assignment_process(session)
+    resp = client.get(f"{_BASE}/{process.id}/teaching-plan/validations")
+    assert resp.status_code == 404
+
+
+def test_get_validations_process_not_found(client: TestClient) -> None:
+    resp = client.get(f"{_BASE}/{uuid.uuid4()}/teaching-plan/validations")
+    assert resp.status_code == 404
+
+
+def test_get_validations_reader_allowed(
+    reader_client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    factories.make_teaching_plan(session, process)
+    resp = reader_client.get(f"{_BASE}/{process.id}/teaching-plan/validations")
+    assert resp.status_code == 200
+
+
 # ── Lifecycle guard: mark_stale (plan §3.11, §9, §20.14) ──────────────────────
 
 

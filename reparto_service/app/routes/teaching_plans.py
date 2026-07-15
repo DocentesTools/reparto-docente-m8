@@ -1,9 +1,9 @@
 """Teaching-plan routes (nested under an assignment process, plan §7.3).
 
-This slice exposes the plan's ownership surface only: read the process's single
-plan and create it. The ``materialize-main``, ``summary``, ``validations``,
+This slice exposes the plan's ownership surface plus the read-only planning
+``validations`` endpoint (plan §7.3). The ``materialize-main``, ``summary``,
 ``lock``/``unlock`` and ``feasibility`` endpoints (plan §7.3) depend on the
-dual-balance, activity and feasibility services introduced by their dedicated
+activity, generation and feasibility services introduced by their dedicated
 later tasks and are added there.
 """
 
@@ -16,6 +16,7 @@ from fastapi import APIRouter
 from reparto_service.app.deps import CurrentUser, SessionDep
 from reparto_service.controllers.teaching_plans import TeachingPlanController
 from reparto_service.db_models.teaching_plans import TeachingPlanPublic
+from reparto_service.schemas.planning import PlanValidationReport
 
 router = APIRouter(
     prefix="/assignment-processes/{process_id}/teaching-plan",
@@ -26,6 +27,13 @@ router = APIRouter(
 @router.get("", response_model=TeachingPlanPublic)
 def get_teaching_plan(session: SessionDep, process_id: uuid.UUID) -> TeachingPlanPublic:
     return TeachingPlanController.get_plan(session, process_id)
+
+
+@router.get("/validations", response_model=PlanValidationReport)
+def get_teaching_plan_validations(
+    session: SessionDep, process_id: uuid.UUID
+) -> PlanValidationReport:
+    return TeachingPlanController.get_validations(session, process_id)
 
 
 @router.post("", response_model=TeachingPlanPublic, status_code=201)

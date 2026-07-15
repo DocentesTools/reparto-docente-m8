@@ -70,7 +70,7 @@ to a LAN.
 | Reference administration | `/reparto/academic-years`, `/schools`, `/classroom-stages`, `/departments`, `/teacher-profiles` |
 | Assignment process | `/reparto/assignment-processes` |
 | Per-process resources | `/reparto/assignment-processes/{process_id}/teachers`, `/subjects`, `/groups`, `/requirements`, `/assignments` |
-| Teaching-load planning | `/reparto/assignment-processes/{process_id}/allocation-revisions`, `/teaching-plan`, `/group-subjects`, `/teaching-activities` |
+| Teaching-load planning | `/reparto/assignment-processes/{process_id}/allocation-revisions`, `/teaching-plan`, `/teaching-plan/validations`, `/group-subjects`, `/teaching-activities` |
 | Lifecycle and read models | `/transition`, `/reopen`, `/copy-previous-year`, `/summary`, `/dashboard`, `/lan/me`, `/events` under an assignment process |
 | Audit and history | `/audit-events`, `/versions`, `/compare-previous-year`, `/exports`, `/restore-draft` under an assignment process |
 | Meeting turns | `/reparto/assignment-processes/{process_id}/meeting-sessions/{meeting_session_id}/turns` |
@@ -89,7 +89,11 @@ actions. Group-subject endpoints include `POST /group-subjects/bulk-preview` and
 `POST /group-subjects/bulk-apply` for filtered create/update/upsert matrix
 operations with a confirmed affected-row count. Teaching-activity endpoints
 manage manual secondary planning items and their multi-group links (main-subject
-activities are materialised from group subjects in a later flow). Process
+activities are materialised from group subjects in a later flow).
+`GET /teaching-plan/validations` returns the plan's blocking and warning
+findings (missing allocation, group/teacher-load imbalance, unmaterialised main
+subjects, invalid activity/group links, ungenerated or stale requirements); it is
+read-only and never triggers a feasibility solve. Process
 teachers carry `base_weekly_hours` and department-head authorized
 `extra_weekly_hours`; their sum is the exposed `target_weekly_hours`, and a
 non-zero extra flags `is_overloaded`. Extra hours change only through the audited

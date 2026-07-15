@@ -34,10 +34,12 @@ from reparto_service.db_models.teaching_plans import (
     TeachingPlanPublic,
 )
 from reparto_service.enums import FeasibilityStatus, TeachingPlanStatus
+from reparto_service.schemas.planning import PlanValidationReport
 from reparto_service.services.planning_lifecycle import (
     TEACHING_PLAN_LIFECYCLE,
     IllegalStateTransitionError,
 )
+from reparto_service.services.validations import PlanValidationService
 
 
 class TeachingPlanController(DomainController):
@@ -53,6 +55,24 @@ class TeachingPlanController(DomainController):
                 detail=f"No teaching plan for process {process_id}.",
             )
         return TeachingPlanPublic.model_validate(plan)
+
+    @staticmethod
+    def get_validations(
+        session: Session, process_id: uuid.UUID
+    ) -> PlanValidationReport:
+        """Return the plan's blocking/warning findings (plan §6.3, §6.4, §7.3).
+
+        Read-only and solver-free (plan §20.23): it reports the stored
+        feasibility status but never triggers an evaluation.
+        """
+        DomainController.get_process_or_404(session, process_id)
+        plan = TeachingPlanController._plan_row(session, process_id)
+        if plan is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No teaching plan for process {process_id}.",
+            )
+        return PlanValidationService.compute_plan_validations(session, plan)
 
     @staticmethod
     def create_plan(

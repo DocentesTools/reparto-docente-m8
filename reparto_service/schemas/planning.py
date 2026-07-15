@@ -30,7 +30,11 @@ from typing import Annotated, Optional
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PlainSerializer
 
 from reparto_service.core.decimals import quantize_hours
-from reparto_service.enums import HourRequirementStatus, ParticipantBalanceState
+from reparto_service.enums import (
+    HourRequirementStatus,
+    ParticipantBalanceState,
+    ValidationSeverity,
+)
 
 
 # ── Canonical decimal-hour output field ───────────────────────────────────────
@@ -196,6 +200,59 @@ class AssignmentSummary(BaseModel):
     )
 
 
+# ── Planning validations (plan §6.3, §6.4) ────────────────────────────────────
+
+
+class PlanValidationMessage(BaseModel):
+    """One planning blocking/warning finding (plan §6.3, §6.4).
+
+    ``code`` is a stable machine identifier (the frontend keys off it and never
+    off the human ``message``); the ``CODE_*`` constants in
+    :mod:`reparto_service.services.validations` are the single source of truth.
+    ``entity_type``/``entity_id`` point at the concrete row a finding is about
+    (a ``group_subject`` cell, a ``teaching_activity``, a ``teacher``) or at the
+    whole ``plan`` when the finding is plan-wide.
+    """
+
+    severity: ValidationSeverity = Field(
+        description="Severity bucket (plan §6.3/§6.4)."
+    )
+    code: str = Field(
+        max_length=80,
+        description="Stable identifier (e.g. 'plan.group_hours_imbalanced').",
+    )
+    message: str = Field(description="Human-readable description.")
+    entity_type: str = Field(
+        max_length=50,
+        description="Entity the finding refers to ('plan', 'group_subject', …).",
+    )
+    entity_id: Optional[uuid.UUID] = Field(
+        default=None, description="ID of the related entity, when applicable."
+    )
+
+
+class PlanValidationReport(BaseModel):
+    """Aggregate planning-validation result for one teaching plan (plan §6.3/§6.4).
+
+    ``is_assignment_ready`` is ``True`` only when there is **no** blocking
+    finding; it mirrors the plan §3.10 gate for starting the assignment stage
+    (the numeric balances plus the cheap structural checks). The exponential
+    feasibility solver is deliberately NOT run here (plan §20.19/§20.23): this
+    report reads the stored ``feasibility_status`` but never triggers a solve.
+    """
+
+    teaching_plan_id: uuid.UUID = Field(description="Teaching plan ID.")
+    assignment_process_id: uuid.UUID = Field(description="Owning process ID.")
+    is_assignment_ready: bool = Field(
+        description="True when no blocking finding is present (plan §3.10)."
+    )
+    blocking_count: int = Field(ge=0, description="Number of blocking findings.")
+    warning_count: int = Field(ge=0, description="Number of warning findings.")
+    messages: list[PlanValidationMessage] = Field(
+        description="Blocking findings first, then warnings; deterministic order."
+    )
+
+
 __all__ = [
     "AssignmentSummary",
     "GroupBalance",
@@ -203,8 +260,11 @@ __all__ = [
     "OptionalHoursField",
     "ParticipantBalance",
     "PlanBalance",
+    "PlanValidationMessage",
+    "PlanValidationReport",
     "TeacherLoadBalance",
     # re-exported for convenience of callers that switch on the derived state
     "HourRequirementStatus",
     "ParticipantBalanceState",
+    "ValidationSeverity",
 ]

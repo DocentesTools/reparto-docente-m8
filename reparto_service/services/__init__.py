@@ -27,6 +27,9 @@ from .process_lifecycle import (
     is_reopen_to_close_edge,
     is_terminal,
 )
+from .validations import (
+    PlanValidationService,
+)
 from .summary import (
     CODE_PROCESS_BALANCED,
     CODE_PROCESS_HAS_OVERAGE,
@@ -58,6 +61,7 @@ __all__ = [
     "HOUR_REQUIREMENT_LIFECYCLE",
     "IllegalStateTransitionError",
     "IllegalTransitionError",
+    "PlanValidationService",
     "PlanningCalculationService",
     "SummaryService",
     "TEACHING_PLAN_LIFECYCLE",
