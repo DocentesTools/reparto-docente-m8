@@ -285,11 +285,166 @@ class RequirementGenerationResult(SQLModel):
     count: int = Field(ge=0, description="Total live slot count after generation.")
 
 
+# ── Reconciliation preview / apply schemas (plan §7.5, §9, §20.8) ─────────────
+
+
+class RequirementConflictDetail(SQLModel):
+    """One assigned requirement slot a regeneration would disturb (plan §7.5, §9).
+
+    A conflict is an **ACTIVE-assigned** live slot whose activity plan changed:
+    either its indivisible hours changed (``resolution == "value_changed"``, the
+    activity's new hours carried in ``new_required_teacher_hours``) or its teacher
+    position was removed entirely (``resolution == "removed"``, with
+    ``new_required_teacher_hours`` null). Generation refuses to touch these (409);
+    reconciliation resolves them **explicitly** — it releases the active
+    assignment (``assignment_id`` / ``process_teacher_id``), retires the old slot,
+    and for a value change creates a fresh replacement slot linked from the old
+    one via ``superseded_by_requirement_id`` — so an assignment is never silently
+    overwritten or deleted (plan §3.11, §20.8). In a preview the assignment is
+    still ACTIVE and ``superseded_by_requirement_id`` is null; the reconcile
+    result reports the same slot after the release and supersession.
+    """
+
+    requirement_id: uuid.UUID = Field(
+        description="The conflicting (assigned) live requirement slot."
+    )
+    teaching_activity_id: uuid.UUID = Field(
+        description="Activity the conflicting slot belongs to."
+    )
+    position_index: int = Field(
+        ge=0, description="Teacher-position index of the conflicting slot."
+    )
+    resolution: str = Field(
+        description=(
+            "How the slot changed: 'value_changed' (indivisible hours differ) or "
+            "'removed' (the teacher position no longer exists)."
+        )
+    )
+    current_required_teacher_hours: float = Field(
+        ge=0, description="Hours the assigned slot currently carries."
+    )
+    new_required_teacher_hours: Optional[float] = Field(
+        default=None,
+        description=(
+            "Target hours the activity now wants (value change); null when the "
+            "position was removed."
+        ),
+    )
+    assignment_id: uuid.UUID = Field(
+        description="Active assignment the reconciliation releases."
+    )
+    process_teacher_id: uuid.UUID = Field(
+        description="Participant whose assignment is released."
+    )
+    superseded_by_requirement_id: Optional[uuid.UUID] = Field(
+        default=None,
+        description=(
+            "Replacement slot created for a value change (null in a preview and "
+            "for a removed position)."
+        ),
+    )
+
+
+class RequirementReconciliationPreview(SQLModel):
+    """Dry-run of a reconciliation (plan §7.5, §9), mutating no row.
+
+    Reports the assigned-slot ``conflicts`` a subsequent ``reconcile`` would
+    resolve, plus the create/preserve/retire counts of the regeneration that runs
+    alongside them. ``requires_reconciliation`` mirrors ``conflicts`` being
+    non-empty; ``is_noop`` is true only when nothing at all would change.
+    """
+
+    next_generation_number: int = Field(
+        ge=1, description="Generation number a subsequent reconcile would assign."
+    )
+    conflicts: list[RequirementConflictDetail] = Field(
+        description="Assigned slots that would be resolved, ordered deterministically."
+    )
+    conflict_count: int = Field(ge=0, description="Number of assigned conflicts.")
+    create_count: int = Field(
+        ge=0, description="Unassigned slots the regeneration would create."
+    )
+    preserve_count: int = Field(
+        ge=0, description="Unchanged slots kept with their assignment."
+    )
+    retire_count: int = Field(
+        ge=0, description="Unassigned slots the regeneration would retire."
+    )
+    requires_reconciliation: bool = Field(
+        description="True when any assigned conflict exists."
+    )
+    is_noop: bool = Field(
+        description="True when nothing would change (no create/retire/conflict)."
+    )
+
+
+class RequirementReconcileRequest(SQLModel):
+    """Body for ``reconcile`` — the explicit, reasoned resolution (plan §7.5).
+
+    ``reason`` is mandatory (every reconciliation is audited, plan §9);
+    ``expected_conflict_count`` is a confirm-the-preview staleness guard — the
+    apply refuses (409) unless it still sees exactly that many conflicts, so a
+    department head never resolves against a diverged plan.
+    """
+
+    reason: str = Field(
+        min_length=1,
+        max_length=1000,
+        description="Mandatory justification recorded on the audit event.",
+    )
+    expected_conflict_count: int = Field(
+        ge=0,
+        description=(
+            "Number of conflicts the caller confirmed from the preview; the apply "
+            "refuses if the plan diverged."
+        ),
+    )
+
+
+class RequirementReconciliationResult(SQLModel):
+    """Outcome of an applied reconciliation (plan §7.5, §9, §20.8).
+
+    ``resolved`` details every released assignment and its retired slot (with the
+    replacement id for a value change); ``created`` lists all freshly generated
+    slots (regeneration creates plus value-change replacements) and
+    ``data``/``count`` the full live-slot set after the run.
+    """
+
+    generation_number: int = Field(
+        ge=1, description="Generation number assigned to this run (plan §20.8)."
+    )
+    resolved: list[RequirementConflictDetail] = Field(
+        description="Resolved assigned conflicts (assignment released, slot retired)."
+    )
+    resolved_count: int = Field(ge=0, description="Number of conflicts resolved.")
+    released_assignment_ids: list[uuid.UUID] = Field(
+        description="Assignments cancelled by the reconciliation (never silent)."
+    )
+    created: list[HourRequirementPublic] = Field(
+        description="Newly generated slots (regeneration + value-change replacements)."
+    )
+    created_count: int = Field(ge=0, description="Number of slots created.")
+    preserved_count: int = Field(
+        ge=0, description="Unchanged slots re-validated into this generation."
+    )
+    retired_count: int = Field(
+        ge=0, description="Unassigned slots retired this run (excludes conflicts)."
+    )
+    data: list[HourRequirementPublic] = Field(
+        description="All live requirement slots after reconciliation."
+    )
+    count: int = Field(ge=0, description="Total live slot count after reconciliation.")
+
+
 __all__ = [
     "HourRequirement",
     "HourRequirementPublic",
     "HourRequirementsPublic",
+    "RequirementConflictDetail",
     "RequirementGenerationPreview",
     "RequirementGenerationResult",
+    "RequirementReconcileRequest",
+    "RequirementReconciliationPreview",
+    "RequirementReconciliationResult",
     "RequirementSlotPlan",
 ]

@@ -3,7 +3,9 @@
 Requirement slots are generated, never manually mutated (plan §5.9, §20.12): the
 ``GET`` endpoints are read-only, and the plan §7.5 ``generation-preview`` /
 ``generate`` actions produce and retire slots through the generation flow. The
-reconciliation-preview / reconcile endpoints (plan §7.5) are a later task.
+``reconciliation-preview`` / ``reconcile`` endpoints (plan §7.5, §9) resolve the
+assigned-slot conflicts a plain generation refuses, releasing assignments
+explicitly (with a reason) so none is ever silently dropped.
 """
 
 from __future__ import annotations
@@ -19,6 +21,9 @@ from reparto_service.db_models.hour_requirements import (
     HourRequirementsPublic,
     RequirementGenerationPreview,
     RequirementGenerationResult,
+    RequirementReconcileRequest,
+    RequirementReconciliationPreview,
+    RequirementReconciliationResult,
 )
 
 router = APIRouter(
@@ -52,6 +57,29 @@ def generate_requirements(
 ) -> RequirementGenerationResult:
     HourRequirementController.require_process_writer(session, current_user, process_id)
     return HourRequirementController.generate(session, process_id, current_user)
+
+
+@router.post("/reconciliation-preview", response_model=RequirementReconciliationPreview)
+def preview_requirement_reconciliation(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+) -> RequirementReconciliationPreview:
+    HourRequirementController.require_process_writer(session, current_user, process_id)
+    return HourRequirementController.reconciliation_preview(session, process_id)
+
+
+@router.post("/reconcile", response_model=RequirementReconciliationResult)
+def reconcile_requirements(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+    request: RequirementReconcileRequest,
+) -> RequirementReconciliationResult:
+    HourRequirementController.require_process_writer(session, current_user, process_id)
+    return HourRequirementController.reconcile(
+        session, process_id, current_user, request
+    )
 
 
 @router.get("/{requirement_id}", response_model=HourRequirementPublic)

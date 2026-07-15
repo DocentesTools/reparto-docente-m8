@@ -24,8 +24,17 @@ slot is then classified by the §20.8 identity model:
 
 ``generation-preview`` is a pure dry-run; ``generate`` re-runs the identical plan
 and applies it, so the two can never diverge (the same pattern the group-subject
-bulk flow uses). The reconciliation-preview / reconcile flow (plan §7.5) that
-resolves conflicts is its own later task.
+bulk flow uses).
+
+The ``reconciliation-preview`` / ``reconcile`` flow (plan §7.5, §9) resolves the
+conflicts ``generate`` refuses. Reconciliation runs the same deterministic diff
+but, instead of refusing, resolves each assigned conflict **explicitly**: it
+releases (soft-cancels) the active assignment, retires the old slot, and — for a
+value change — creates a fresh replacement slot linked from the old one via
+``superseded_by_requirement_id`` (plan §20.8). It requires a reason and a
+confirm-the-preview conflict count (plan §7.5), so an assignment is never
+silently dropped (plan §3.11), and advances the plan to
+``REQUIREMENTS_GENERATED`` at the new generation number (plan §9).
 """
 
 from __future__ import annotations
@@ -48,8 +57,12 @@ from reparto_service.db_models.hour_requirements import (
     HourRequirement,
     HourRequirementPublic,
     HourRequirementsPublic,
+    RequirementConflictDetail,
     RequirementGenerationPreview,
     RequirementGenerationResult,
+    RequirementReconcileRequest,
+    RequirementReconciliationPreview,
+    RequirementReconciliationResult,
     RequirementSlotPlan,
 )
 from reparto_service.db_models.teaching_activities import TeachingActivity
@@ -71,6 +84,42 @@ _GENERATABLE_PLAN_STATUSES: frozenset[TeachingPlanStatus] = frozenset(
     }
 )
 
+# Plan statuses a reconciliation may run from (plan §7.5, §9, §20.14): a plan
+# invalidated after requirements were generated with assignments. ``generate``
+# leaves such a plan STALE (it refuses on the conflicts), and the allocation /
+# activity-change wiring may additionally mark it RECONCILIATION_REQUIRED; both
+# resolve here and return to REQUIREMENTS_GENERATED.
+_RECONCILABLE_PLAN_STATUSES: frozenset[TeachingPlanStatus] = frozenset(
+    {
+        TeachingPlanStatus.STALE,
+        TeachingPlanStatus.RECONCILIATION_REQUIRED,
+    }
+)
+
+# Conflict resolution kinds surfaced in the reconciliation preview/result.
+_RESOLUTION_VALUE_CHANGED = "value_changed"
+_RESOLUTION_REMOVED = "removed"
+
+
+@dataclass
+class _Conflict:
+    """An assigned live slot a regeneration would disturb (plan §7.5, §9, §20.8).
+
+    ``new_hours`` is the activity's target hours for a value change, or ``None``
+    when the teacher position was removed; ``assignment`` is the single ACTIVE
+    assignment the reconciliation releases.
+    """
+
+    requirement: HourRequirement
+    assignment: Assignment
+    new_hours: float | None
+
+    @property
+    def resolution(self) -> str:
+        return (
+            _RESOLUTION_REMOVED if self.new_hours is None else _RESOLUTION_VALUE_CHANGED
+        )
+
 
 @dataclass
 class _GenerationPlan:
@@ -80,7 +129,7 @@ class _GenerationPlan:
     to_create: list[tuple[uuid.UUID, int, float]] = field(default_factory=list)
     to_preserve: list[HourRequirement] = field(default_factory=list)
     to_retire: list[HourRequirement] = field(default_factory=list)
-    conflicts: list[HourRequirement] = field(default_factory=list)
+    conflicts: list[_Conflict] = field(default_factory=list)
 
     @property
     def is_noop(self) -> bool:
@@ -180,19 +229,12 @@ class HourRequirementController(DomainController):
         if generation.to_retire:
             session.flush()
 
-        created: list[HourRequirement] = []
-        for activity_id, position_index, hours in generation.to_create:
-            requirement = HourRequirement(
-                assignment_process_id=process_id,
-                teaching_activity_id=activity_id,
-                position_index=position_index,
-                required_teacher_hours=hours,
-                created_generation=number,
-                last_validated_generation=number,
-                status=HourRequirementStatus.AVAILABLE,
+        created: list[HourRequirement] = [
+            HourRequirementController._insert_slot(
+                session, process_id, activity_id, position_index, hours, number
             )
-            session.add(requirement)
-            created.append(requirement)
+            for activity_id, position_index, hours in generation.to_create
+        ]
 
         plan.current_generation_number = number
         plan.requirements_generated_at = datetime.now(tz=timezone.utc)
@@ -217,6 +259,161 @@ class HourRequirementController(DomainController):
         live = HourRequirementController._live_requirements(session, process_id)
         return RequirementGenerationResult(
             generation_number=number,
+            created=[HourRequirementPublic.model_validate(r) for r in created],
+            created_count=len(created),
+            preserved_count=len(generation.to_preserve),
+            retired_count=len(generation.to_retire),
+            data=[HourRequirementPublic.model_validate(r) for r in live],
+            count=len(live),
+        )
+
+    # ── Reconciliation (plan §7.5, §9, §20.8) ────────────────────────────────
+
+    @staticmethod
+    def reconciliation_preview(
+        session: Session, process_id: uuid.UUID
+    ) -> RequirementReconciliationPreview:
+        """Dry-run the next reconciliation without mutating any row (plan §7.5).
+
+        Requires a reconcilable plan (STALE/RECONCILIATION_REQUIRED); reports the
+        assigned-slot conflicts a subsequent ``reconcile`` would resolve alongside
+        the regeneration's create/preserve/retire counts.
+        """
+        DomainController.get_process_or_404(session, process_id)
+        plan = HourRequirementController._require_reconcilable_plan(session, process_id)
+        generation = HourRequirementController._plan_generation(session, plan)
+        return HourRequirementController._to_reconciliation_preview(generation)
+
+    @staticmethod
+    def reconcile(
+        session: Session,
+        process_id: uuid.UUID,
+        current_user: UserModel,
+        request: RequirementReconcileRequest,
+    ) -> RequirementReconciliationResult:
+        """Resolve assigned conflicts explicitly and regenerate (plan §7.5, §9).
+
+        For every conflicting assigned slot the active assignment is released
+        (soft-cancelled, so it stays visible and audited — never a silent
+        delete, plan §3.11) and the old slot retired; a value change also creates
+        a fresh replacement slot linked via ``superseded_by_requirement_id``
+        (plan §20.8). The unassigned create/preserve/retire diff is applied as in
+        a plain generation, and the plan advances to ``REQUIREMENTS_GENERATED``
+        at the new generation number. ``expected_conflict_count`` guards against
+        acting on a diverged preview (409).
+        """
+        DomainController.ensure_process_mutable(
+            DomainController.get_process_or_404(session, process_id)
+        )
+        plan = HourRequirementController._require_reconcilable_plan(session, process_id)
+        generation = HourRequirementController._plan_generation(session, plan)
+
+        if request.expected_conflict_count != len(generation.conflicts):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Expected {request.expected_conflict_count} conflict(s) to "
+                    f"reconcile but the plan now has {len(generation.conflicts)}; "
+                    "re-run reconciliation-preview and confirm the current count."
+                ),
+            )
+
+        number = generation.next_generation_number
+        for requirement in generation.to_preserve:
+            requirement.last_validated_generation = number
+            session.add(requirement)
+        for requirement in generation.to_retire:
+            requirement.retired_generation = number
+            requirement.status = HourRequirementStatus.STALE
+            session.add(requirement)
+
+        # Resolve each assigned conflict explicitly: release the assignment and
+        # retire the old slot (plan §7.5, §9). The cancellation is audited so the
+        # removal is never silent.
+        released_ids: list[uuid.UUID] = []
+        for conflict in generation.conflicts:
+            assignment = conflict.assignment
+            before = Assignment.model_validate(assignment.model_dump())
+            assignment.status = AssignmentStatus.CANCELLED
+            session.add(assignment)
+            released_ids.append(assignment.id)
+            requirement = conflict.requirement
+            requirement.retired_generation = number
+            requirement.status = HourRequirementStatus.STALE
+            session.add(requirement)
+            HourRequirementController.record_audit_event(
+                session,
+                process_id=process_id,
+                current_user=current_user,
+                event_type="assignment.cancelled",
+                entity_type="assignment",
+                entity_id=assignment.id,
+                before=before,
+                after=assignment,
+                reason=request.reason,
+            )
+
+        # Flush retirements (unassigned + conflicts) before any insert so a
+        # re-created position never collides with a retired row on the
+        # active-slot partial-unique index.
+        if generation.to_retire or generation.conflicts:
+            session.flush()
+
+        created: list[HourRequirement] = [
+            HourRequirementController._insert_slot(
+                session, process_id, activity_id, position_index, hours, number
+            )
+            for activity_id, position_index, hours in generation.to_create
+        ]
+
+        resolved: list[RequirementConflictDetail] = []
+        for conflict in generation.conflicts:
+            superseded_id: uuid.UUID | None = None
+            if conflict.new_hours is not None:
+                # Value change: the logical position lives on with new hours.
+                replacement = HourRequirementController._insert_slot(
+                    session,
+                    process_id,
+                    conflict.requirement.teaching_activity_id,
+                    conflict.requirement.position_index,
+                    conflict.new_hours,
+                    number,
+                )
+                created.append(replacement)
+                conflict.requirement.superseded_by_requirement_id = replacement.id
+                session.add(conflict.requirement)
+                superseded_id = replacement.id
+            resolved.append(
+                HourRequirementController._conflict_detail(conflict, superseded_id)
+            )
+
+        plan.current_generation_number = number
+        plan.requirements_generated_at = datetime.now(tz=timezone.utc)
+        TeachingPlanController.apply_status_transition(
+            plan, TeachingPlanStatus.REQUIREMENTS_GENERATED
+        )
+        session.add(plan)
+        HourRequirementController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type="requirements.reconciled",
+            entity_type="teaching_plan",
+            entity_id=plan.id,
+            before=None,
+            after=plan,
+            reason=request.reason,
+        )
+        session.commit()
+
+        for requirement in created:
+            session.refresh(requirement)
+        live = HourRequirementController._live_requirements(session, process_id)
+        return RequirementReconciliationResult(
+            generation_number=number,
+            resolved=resolved,
+            resolved_count=len(resolved),
+            released_assignment_ids=released_ids,
             created=[HourRequirementPublic.model_validate(r) for r in created],
             created_count=len(created),
             preserved_count=len(generation.to_preserve),
@@ -258,7 +455,7 @@ class HourRequirementController(DomainController):
         # (guaranteed by the active-slot partial-unique index).
         live = HourRequirementController._live_requirements(session, process_id)
         live_by_slot = {(r.teaching_activity_id, r.position_index): r for r in live}
-        assigned_ids = HourRequirementController._active_assigned_ids(
+        assignments = HourRequirementController._active_assignments_by_requirement(
             session, process_id
         )
 
@@ -269,8 +466,12 @@ class HourRequirementController(DomainController):
                 result.to_create.append((slot[0], slot[1], hours))
             elif _hours_equal(requirement.required_teacher_hours, hours):
                 result.to_preserve.append(requirement)
-            elif requirement.id in assigned_ids:
-                result.conflicts.append(requirement)
+            elif requirement.id in assignments:
+                # Value change on an assigned slot: a conflict — never rewritten
+                # in place; reconciliation retires it and creates a replacement.
+                result.conflicts.append(
+                    _Conflict(requirement, assignments[requirement.id], hours)
+                )
             else:
                 # Value change on an unassigned slot: retire the old row and
                 # generate a fresh one for the same logical position (plan §20.8).
@@ -281,8 +482,12 @@ class HourRequirementController(DomainController):
             if slot in target:
                 continue
             requirement = live_by_slot[slot]
-            if requirement.id in assigned_ids:
-                result.conflicts.append(requirement)
+            if requirement.id in assignments:
+                # Removed position that is still assigned: a conflict (no target
+                # slot, so reconciliation retires it without a replacement).
+                result.conflicts.append(
+                    _Conflict(requirement, assignments[requirement.id], None)
+                )
             else:
                 result.to_retire.append(requirement)
 
@@ -306,11 +511,69 @@ class HourRequirementController(DomainController):
             preserve_count=len(generation.to_preserve),
             retire_ids=[r.id for r in generation.to_retire],
             retire_count=len(generation.to_retire),
-            conflict_ids=[r.id for r in generation.conflicts],
+            conflict_ids=[c.requirement.id for c in generation.conflicts],
             conflict_count=len(generation.conflicts),
             requires_reconciliation=bool(generation.conflicts),
             is_noop=generation.is_noop,
         )
+
+    @staticmethod
+    def _to_reconciliation_preview(
+        generation: _GenerationPlan,
+    ) -> RequirementReconciliationPreview:
+        """Render a computed diff as the public reconciliation preview schema."""
+        return RequirementReconciliationPreview(
+            next_generation_number=generation.next_generation_number,
+            conflicts=[
+                HourRequirementController._conflict_detail(conflict)
+                for conflict in generation.conflicts
+            ],
+            conflict_count=len(generation.conflicts),
+            create_count=len(generation.to_create),
+            preserve_count=len(generation.to_preserve),
+            retire_count=len(generation.to_retire),
+            requires_reconciliation=bool(generation.conflicts),
+            is_noop=generation.is_noop,
+        )
+
+    @staticmethod
+    def _conflict_detail(
+        conflict: _Conflict, superseded_id: uuid.UUID | None = None
+    ) -> RequirementConflictDetail:
+        """Render one conflict for a preview (no supersede) or a result."""
+        return RequirementConflictDetail(
+            requirement_id=conflict.requirement.id,
+            teaching_activity_id=conflict.requirement.teaching_activity_id,
+            position_index=conflict.requirement.position_index,
+            resolution=conflict.resolution,
+            current_required_teacher_hours=conflict.requirement.required_teacher_hours,
+            new_required_teacher_hours=conflict.new_hours,
+            assignment_id=conflict.assignment.id,
+            process_teacher_id=conflict.assignment.process_teacher_id,
+            superseded_by_requirement_id=superseded_id,
+        )
+
+    @staticmethod
+    def _insert_slot(
+        session: Session,
+        process_id: uuid.UUID,
+        activity_id: uuid.UUID,
+        position_index: int,
+        hours: float,
+        generation: int,
+    ) -> HourRequirement:
+        """Add one fresh AVAILABLE slot for a logical position (plan §20.8)."""
+        requirement = HourRequirement(
+            assignment_process_id=process_id,
+            teaching_activity_id=activity_id,
+            position_index=position_index,
+            required_teacher_hours=hours,
+            created_generation=generation,
+            last_validated_generation=generation,
+            status=HourRequirementStatus.AVAILABLE,
+        )
+        session.add(requirement)
+        return requirement
 
     @staticmethod
     def _require_generatable_plan(
@@ -340,6 +603,30 @@ class HourRequirementController(DomainController):
         return plan
 
     @staticmethod
+    def _require_reconcilable_plan(
+        session: Session, process_id: uuid.UUID
+    ) -> TeachingPlan:
+        """Return the process's plan, or 400 when it cannot be reconciled."""
+        plan = session.exec(
+            select(TeachingPlan).where(TeachingPlan.assignment_process_id == process_id)
+        ).first()
+        if plan is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Process {process_id} has no teaching plan to reconcile.",
+            )
+        if plan.status not in _RECONCILABLE_PLAN_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Teaching plan is {plan.status.value}; reconciliation runs "
+                    "only on a stale or reconciliation-required plan (plan §7.5, "
+                    "§9)."
+                ),
+            )
+        return plan
+
+    @staticmethod
     def _live_requirements(
         session: Session, process_id: uuid.UUID
     ) -> list[HourRequirement]:
@@ -357,15 +644,20 @@ class HourRequirementController(DomainController):
         )
 
     @staticmethod
-    def _active_assigned_ids(session: Session, process_id: uuid.UUID) -> set[uuid.UUID]:
-        """Requirement ids that currently carry an ACTIVE assignment."""
-        return set(
-            session.exec(
-                select(Assignment.hour_requirement_id)
-                .where(Assignment.assignment_process_id == process_id)
-                .where(Assignment.status == AssignmentStatus.ACTIVE)
-            ).all()
-        )
+    def _active_assignments_by_requirement(
+        session: Session, process_id: uuid.UUID
+    ) -> dict[uuid.UUID, Assignment]:
+        """ACTIVE assignments of a process keyed by their requirement slot id.
+
+        At most one ACTIVE assignment exists per slot (active partial-unique
+        index), so the mapping is unambiguous.
+        """
+        rows = session.exec(
+            select(Assignment)
+            .where(Assignment.assignment_process_id == process_id)
+            .where(Assignment.status == AssignmentStatus.ACTIVE)
+        ).all()
+        return {a.hour_requirement_id: a for a in rows}
 
     @staticmethod
     def _get_or_404(

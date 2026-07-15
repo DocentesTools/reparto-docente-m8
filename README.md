@@ -86,7 +86,16 @@ while removed unassigned slots retire, the plan advances to
 `REQUIREMENTS_GENERATED` at the next generation number, and a change that would
 touch an already-assigned slot is refused (409) so it routes through
 reconciliation rather than silently dropping an assignment. Both require a locked
-(or stale, for regeneration) plan. An assignment
+(or stale, for regeneration) plan. `POST /requirements/reconciliation-preview`
+dry-runs that resolution — it reports each conflicting assigned slot (whether its
+hours changed or its position was removed, the assignment that would be released
+and, for a value change, the replacement slot) — and `POST /requirements/reconcile`
+applies it: on a stale or reconciliation-required plan it releases (soft-cancels,
+audited) the affected assignments, retires the old slots, links a value-changed
+slot to its fresh replacement via `superseded_by_requirement_id`, and returns the
+plan to `REQUIREMENTS_GENERATED`. It requires a `reason` and an
+`expected_conflict_count` confirmation, so an assignment is never silently
+deleted. An assignment
 binds one teacher to one complete, indivisible slot: create with just
 `{hour_requirement_id, process_teacher_id}` (no hour or share input), and the
 requirement's activity is denormalised server-side so the database enforces one
