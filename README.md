@@ -14,8 +14,8 @@ auth contract and owns no auth-service database or private signing keys.
 
 - School, academic-year, department, teacher-profile, classroom-stage, and
   assignment-process administration.
-- Per-process teachers, subjects, teaching groups, hour requirements, and
-  capacity-enforced assignments.
+- Per-process teachers, subjects, teaching groups, generated hour-requirement
+  slots, and capacity-enforced assignments.
 - Process lifecycle transitions, reopening, draft restoration, summaries,
   dashboards, audit events, and a server-sent event stream.
 - LAN teacher read access, meeting sessions, ordered selection turns, and
@@ -75,7 +75,10 @@ to a LAN.
 | Audit and history | `/audit-events`, `/versions`, `/compare-previous-year`, `/exports`, `/restore-draft` under an assignment process |
 | Meeting turns | `/reparto/assignment-processes/{process_id}/meeting-sessions/{meeting_session_id}/turns` |
 
-Assignment endpoints include `POST /assignments/direct-choice`. Selection-turn
+The `/requirements` endpoints are read-only: requirement rows are generated,
+indivisible teacher-position slots derived from teaching activities (one slot per
+required teacher position), never manually created or edited. Assignment
+endpoints include `POST /assignments/direct-choice`. Selection-turn
 endpoints support initialization plus start, complete, skip, and override
 actions. Group-subject endpoints include `POST /group-subjects/bulk-preview` and
 `POST /group-subjects/bulk-apply` for filtered create/update/upsert matrix

@@ -44,9 +44,9 @@ from reparto_service.enums import (
     AssignmentType,
     DepartmentHourAllocationSource,
     FeasibilityStatus,
+    HourRequirementStatus,
     MeetingSessionStatus,
     ProcessTeacherStatus,
-    RequirementType,
     SelectionOrderMode,
     SelectionTurnStatus,
     SubjectAllocationCategory,
@@ -415,18 +415,27 @@ def make_classroom_stage(
 def make_hour_requirement(
     session: Session,
     process: AssignmentProcess,
-    group: TeachingGroup,
-    subject: Subject,
+    activity: TeachingActivity,
     *,
-    required_hours: float = 4.0,
-    requirement_type: RequirementType = RequirementType.ORDINARY,
+    position_index: int = 0,
+    required_teacher_hours: float = 4.0,
+    created_generation: int = 1,
+    last_validated_generation: int = 1,
+    retired_generation: Optional[int] = None,
+    superseded_by_requirement_id: Optional[uuid.UUID] = None,
+    status: HourRequirementStatus = HourRequirementStatus.AVAILABLE,
 ) -> HourRequirement:
+    """Insert one generated teacher-position slot (plan §5.9, §20.8)."""
     requirement = HourRequirement(
         assignment_process_id=process.id,
-        teaching_group_id=group.id,
-        subject_id=subject.id,
-        required_hours=required_hours,
-        requirement_type=requirement_type,
+        teaching_activity_id=activity.id,
+        position_index=position_index,
+        required_teacher_hours=required_teacher_hours,
+        created_generation=created_generation,
+        last_validated_generation=last_validated_generation,
+        retired_generation=retired_generation,
+        superseded_by_requirement_id=superseded_by_requirement_id,
+        status=status,
     )
     session.add(requirement)
     session.commit()

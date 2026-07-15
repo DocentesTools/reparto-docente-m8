@@ -69,10 +69,8 @@ from .group_subjects import (
 )
 from .hour_requirements import (
     HourRequirement,
-    HourRequirementCreate,
     HourRequirementPublic,
     HourRequirementsPublic,
-    HourRequirementUpdate,
 )
 from .meeting_sessions import (
     MeetingSession,
@@ -195,9 +193,7 @@ __all__ = [
     "GroupSubjectUpdate",
     "GroupSubjectsPublic",
     "HourRequirement",
-    "HourRequirementCreate",
     "HourRequirementPublic",
-    "HourRequirementUpdate",
     "HourRequirementsPublic",
     "MeetingSession",
     "MeetingSessionCreate",
