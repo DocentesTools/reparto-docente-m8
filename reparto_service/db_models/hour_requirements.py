@@ -28,10 +28,12 @@ Identity and generation lineage (plan §20.8, authoritative over the pre-§20
   a reconciled assigned slot to the new row that replaced it (plan §20.8).
 
 Requirements are **generated, never manually created or deleted** (plan §5.9,
-§20.12): this module therefore exposes read schemas only. The
-generation-preview / generate / reconciliation-preview / reconcile flows
-(plan §7.5) and the composite FK on ``Assignment`` (plan §20.9) are their own
-later tasks.
+§20.12): this module therefore exposes read schemas only, plus the
+generation-preview / generate result schemas
+(:class:`RequirementGenerationPreview` / :class:`RequirementGenerationResult`)
+consumed by the plan §7.5 generation flow on
+:class:`~reparto_service.controllers.hour_requirements.HourRequirementController`.
+The reconciliation-preview / reconcile flow (plan §7.5) is its own later task.
 
 Hour values stay ``float`` like every other hour field in the service today; the
 fleet-wide ``Decimal`` / ``NUMERIC(..., 2)`` sweep is a dedicated later task
@@ -191,8 +193,103 @@ class HourRequirementsPublic(SQLModel):
     count: int = Field(description="Total hour requirements count.")
 
 
+# ── Generation preview / apply schemas (plan §7.5, §20.8) ─────────────────────
+
+
+class RequirementSlotPlan(SQLModel):
+    """One planned teacher-position slot in a generation preview (plan §7.5).
+
+    Describes a slot the generation *would* create for the logical identity
+    ``(teaching_activity_id, position_index)`` (plan §20.8) with the indivisible
+    hours derived from the activity's ``teacher_weekly_hours_per_position``.
+    """
+
+    teaching_activity_id: uuid.UUID = Field(
+        description="Activity the new slot belongs to."
+    )
+    position_index: int = Field(
+        ge=0, description="Zero-based teacher-position index (plan §3.7)."
+    )
+    required_teacher_hours: float = Field(
+        ge=0, description="Indivisible weekly hours of the planned slot."
+    )
+
+
+class RequirementGenerationPreview(SQLModel):
+    """Dry-run diff of a requirement generation (plan §7.5, §20.8).
+
+    Computed without mutating any row: it reports what a subsequent
+    ``generate`` would do against the plan's current live requirement slots.
+    Each existing slot is classified by the §20.8 identity model — an unchanged
+    slot is *preserved* (keeps its id and assignment), a new logical position is
+    *created*, an unassigned position that no longer exists is *retired*, and a
+    change that would affect an **assigned** slot is a *conflict* that must go
+    through the reconciliation flow instead (``requires_reconciliation``), so
+    ``generate`` never silently overwrites or deletes an assignment (plan §7.5,
+    §9). A value change to an *unassigned* slot is represented as a retire of the
+    old row plus a create of the new one.
+    """
+
+    next_generation_number: int = Field(
+        ge=1, description="Generation number a subsequent generate would assign."
+    )
+    to_create: list[RequirementSlotPlan] = Field(
+        description="New teacher-position slots, ordered by (activity, position)."
+    )
+    create_count: int = Field(ge=0, description="Number of slots to create.")
+    preserve_ids: list[uuid.UUID] = Field(
+        description="Unchanged live slots kept with their assignment (plan §20.8)."
+    )
+    preserve_count: int = Field(ge=0, description="Number of slots preserved.")
+    retire_ids: list[uuid.UUID] = Field(
+        description="Unassigned live slots that would be retired (plan §20.8)."
+    )
+    retire_count: int = Field(ge=0, description="Number of slots retired.")
+    conflict_ids: list[uuid.UUID] = Field(
+        description=(
+            "Assigned live slots a change would affect; these require "
+            "reconciliation and block a plain generate (plan §7.5, §9)."
+        )
+    )
+    conflict_count: int = Field(ge=0, description="Number of conflicting slots.")
+    requires_reconciliation: bool = Field(
+        description="True when any conflict exists (generate is blocked)."
+    )
+    is_noop: bool = Field(
+        description="True when nothing would change (no create/retire/conflict)."
+    )
+
+
+class RequirementGenerationResult(SQLModel):
+    """Outcome of an applied requirement generation (plan §7.5, §20.8).
+
+    ``created`` lists the freshly generated slots; ``data``/``count`` is the full
+    set of live slots after the run, ordered by (activity, position), so a caller
+    gets both the delta and the resulting state in one response.
+    """
+
+    generation_number: int = Field(
+        ge=1, description="Generation number assigned to this run (plan §20.8)."
+    )
+    created: list[HourRequirementPublic] = Field(
+        description="Newly generated teacher-position slots."
+    )
+    created_count: int = Field(ge=0, description="Number of slots created.")
+    preserved_count: int = Field(
+        ge=0, description="Unchanged slots re-validated into this generation."
+    )
+    retired_count: int = Field(ge=0, description="Unassigned slots retired this run.")
+    data: list[HourRequirementPublic] = Field(
+        description="All live requirement slots after generation."
+    )
+    count: int = Field(ge=0, description="Total live slot count after generation.")
+
+
 __all__ = [
     "HourRequirement",
     "HourRequirementPublic",
     "HourRequirementsPublic",
+    "RequirementGenerationPreview",
+    "RequirementGenerationResult",
+    "RequirementSlotPlan",
 ]

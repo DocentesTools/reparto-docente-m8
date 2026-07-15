@@ -75,9 +75,18 @@ to a LAN.
 | Audit and history | `/audit-events`, `/versions`, `/compare-previous-year`, `/exports`, `/restore-draft` under an assignment process |
 | Meeting turns | `/reparto/assignment-processes/{process_id}/meeting-sessions/{meeting_session_id}/turns` |
 
-The `/requirements` endpoints are read-only: requirement rows are generated,
-indivisible teacher-position slots derived from teaching activities (one slot per
-required teacher position), never manually created or edited. An assignment
+The `/requirements` `GET` endpoints are read-only: requirement rows are
+generated, indivisible teacher-position slots derived from teaching activities
+(one slot per required teacher position), never manually created or edited. They
+are produced by the generation flow — `POST /requirements/generation-preview`
+dry-runs the next generation (create/preserve/retire diff plus any assigned-slot
+conflicts) and `POST /requirements/generate` applies it: one slot per teacher
+position of every live activity, unchanged slots keep their id and assignment
+while removed unassigned slots retire, the plan advances to
+`REQUIREMENTS_GENERATED` at the next generation number, and a change that would
+touch an already-assigned slot is refused (409) so it routes through
+reconciliation rather than silently dropping an assignment. Both require a locked
+(or stale, for regeneration) plan. An assignment
 binds one teacher to one complete, indivisible slot: create with just
 `{hour_requirement_id, process_teacher_id}` (no hour or share input), and the
 requirement's activity is denormalised server-side so the database enforces one

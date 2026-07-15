@@ -71,6 +71,9 @@ from .hour_requirements import (
     HourRequirement,
     HourRequirementPublic,
     HourRequirementsPublic,
+    RequirementGenerationPreview,
+    RequirementGenerationResult,
+    RequirementSlotPlan,
 )
 from .meeting_sessions import (
     MeetingSession,
@@ -196,6 +199,9 @@ __all__ = [
     "HourRequirement",
     "HourRequirementPublic",
     "HourRequirementsPublic",
+    "RequirementGenerationPreview",
+    "RequirementGenerationResult",
+    "RequirementSlotPlan",
     "MeetingSession",
     "MeetingSessionCreate",
     "MeetingSessionPublic",
