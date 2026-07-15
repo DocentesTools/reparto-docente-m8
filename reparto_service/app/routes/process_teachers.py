@@ -10,6 +10,7 @@ from reparto_service.app.deps import CurrentUser, SessionDep
 from reparto_service.controllers.process_teachers import ProcessTeacherController
 from reparto_service.db_models.process_teachers import (
     ProcessTeacherCreate,
+    ProcessTeacherExtraHoursUpdate,
     ProcessTeacherPublic,
     ProcessTeachersPublic,
     ProcessTeacherUpdate,
@@ -65,6 +66,25 @@ def update_process_teacher(
         process_teacher_id,
         process_teacher_in,
         current_user,
+    )
+
+
+@router.post("/{process_teacher_id}/extra-hours", response_model=ProcessTeacherPublic)
+def update_process_teacher_extra_hours(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+    process_teacher_id: uuid.UUID,
+    payload: ProcessTeacherExtraHoursUpdate,
+) -> ProcessTeacherPublic:
+    """Dedicated audited extra-hours action (plan §7.6).
+
+    Keeps authorized-overload changes off the generic PATCH so they always
+    carry a reason and an audit event.
+    """
+    ProcessTeacherController.require_process_writer(session, current_user, process_id)
+    return ProcessTeacherController.update_extra_hours(
+        session, process_id, process_teacher_id, payload, current_user
     )
 
 

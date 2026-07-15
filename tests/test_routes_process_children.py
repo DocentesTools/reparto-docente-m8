@@ -7,6 +7,7 @@ import uuid
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
+from reparto_service.enums import AssignmentProcessStatus, AssignmentStatus
 from tests import factories
 
 
@@ -21,12 +22,15 @@ def test_create_process_teacher(client: TestClient, session: Session) -> None:
         json={
             "assignment_process_id": str(process.id),
             "teacher_profile_id": str(profile.id),
-            "available_hours": 18,
+            "base_weekly_hours": 18,
         },
     )
     assert resp.status_code == 201
     body = resp.json()
-    assert body["available_hours"] == 18
+    assert body["base_weekly_hours"] == 18
+    assert body["extra_weekly_hours"] == 0
+    assert body["target_weekly_hours"] == 18
+    assert body["is_overloaded"] is False
     assert body["status"] == "active"
 
 
@@ -59,13 +63,15 @@ def test_list_process_teachers(client: TestClient, session: Session) -> None:
 def test_update_process_teacher(client: TestClient, session: Session) -> None:
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=10)
+    pt = factories.make_process_teacher(session, process, profile, base_weekly_hours=10)
     resp = client.patch(
         f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}",
-        json={"available_hours": 12},
+        json={"base_weekly_hours": 12},
     )
     assert resp.status_code == 200
-    assert resp.json()["available_hours"] == 12
+    body = resp.json()
+    assert body["base_weekly_hours"] == 12
+    assert body["target_weekly_hours"] == 12
 
 
 def test_delete_process_teacher(client: TestClient, session: Session) -> None:
@@ -76,6 +82,175 @@ def test_delete_process_teacher(client: TestClient, session: Session) -> None:
     assert resp.status_code == 200
     # Confirm gone (next get returns 404)
     resp = client.get(f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}")
+    assert resp.status_code == 404
+
+
+# ── Process-teacher extra hours (plan §3.8/§7.6) ────────────────────────────
+
+
+def test_generic_patch_cannot_change_extra_hours(
+    client: TestClient, session: Session
+) -> None:
+    """The generic PATCH must not bypass the audited extra-hours path."""
+    process = factories.make_assignment_process(session)
+    profile = factories.make_teacher_profile(session)
+    pt = factories.make_process_teacher(session, process, profile, base_weekly_hours=10)
+    resp = client.patch(
+        f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}",
+        json={"base_weekly_hours": 12, "extra_weekly_hours": 5},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["base_weekly_hours"] == 12
+    # extra_weekly_hours is not part of the update schema: silently ignored.
+    assert body["extra_weekly_hours"] == 0
+    assert body["target_weekly_hours"] == 12
+    assert body["is_overloaded"] is False
+
+
+def test_update_extra_hours_success_and_audited(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    profile = factories.make_teacher_profile(session)
+    pt = factories.make_process_teacher(session, process, profile, base_weekly_hours=10)
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
+        json={"extra_weekly_hours": 4, "reason": "Cover maternity leave"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["base_weekly_hours"] == 10
+    assert body["extra_weekly_hours"] == 4
+    assert body["target_weekly_hours"] == 14
+    assert body["is_overloaded"] is True
+    assert body["extra_hours_reason"] == "Cover maternity leave"
+    assert body["extra_hours_updated_by_user_id"] is not None
+    assert body["extra_hours_updated_at"] is not None
+
+    audit = client.get(f"/reparto/assignment-processes/{process.id}/audit-events/")
+    events = [
+        event
+        for event in audit.json()["data"]
+        if event["event_type"] == "process_teacher.extra_hours_updated"
+    ]
+    assert len(events) == 1
+    assert events[0]["reason"] == "Cover maternity leave"
+
+
+def test_update_extra_hours_to_zero_clears_overload(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    profile = factories.make_teacher_profile(session)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=10, extra_weekly_hours=4
+    )
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
+        json={"extra_weekly_hours": 0, "reason": "Overload no longer needed"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["extra_weekly_hours"] == 0
+    assert body["target_weekly_hours"] == 10
+    assert body["is_overloaded"] is False
+
+
+def test_update_extra_hours_requires_reason(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    profile = factories.make_teacher_profile(session)
+    pt = factories.make_process_teacher(session, process, profile)
+    missing = client.post(
+        f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
+        json={"extra_weekly_hours": 4},
+    )
+    assert missing.status_code == 422
+    empty = client.post(
+        f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
+        json={"extra_weekly_hours": 4, "reason": ""},
+    )
+    assert empty.status_code == 422
+
+
+def test_update_extra_hours_blocked_below_assigned(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    profile = factories.make_teacher_profile(session)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=10, extra_weekly_hours=4
+    )
+    subject = factories.make_subject(session, process)
+    group = factories.make_teaching_group(session, process)
+    requirement = factories.make_hour_requirement(session, process, group, subject)
+    # 12 active assigned hours; a cancelled assignment must be ignored.
+    factories.make_assignment(
+        session,
+        process,
+        requirement,
+        pt,
+        assigned_hours=12,
+        status=AssignmentStatus.CONFIRMED,
+    )
+    factories.make_assignment(
+        session,
+        process,
+        requirement,
+        pt,
+        assigned_hours=99,
+        status=AssignmentStatus.CANCELLED,
+    )
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
+        json={"extra_weekly_hours": 0, "reason": "Try to drop below assigned"},
+    )
+    assert resp.status_code == 400
+    assert "assigned" in resp.json()["detail"].lower()
+    # Value unchanged after the blocked attempt.
+    current = client.get(f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}")
+    assert current.json()["extra_weekly_hours"] == 4
+
+
+def test_update_extra_hours_reader_forbidden(
+    reader_client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    profile = factories.make_teacher_profile(session)
+    pt = factories.make_process_teacher(session, process, profile)
+    resp = reader_client.post(
+        f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
+        json={"extra_weekly_hours": 4, "reason": "Not allowed"},
+    )
+    assert resp.status_code == 403
+
+
+def test_update_extra_hours_final_process_blocked(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(
+        session, status=AssignmentProcessStatus.FINAL
+    )
+    profile = factories.make_teacher_profile(session)
+    pt = factories.make_process_teacher(session, process, profile)
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
+        json={"extra_weekly_hours": 4, "reason": "Process is final"},
+    )
+    assert resp.status_code == 400
+    assert "final" in resp.json()["detail"].lower()
+
+
+def test_update_extra_hours_teacher_not_found(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/teachers/{uuid.uuid4()}/extra-hours",
+        json={"extra_weekly_hours": 4, "reason": "No such teacher"},
+    )
     assert resp.status_code == 404
 
 
@@ -324,7 +499,7 @@ def _seed_full_process(
 ) -> tuple:
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=4)
+    pt = factories.make_process_teacher(session, process, profile, base_weekly_hours=4)
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -408,7 +583,7 @@ def test_create_assignment_rejects_teacher_from_other_process(
     process_b = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
     pt_b = factories.make_process_teacher(
-        session, process_b, profile, available_hours=10
+        session, process_b, profile, base_weekly_hours=10
     )
     subject = factories.make_subject(session, process_a)
     group = factories.make_teaching_group(session, process_a)
@@ -496,7 +671,7 @@ def test_create_assignment_blocked_on_final_process(
         session, status=AssignmentProcessStatus.FINAL
     )
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=4)
+    pt = factories.make_process_teacher(session, process, profile, base_weekly_hours=4)
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(

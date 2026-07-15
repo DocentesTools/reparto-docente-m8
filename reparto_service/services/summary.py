@@ -200,7 +200,7 @@ class SummaryService:
             assigned, count, has_override = per_teacher.get(
                 process_teacher.id, (0.0, 0, False)
             )
-            available = process_teacher.available_hours
+            available = process_teacher.target_weekly_hours
             remaining = available - assigned
             excess = max(0.0, assigned - available)
             if process_teacher.status != ProcessTeacherStatus.ACTIVE:
@@ -292,7 +292,7 @@ class SummaryService:
         assignments = SummaryService._load_active_assignments(session, process_id)
 
         total_available = sum(
-            pt.available_hours
+            pt.target_weekly_hours
             for pt, _ in teacher_rows
             if pt.status == ProcessTeacherStatus.ACTIVE
         )
@@ -316,7 +316,7 @@ class SummaryService:
             for pt, _ in teacher_rows
             if pt.status == ProcessTeacherStatus.ACTIVE
             and per_teacher.get(pt.id, (0.0, 0, False))[0]
-            > pt.available_hours + _EPSILON
+            > pt.target_weekly_hours + _EPSILON
         )
 
         has_teaching_overrides = any(
@@ -327,7 +327,7 @@ class SummaryService:
         )
         has_any_override = has_teaching_overrides or has_requirement_overrides
         has_unresolved_overage = any(
-            assigned > pt.available_hours + _EPSILON and not has_override
+            assigned > pt.target_weekly_hours + _EPSILON and not has_override
             for pt, (assigned, _, has_override) in (
                 (pt, per_teacher.get(pt.id, (0.0, 0, False))) for pt, _ in teacher_rows
             )

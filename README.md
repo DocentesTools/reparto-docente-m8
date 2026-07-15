@@ -81,8 +81,13 @@ actions. Group-subject endpoints include `POST /group-subjects/bulk-preview` and
 `POST /group-subjects/bulk-apply` for filtered create/update/upsert matrix
 operations with a confirmed affected-row count. Teaching-activity endpoints
 manage manual secondary planning items and their multi-group links (main-subject
-activities are materialised from group subjects in a later flow). Consult the
-OpenAPI schema for request and response models.
+activities are materialised from group subjects in a later flow). Process
+teachers carry `base_weekly_hours` and department-head authorized
+`extra_weekly_hours`; their sum is the exposed `target_weekly_hours`, and a
+non-zero extra flags `is_overloaded`. Extra hours change only through the audited
+`POST /teachers/{process_teacher_id}/extra-hours` action (reason required, blocked
+below already-assigned hours), never through the generic teacher `PATCH`. Consult
+the OpenAPI schema for request and response models.
 
 ## Quality gates
 

@@ -61,7 +61,7 @@ def test_create_and_compare_versions(client: TestClient, session: Session) -> No
     )
     assert first.status_code == 201
     profile = factories.make_teacher_profile(session)
-    factories.make_process_teacher(session, process, profile, available_hours=18)
+    factories.make_process_teacher(session, process, profile, base_weekly_hours=18)
     second = client.post(
         f"/reparto/assignment-processes/{process.id}/versions",
         json={"reason": "teacher added"},

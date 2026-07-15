@@ -98,7 +98,7 @@ def test_get_update_delete_child_resources_not_found(
         (
             "patch",
             f"/reparto/assignment-processes/{process.id}/teachers/{missing}",
-            {"available_hours": 2},
+            {"base_weekly_hours": 2},
         ),
     ]
 
@@ -317,7 +317,7 @@ def test_create_department_duplicate_and_process_teacher_duplicate(
         json={
             "assignment_process_id": str(process.id),
             "teacher_profile_id": str(profile.id),
-            "available_hours": 10,
+            "base_weekly_hours": 10,
         },
     )
 
@@ -490,7 +490,7 @@ def test_summary_validation_remaining_states(session: Session) -> None:
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
     teacher = factories.make_process_teacher(
-        session, process, profile, available_hours=4
+        session, process, profile, base_weekly_hours=4
     )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
@@ -509,7 +509,7 @@ def test_summary_validation_remaining_states(session: Session) -> None:
     overloaded_process = factories.make_assignment_process(session)
     overloaded_profile = factories.make_teacher_profile(session, display_name="Over")
     overloaded_teacher = factories.make_process_teacher(
-        session, overloaded_process, overloaded_profile, available_hours=1
+        session, overloaded_process, overloaded_profile, base_weekly_hours=1
     )
     overloaded_subject = factories.make_subject(session, overloaded_process)
     overloaded_group = factories.make_teaching_group(session, overloaded_process)
@@ -541,7 +541,7 @@ def test_summary_validation_remaining_states(session: Session) -> None:
     exceeded_process = factories.make_assignment_process(session)
     exceeded_profile = factories.make_teacher_profile(session, display_name="Exceeded")
     exceeded_teacher = factories.make_process_teacher(
-        session, exceeded_process, exceeded_profile, available_hours=10
+        session, exceeded_process, exceeded_profile, base_weekly_hours=10
     )
     exceeded_subject = factories.make_subject(session, exceeded_process)
     exceeded_group = factories.make_teaching_group(session, exceeded_process)
@@ -579,7 +579,7 @@ def test_summary_non_participating_and_warning_without_messages(
     warning_process = factories.make_assignment_process(session)
     warning_profile = factories.make_teacher_profile(session)
     warning_teacher = factories.make_process_teacher(
-        session, warning_process, warning_profile, available_hours=10
+        session, warning_process, warning_profile, base_weekly_hours=10
     )
     warning_subject = factories.make_subject(session, warning_process)
     warning_group = factories.make_teaching_group(session, warning_process)

@@ -141,7 +141,9 @@ def test_get_dashboard_combines_everything(
 ) -> None:
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=4.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=4.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -168,9 +170,11 @@ def test_teacher_lan_summary_returns_only_linked_teacher(
     )
     other_profile = factories.make_teacher_profile(session, display_name="Other")
     linked_teacher = factories.make_process_teacher(
-        session, process, linked_profile, available_hours=4.0
+        session, process, linked_profile, base_weekly_hours=4.0
     )
-    factories.make_process_teacher(session, process, other_profile, available_hours=8.0)
+    factories.make_process_teacher(
+        session, process, other_profile, base_weekly_hours=8.0
+    )
     resp = client.get(f"/reparto/assignment-processes/{process.id}/lan/me")
     assert resp.status_code == 200
     body = resp.json()

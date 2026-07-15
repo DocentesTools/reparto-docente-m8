@@ -53,7 +53,7 @@ def test_global_balance_pending_when_requirements_uncovered(
 ):
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    factories.make_process_teacher(session, process, profile, available_hours=18.0)
+    factories.make_process_teacher(session, process, profile, base_weekly_hours=18.0)
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     factories.make_hour_requirement(
@@ -73,7 +73,9 @@ def test_global_balance_pending_when_requirements_uncovered(
 def test_global_balance_balanced_when_full_match(session: Session):
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=4.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=4.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -92,7 +94,9 @@ def test_global_balance_exceeded_when_teacher_overloaded_without_override(
 ):
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=4.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=4.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -111,7 +115,9 @@ def test_global_balance_warning_when_teacher_overloaded_with_override(
 ):
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=4.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=4.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -134,7 +140,9 @@ def test_global_balance_warning_when_teacher_overloaded_with_override(
 def test_global_balance_excluded_cancelled_assignments(session: Session):
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=4.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=4.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -165,7 +173,7 @@ def test_teacher_balance_inactive_when_status_inactive(session: Session):
         session,
         process,
         profile,
-        available_hours=10.0,
+        base_weekly_hours=10.0,
         status=ProcessTeacherStatus.INACTIVE,
     )
     balance = SummaryService.compute_teacher_balances(session, process.id)
@@ -180,7 +188,9 @@ def test_teacher_balance_pending_when_assigned_less_than_available(
 ):
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=10.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=10.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -199,7 +209,9 @@ def test_teacher_balance_overloaded_when_assigned_more_than_available(
 ):
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=4.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=4.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -218,7 +230,9 @@ def test_teacher_balance_overloaded_with_override_marks_flag(
 ):
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=4.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=4.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -243,13 +257,13 @@ def test_teacher_balance_sorted_by_display_name(session: Session):
         session,
         process,
         factories.make_teacher_profile(session, display_name="Zoe"),
-        available_hours=10.0,
+        base_weekly_hours=10.0,
     )
     factories.make_process_teacher(
         session,
         process,
         factories.make_teacher_profile(session, display_name="Alice"),
-        available_hours=10.0,
+        base_weekly_hours=10.0,
     )
     balances = SummaryService.compute_teacher_balances(session, process.id)
     assert [b.display_name for b in balances] == ["Alice", "Zoe"]
@@ -279,7 +293,9 @@ def test_requirement_balance_partial_when_partial_assignment(
 ):
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=2.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=2.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -294,7 +310,9 @@ def test_requirement_balance_partial_when_partial_assignment(
 def test_requirement_balance_covered_when_full_match(session: Session):
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=4.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=4.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -311,7 +329,9 @@ def test_requirement_balance_over_assigned_blocks_when_no_override(
 ):
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=5.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=5.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -329,8 +349,8 @@ def test_requirement_balance_explicitly_shared_when_split_with_override(
     process = factories.make_assignment_process(session)
     p1 = factories.make_teacher_profile(session, display_name="Anna")
     p2 = factories.make_teacher_profile(session, display_name="Bob")
-    pt1 = factories.make_process_teacher(session, process, p1, available_hours=2.0)
-    pt2 = factories.make_process_teacher(session, process, p2, available_hours=2.0)
+    pt1 = factories.make_process_teacher(session, process, p1, base_weekly_hours=2.0)
+    pt2 = factories.make_process_teacher(session, process, p2, base_weekly_hours=2.0)
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -390,7 +410,9 @@ def test_validations_blocking_when_requirement_over_assigned(
 ):
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=5.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=5.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -414,7 +436,9 @@ def test_validations_warning_when_requirement_over_assigned_with_override(
 
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=5.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=5.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -443,7 +467,9 @@ def test_validations_warning_when_requirement_over_assigned_with_override(
 def test_validations_blocking_when_teacher_overloaded(session: Session):
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=4.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=4.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -463,7 +489,9 @@ def test_validations_blocking_when_teacher_overloaded(session: Session):
 def test_validations_info_when_teacher_balanced(session: Session):
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=4.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=4.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -512,7 +540,9 @@ def test_summary_aggregates_blocking_count(session: Session):
 def test_dashboard_combines_all_sections(session: Session):
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, available_hours=4.0)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=4.0
+    )
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
     requirement = factories.make_hour_requirement(
@@ -537,7 +567,7 @@ def test_assignments_belonging_to_other_process_are_excluded(
     process_b = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
     pt_a = factories.make_process_teacher(
-        session, process_a, profile, available_hours=4.0
+        session, process_a, profile, base_weekly_hours=4.0
     )
     subject_a = factories.make_subject(session, process_a)
     group_a = factories.make_teaching_group(session, process_a)

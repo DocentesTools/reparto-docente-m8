@@ -443,7 +443,8 @@ class AssignmentProcessController(DomainController):
                 ProcessTeacher(
                     assignment_process_id=target.id,
                     teacher_profile_id=teacher.teacher_profile_id,
-                    available_hours=0,
+                    base_weekly_hours=0,
+                    extra_weekly_hours=0,
                     participates_in_selection=teacher.participates_in_selection,
                     selection_position=teacher.selection_position,
                     selection_points=teacher.selection_points,

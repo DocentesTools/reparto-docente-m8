@@ -411,7 +411,8 @@ class HistoryController(DomainController):
             teacher = ProcessTeacher(
                 assignment_process_id=target.id,
                 teacher_profile_id=uuid.UUID(str(row["teacher_profile_id"])),
-                available_hours=row["available_hours"],
+                base_weekly_hours=row["base_weekly_hours"],
+                extra_weekly_hours=row["extra_weekly_hours"],
                 participates_in_selection=row["participates_in_selection"],
                 selection_position=row.get("selection_position"),
                 selection_points=row.get("selection_points"),

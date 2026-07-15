@@ -99,6 +99,7 @@ from .selection_turns import (
 from .process_teachers import (
     ProcessTeacher,
     ProcessTeacherCreate,
+    ProcessTeacherExtraHoursUpdate,
     ProcessTeacherPublic,
     ProcessTeachersPublic,
     ProcessTeacherUpdate,
@@ -207,6 +208,7 @@ __all__ = [
     "ProcessReopenRequest",
     "ProcessTeacher",
     "ProcessTeacherCreate",
+    "ProcessTeacherExtraHoursUpdate",
     "ProcessTeacherPublic",
     "ProcessTeacherUpdate",
     "ProcessTeachersPublic",

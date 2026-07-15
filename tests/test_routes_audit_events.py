@@ -71,7 +71,7 @@ def test_setup_resource_mutations_are_audited(
         json={
             "assignment_process_id": str(process.id),
             "teacher_profile_id": str(profile.id),
-            "available_hours": 18,
+            "base_weekly_hours": 18,
         },
     )
     assert teacher_resp.status_code == 201

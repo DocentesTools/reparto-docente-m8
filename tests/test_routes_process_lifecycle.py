@@ -198,11 +198,11 @@ def _populate_source_process(
         session,
         source,
         profile_a,
-        available_hours=18,
+        base_weekly_hours=18,
         selection_position=1,
     )
     factories.make_process_teacher(
-        session, source, profile_b, available_hours=20, selection_position=2
+        session, source, profile_b, base_weekly_hours=20, selection_position=2
     )
     subject = factories.make_subject(session, source, name="Mathematics")
     group = factories.make_teaching_group(
@@ -276,7 +276,7 @@ def test_copy_from_copies_structure_only_by_default(
         str(profile_b.id),
     }
     # Available hours reset to 0 on copy.
-    assert all(t["available_hours"] == 0 for t in body["data"])
+    assert all(t["target_weekly_hours"] == 0 for t in body["data"])
     # Selection-order fields preserved from the source.
     positions = sorted(t["selection_position"] for t in body["data"])
     assert positions == [1, 2]
@@ -516,7 +516,7 @@ def test_cannot_add_teacher_to_final_process(
         json={
             "assignment_process_id": str(process.id),
             "teacher_profile_id": str(profile.id),
-            "available_hours": 18,
+            "base_weekly_hours": 18,
         },
     )
     assert resp.status_code == 400
