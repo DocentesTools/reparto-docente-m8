@@ -202,7 +202,17 @@ class DashboardController(DomainController):
         turn = session.exec(statement).first()
         if turn is None:
             return None
-        return CurrentTurnSummary.model_validate(turn)
+        # Built field by field: the row's primary key is ``id``, which the
+        # payload exposes as ``selection_turn_id``, so attribute validation
+        # cannot map it.
+        return CurrentTurnSummary(
+            meeting_session_id=turn.meeting_session_id,
+            selection_turn_id=turn.id,
+            process_teacher_id=turn.process_teacher_id,
+            position=turn.position,
+            status=turn.status,
+            started_at=turn.started_at,
+        )
 
     @staticmethod
     def _linked_participant_or_404(

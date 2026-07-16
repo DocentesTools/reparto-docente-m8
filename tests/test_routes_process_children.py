@@ -178,40 +178,65 @@ def test_update_extra_hours_requires_reason(
 def test_update_extra_hours_blocked_below_assigned(
     client: TestClient, session: Session
 ) -> None:
+    """Reducing extra hours below the occupied slot hours is refused (§3.8)."""
     process = factories.make_assignment_process(session)
     profile = factories.make_teacher_profile(session)
     pt = factories.make_process_teacher(
         session, process, profile, base_weekly_hours=10, extra_weekly_hours=4
     )
+    plan = factories.make_teaching_plan(session, process)
     subject = factories.make_subject(session, process)
-    group = factories.make_teaching_group(session, process)
-    requirement = factories.make_hour_requirement(session, process, group, subject)
-    # 12 active assigned hours; a cancelled assignment must be ignored.
-    factories.make_assignment(
-        session,
-        process,
-        requirement,
-        pt,
-        assigned_hours=12,
-        status=AssignmentStatus.CONFIRMED,
+    activity = factories.make_teaching_activity(
+        session, plan, subject, teacher_weekly_hours_per_position=12.0
     )
-    factories.make_assignment(
-        session,
-        process,
-        requirement,
-        pt,
-        assigned_hours=99,
-        status=AssignmentStatus.CANCELLED,
+    # 12 active assigned hours against a target of 14; dropping the 4 extra
+    # hours would leave a target of 10 — below what the teacher already holds.
+    slot = factories.make_hour_requirement(
+        session, process, activity, required_teacher_hours=12.0
     )
+    factories.make_assignment(session, process, slot, pt)
+
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
         json={"extra_weekly_hours": 0, "reason": "Try to drop below assigned"},
     )
+
     assert resp.status_code == 400
     assert "assigned" in resp.json()["detail"].lower()
     # Value unchanged after the blocked attempt.
     current = client.get(f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}")
     assert current.json()["extra_weekly_hours"] == 4
+
+
+def test_update_extra_hours_ignores_cancelled_assignment(
+    client: TestClient, session: Session
+) -> None:
+    """A cancelled assignment holds no hours, so it cannot block a reduction."""
+    process = factories.make_assignment_process(session)
+    profile = factories.make_teacher_profile(session)
+    pt = factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=10, extra_weekly_hours=4
+    )
+    plan = factories.make_teaching_plan(session, process)
+    subject = factories.make_subject(session, process)
+    activity = factories.make_teaching_activity(
+        session, plan, subject, teacher_weekly_hours_per_position=12.0
+    )
+    slot = factories.make_hour_requirement(
+        session, process, activity, required_teacher_hours=12.0
+    )
+    factories.make_assignment(
+        session, process, slot, pt, status=AssignmentStatus.CANCELLED
+    )
+
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
+        json={"extra_weekly_hours": 0, "reason": "Overload no longer needed"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["extra_weekly_hours"] == 0
+    assert resp.json()["target_weekly_hours"] == 10
 
 
 def test_update_extra_hours_reader_forbidden(
@@ -418,272 +443,12 @@ def test_update_teaching_group(client: TestClient, session: Session) -> None:
     assert resp.json()["label"] == "New"
 
 
-# ── Hour requirements ──────────────────────────────────────────────────────
-
-
-def test_create_hour_requirement(client: TestClient, session: Session) -> None:
-    process = factories.make_assignment_process(session)
-    subject = factories.make_subject(session, process)
-    group = factories.make_teaching_group(session, process)
-    resp = client.post(
-        f"/reparto/assignment-processes/{process.id}/requirements/",
-        json={
-            "assignment_process_id": str(process.id),
-            "teaching_group_id": str(group.id),
-            "subject_id": str(subject.id),
-            "required_hours": 4,
-        },
-    )
-    assert resp.status_code == 201
-    body = resp.json()
-    assert body["required_hours"] == 4
-    assert body["requirement_type"] == "ordinary"
-
-
-def test_create_requirement_rejects_zero_hours(
-    client: TestClient, session: Session
-) -> None:
-    process = factories.make_assignment_process(session)
-    subject = factories.make_subject(session, process)
-    group = factories.make_teaching_group(session, process)
-    resp = client.post(
-        f"/reparto/assignment-processes/{process.id}/requirements/",
-        json={
-            "assignment_process_id": str(process.id),
-            "teaching_group_id": str(group.id),
-            "subject_id": str(subject.id),
-            "required_hours": 0,
-        },
-    )
-    assert resp.status_code == 422  # Pydantic validation
-
-
-def test_update_requirement(client: TestClient, session: Session) -> None:
-    process = factories.make_assignment_process(session)
-    subject = factories.make_subject(session, process)
-    group = factories.make_teaching_group(session, process)
-    requirement = factories.make_hour_requirement(
-        session, process, group, subject, required_hours=4
-    )
-    resp = client.patch(
-        f"/reparto/assignment-processes/{process.id}/requirements/{requirement.id}",
-        json={"required_hours": 5},
-    )
-    assert resp.status_code == 200
-    assert resp.json()["required_hours"] == 5
-
-
-def test_delete_requirement_blocked_when_assignment_exists(
-    client: TestClient, session: Session
-) -> None:
-    process = factories.make_assignment_process(session)
-    profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile)
-    subject = factories.make_subject(session, process)
-    group = factories.make_teaching_group(session, process)
-    requirement = factories.make_hour_requirement(
-        session, process, group, subject, required_hours=4
-    )
-    factories.make_assignment(session, process, requirement, pt, assigned_hours=4)
-    resp = client.delete(
-        f"/reparto/assignment-processes/{process.id}/requirements/{requirement.id}"
-    )
-    assert resp.status_code == 400
-
-
-# ── Assignments ─────────────────────────────────────────────────────────────
-
-
-def _seed_full_process(
-    session: Session,
-) -> tuple:
-    process = factories.make_assignment_process(session)
-    profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, base_weekly_hours=4)
-    subject = factories.make_subject(session, process)
-    group = factories.make_teaching_group(session, process)
-    requirement = factories.make_hour_requirement(
-        session, process, group, subject, required_hours=4
-    )
-    return process, pt, requirement
-
-
-def test_create_assignment(client: TestClient, session: Session) -> None:
-    process, pt, requirement = _seed_full_process(session)
-    resp = client.post(
-        f"/reparto/assignment-processes/{process.id}/assignments/",
-        json={
-            "assignment_process_id": str(process.id),
-            "hour_requirement_id": str(requirement.id),
-            "process_teacher_id": str(pt.id),
-            "assigned_hours": 4,
-        },
-    )
-    assert resp.status_code == 201
-    body = resp.json()
-    assert body["assigned_hours"] == 4
-    assert body["source"] == "department_head"
-
-
-def test_create_assignment_rejects_over_cap_without_override(
-    client: TestClient, session: Session
-) -> None:
-    process, pt, requirement = _seed_full_process(session)
-    resp = client.post(
-        f"/reparto/assignment-processes/{process.id}/assignments/",
-        json={
-            "assignment_process_id": str(process.id),
-            "hour_requirement_id": str(requirement.id),
-            "process_teacher_id": str(pt.id),
-            "assigned_hours": 5,
-        },
-    )
-    assert resp.status_code == 400
-    assert "override" in resp.json()["detail"].lower()
-
-
-def test_create_assignment_allows_over_cap_with_override(
-    client: TestClient, session: Session
-) -> None:
-    process, pt, requirement = _seed_full_process(session)
-    resp = client.post(
-        f"/reparto/assignment-processes/{process.id}/assignments/",
-        json={
-            "assignment_process_id": str(process.id),
-            "hour_requirement_id": str(requirement.id),
-            "process_teacher_id": str(pt.id),
-            "assigned_hours": 5,
-            "override_reason": "Head approved",
-        },
-    )
-    assert resp.status_code == 201
-    assert resp.json()["override_reason"] == "Head approved"
-
-
-def test_create_assignment_rejects_zero_hours(
-    client: TestClient, session: Session
-) -> None:
-    process, pt, requirement = _seed_full_process(session)
-    resp = client.post(
-        f"/reparto/assignment-processes/{process.id}/assignments/",
-        json={
-            "assignment_process_id": str(process.id),
-            "hour_requirement_id": str(requirement.id),
-            "process_teacher_id": str(pt.id),
-            "assigned_hours": 0,
-        },
-    )
-    assert resp.status_code == 422  # Pydantic validation
-
-
-def test_create_assignment_rejects_teacher_from_other_process(
-    client: TestClient, session: Session
-) -> None:
-    process_a = factories.make_assignment_process(session)
-    process_b = factories.make_assignment_process(session)
-    profile = factories.make_teacher_profile(session)
-    pt_b = factories.make_process_teacher(
-        session, process_b, profile, base_weekly_hours=10
-    )
-    subject = factories.make_subject(session, process_a)
-    group = factories.make_teaching_group(session, process_a)
-    requirement = factories.make_hour_requirement(
-        session, process_a, group, subject, required_hours=4
-    )
-    resp = client.post(
-        f"/reparto/assignment-processes/{process_a.id}/assignments/",
-        json={
-            "assignment_process_id": str(process_a.id),
-            "hour_requirement_id": str(requirement.id),
-            "process_teacher_id": str(pt_b.id),
-            "assigned_hours": 4,
-        },
-    )
-    assert resp.status_code == 404
-
-
-def test_list_assignments(client: TestClient, session: Session) -> None:
-    process, pt, requirement = _seed_full_process(session)
-    factories.make_assignment(session, process, requirement, pt, assigned_hours=4)
-    resp = client.get(f"/reparto/assignment-processes/{process.id}/assignments/")
-    assert resp.status_code == 200
-    assert resp.json()["count"] == 1
-
-
-def test_get_assignment(client: TestClient, session: Session) -> None:
-    process, pt, requirement = _seed_full_process(session)
-    assignment = factories.make_assignment(
-        session, process, requirement, pt, assigned_hours=4
-    )
-    resp = client.get(
-        f"/reparto/assignment-processes/{process.id}/assignments/{assignment.id}"
-    )
-    assert resp.status_code == 200
-    assert resp.json()["id"] == str(assignment.id)
-
-
-def test_update_assignment(client: TestClient, session: Session) -> None:
-    process, pt, requirement = _seed_full_process(session)
-    assignment = factories.make_assignment(
-        session, process, requirement, pt, assigned_hours=4
-    )
-    resp = client.patch(
-        f"/reparto/assignment-processes/{process.id}/assignments/{assignment.id}",
-        json={"notes": "Updated"},
-    )
-    assert resp.status_code == 200
-    assert resp.json()["notes"] == "Updated"
-
-
-def test_delete_assignment(client: TestClient, session: Session) -> None:
-    process, pt, requirement = _seed_full_process(session)
-    assignment = factories.make_assignment(
-        session, process, requirement, pt, assigned_hours=4
-    )
-    resp = client.delete(
-        f"/reparto/assignment-processes/{process.id}/assignments/{assignment.id}"
-    )
-    assert resp.status_code == 200
-
-
-def test_create_assignment_rejects_wrong_process_id_payload(
-    client: TestClient, session: Session
-) -> None:
-    process, pt, requirement = _seed_full_process(session)
-    resp = client.post(
-        f"/reparto/assignment-processes/{process.id}/assignments/",
-        json={
-            "assignment_process_id": str(uuid.uuid4()),
-            "hour_requirement_id": str(requirement.id),
-            "process_teacher_id": str(pt.id),
-            "assigned_hours": 4,
-        },
-    )
-    assert resp.status_code == 400
-
-
-def test_create_assignment_blocked_on_final_process(
-    client: TestClient, session: Session
-) -> None:
-    from reparto_service.enums import AssignmentProcessStatus
-
-    process = factories.make_assignment_process(
-        session, status=AssignmentProcessStatus.FINAL
-    )
-    profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile, base_weekly_hours=4)
-    subject = factories.make_subject(session, process)
-    group = factories.make_teaching_group(session, process)
-    requirement = factories.make_hour_requirement(
-        session, process, group, subject, required_hours=4
-    )
-    resp = client.post(
-        f"/reparto/assignment-processes/{process.id}/assignments/",
-        json={
-            "assignment_process_id": str(process.id),
-            "hour_requirement_id": str(requirement.id),
-            "process_teacher_id": str(pt.id),
-            "assigned_hours": 4,
-        },
-    )
-    assert resp.status_code == 400
+# ── Hour requirements and assignments ───────────────────────────────────────
+#
+# Requirement slots are generated from the teaching plan, never hand-created, so
+# this file no longer drives requirement CRUD; the removal of those routes is
+# asserted by ``test_routes_hour_requirements.py::
+# test_manual_mutation_routes_removed`` and generation is covered by
+# ``test_routes_requirement_generation.py``. The complete-slot assignment
+# surface (create/list/get/update/cancel plus every §20.9 invariant) lives in
+# ``test_routes_assignments.py``.

@@ -118,6 +118,70 @@ def test_get_plan_process_not_found(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
+# ── Summary (plan §3.1, §6.1, §7.3) ───────────────────────────────────────────
+
+
+def test_get_summary_reports_both_balances(
+    client: TestClient, session: Session
+) -> None:
+    """Both axes are reported side by side and never summed (plan §3.1, §3.2)."""
+    process = factories.make_assignment_process(session)
+    plan = factories.make_teaching_plan(session, process)
+    factories.make_allocation_revision(
+        session, process, allocated_group_weekly_hours=6.0
+    )
+    profile = factories.make_teacher_profile(session)
+    factories.make_process_teacher(session, process, profile, base_weekly_hours=4.0)
+    subject = factories.make_subject(session, process)
+    group = factories.make_teaching_group(session, process)
+    cell = factories.make_group_subject(session, process, group, subject)
+    factories.make_teaching_activity(
+        session,
+        plan,
+        subject,
+        group_weekly_hours_per_group=6.0,
+        teacher_weekly_hours_per_position=4.0,
+        group_subjects=[cell],
+    )
+
+    resp = client.get(f"{_BASE}/{process.id}/teaching-plan/summary")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["teaching_plan_id"] == str(plan.id)
+    assert body["assignment_process_id"] == str(process.id)
+    # Group axis: 6.00 planned against a 6.00 leadership allocation.
+    assert body["group"]["total_group_load"] == "6.00"
+    assert body["group"]["allocated_group_weekly_hours"] == "6.00"
+    assert body["group"]["allocation_difference"] == "0.00"
+    assert body["group"]["is_balanced"] is True
+    # Teacher axis: an independent 4.00 against the 4.00 participant target.
+    assert body["teacher"]["total_teacher_load"] == "4.00"
+    assert body["teacher"]["participant_target_total"] == "4.00"
+    assert body["teacher"]["is_balanced"] is True
+    assert body["is_exact"] is True
+
+
+def test_get_summary_plan_not_found(client: TestClient, session: Session) -> None:
+    process = factories.make_assignment_process(session)
+    resp = client.get(f"{_BASE}/{process.id}/teaching-plan/summary")
+    assert resp.status_code == 404
+
+
+def test_get_summary_process_not_found(client: TestClient) -> None:
+    resp = client.get(f"{_BASE}/{uuid.uuid4()}/teaching-plan/summary")
+    assert resp.status_code == 404
+
+
+def test_get_summary_reader_allowed(
+    reader_client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    factories.make_teaching_plan(session, process)
+    resp = reader_client.get(f"{_BASE}/{process.id}/teaching-plan/summary")
+    assert resp.status_code == 200
+
+
 # ── Validations (plan §6.3, §6.4, §7.3) ───────────────────────────────────────
 
 

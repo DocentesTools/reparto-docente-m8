@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi.testclient import TestClient
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from reparto_service.db_models.assignments import Assignment
 from reparto_service.db_models.audit_events import AuditEvent
@@ -78,8 +78,8 @@ def _live_requirements(session: Session, process) -> list[HourRequirement]:
             .where(HourRequirement.assignment_process_id == process.id)
             .where(HourRequirement.retired_generation == None)  # noqa: E711
             .order_by(
-                HourRequirement.teaching_activity_id,
-                HourRequirement.position_index,
+                col(HourRequirement.teaching_activity_id),
+                col(HourRequirement.position_index),
             )
         ).all()
     )

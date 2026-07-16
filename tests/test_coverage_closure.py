@@ -16,16 +16,7 @@ from reparto_service.controllers.assignment_processes import (
     AssignmentProcessController,
 )
 from reparto_service.core import events
-from reparto_service.db_models.assignments import Assignment
 from reparto_service.db_models.departments import DepartmentCreate
-from reparto_service.enums import AssignmentStatus, ValidationSeverity
-from reparto_service.services.summary import (
-    CODE_PROCESS_HAS_OVERAGE,
-    CODE_REQ_NOT_FULLY_ASSIGNED,
-    CODE_REQ_OVER_ASSIGNED_OVERRIDDEN,
-    CODE_TEACHER_OVERLOADED_OVERRIDDEN,
-    SummaryService,
-)
 from tests import factories
 
 
@@ -86,11 +77,6 @@ def test_get_update_delete_child_resources_not_found(
             None,
         ),
         (
-            "patch",
-            f"/reparto/assignment-processes/{process.id}/requirements/{missing}",
-            {"required_hours": 2},
-        ),
-        (
             "get",
             f"/reparto/assignment-processes/{process.id}/teachers/{missing}",
             None,
@@ -115,9 +101,6 @@ def test_create_child_resources_reject_wrong_process_payload(
     client: TestClient, session: Session
 ) -> None:
     process = factories.make_assignment_process(session)
-    other_process = factories.make_assignment_process(session)
-    subject = factories.make_subject(session, other_process)
-    group = factories.make_teaching_group(session, other_process)
 
     subject_resp = client.post(
         f"/reparto/assignment-processes/{process.id}/subjects/",
@@ -134,52 +117,9 @@ def test_create_child_resources_reject_wrong_process_payload(
             "label": "1 ESO A",
         },
     )
-    requirement_resp = client.post(
-        f"/reparto/assignment-processes/{process.id}/requirements/",
-        json={
-            "assignment_process_id": str(uuid.uuid4()),
-            "teaching_group_id": str(group.id),
-            "subject_id": str(subject.id),
-            "required_hours": 4,
-        },
-    )
 
     assert subject_resp.status_code == 400
     assert group_resp.status_code == 400
-    assert requirement_resp.status_code == 400
-
-
-def test_requirement_rejects_cross_process_subject_and_group(
-    client: TestClient, session: Session
-) -> None:
-    process = factories.make_assignment_process(session)
-    other_process = factories.make_assignment_process(session)
-    subject = factories.make_subject(session, other_process)
-    group = factories.make_teaching_group(session, process)
-
-    bad_subject = client.post(
-        f"/reparto/assignment-processes/{process.id}/requirements/",
-        json={
-            "assignment_process_id": str(process.id),
-            "teaching_group_id": str(group.id),
-            "subject_id": str(subject.id),
-            "required_hours": 4,
-        },
-    )
-    good_subject = factories.make_subject(session, process)
-    other_group = factories.make_teaching_group(session, other_process)
-    bad_group = client.post(
-        f"/reparto/assignment-processes/{process.id}/requirements/",
-        json={
-            "assignment_process_id": str(process.id),
-            "teaching_group_id": str(other_group.id),
-            "subject_id": str(good_subject.id),
-            "required_hours": 4,
-        },
-    )
-
-    assert bad_subject.status_code == 404
-    assert bad_group.status_code == 404
 
 
 def test_duplicate_updates_are_rejected(client: TestClient, session: Session) -> None:
@@ -236,23 +176,15 @@ def test_duplicate_create_group_is_rejected_and_delete_group_succeeds(
     assert deleted.status_code == 200
 
 
-def test_delete_requirement_without_assignment_and_subject_not_found(
-    client: TestClient, session: Session
-) -> None:
+def test_delete_subject_succeeds(client: TestClient, session: Session) -> None:
     process = factories.make_assignment_process(session)
     subject = factories.make_subject(session, process)
-    group = factories.make_teaching_group(session, process)
-    requirement = factories.make_hour_requirement(session, process, group, subject)
 
     subject_delete = client.delete(
         f"/reparto/assignment-processes/{process.id}/subjects/{subject.id}"
     )
-    requirement_delete = client.delete(
-        f"/reparto/assignment-processes/{process.id}/requirements/{requirement.id}"
-    )
 
     assert subject_delete.status_code == 200
-    assert requirement_delete.status_code == 200
 
 
 def test_read_routes_for_departments_schools_and_children(
@@ -267,7 +199,9 @@ def test_read_routes_for_departments_schools_and_children(
     teacher = factories.make_process_teacher(session, process, profile)
     subject = factories.make_subject(session, process)
     group = factories.make_teaching_group(session, process)
-    requirement = factories.make_hour_requirement(session, process, group, subject)
+    plan = factories.make_teaching_plan(session, process)
+    activity = factories.make_teaching_activity(session, plan, subject)
+    requirement = factories.make_hour_requirement(session, process, activity)
 
     responses = [
         client.get(f"/reparto/departments/{department.id}"),
@@ -343,261 +277,53 @@ def test_school_update_and_process_list_filter(
     assert process_resp.json()["data"][0]["id"] == str(process.id)
 
 
-def test_teacher_lan_summary_rejects_stale_process_teacher(
-    client: TestClient, session: Session, current_user, monkeypatch
-) -> None:
-    process = factories.make_assignment_process(session)
-    profile = factories.make_teacher_profile(
-        session, user_id=uuid.UUID(str(current_user.id))
-    )
-    factories.make_process_teacher(session, process, profile)
-    monkeypatch.setattr(SummaryService, "compute_teacher_balances", lambda *_: [])
-
-    resp = client.get(f"/reparto/assignment-processes/{process.id}/lan/me")
-
-    assert resp.status_code == 404
-    assert "not part" in resp.json()["detail"]
-
-
 @pytest.mark.parametrize(
-    "kind",
-    ["teachers", "subjects", "groups", "requirements", "assignments"],
+    ("kind", "expected_detail"),
+    [
+        ("teachers", "already has teachers"),
+        ("subjects", "already has subjects"),
+        ("groups", "already has teaching groups"),
+        ("cells", "already has group-subject cells"),
+        ("plan", "already has a teaching plan"),
+    ],
 )
 def test_copy_target_empty_reports_each_non_empty_kind(
-    session: Session, kind: str
+    session: Session, kind: str, expected_detail: str
 ) -> None:
+    """Each blocking kind is reported by name, so a head knows what to clear."""
     process = factories.make_assignment_process(session)
-    profile = factories.make_teacher_profile(session)
-    teacher = factories.make_process_teacher(session, process, profile)
-    subject = factories.make_subject(session, process)
-    group = factories.make_teaching_group(session, process)
-    requirement = factories.make_hour_requirement(session, process, group, subject)
-    if kind != "teachers":
-        session.delete(teacher)
-    if kind != "subjects":
-        session.delete(subject)
-    if kind != "groups":
-        session.delete(group)
-    if kind != "requirements":
-        session.delete(requirement)
-    if kind == "assignments":
-        session.add(requirement)
-        session.add(subject)
-        session.add(group)
-        session.add(teacher)
-        factories.make_assignment(session, process, requirement, teacher)
-        session.delete(requirement)
-        session.delete(subject)
-        session.delete(group)
-        session.delete(teacher)
-    session.commit()
+    if kind == "teachers":
+        profile = factories.make_teacher_profile(session)
+        factories.make_process_teacher(session, process, profile)
+    elif kind == "subjects":
+        factories.make_subject(session, process)
+    elif kind == "groups":
+        factories.make_teaching_group(session, process)
+    elif kind == "cells":
+        # A cell needs its group and subject, which are checked first, so the
+        # cell is seeded through a second process and re-pointed at this one.
+        other = factories.make_assignment_process(session)
+        subject = factories.make_subject(session, other)
+        group = factories.make_teaching_group(session, other)
+        cell = factories.make_group_subject(session, other, group, subject)
+        cell.assignment_process_id = process.id
+        session.add(cell)
+        session.commit()
+    else:
+        factories.make_teaching_plan(session, process)
 
     with pytest.raises(HTTPException) as exc_info:
         AssignmentProcessController._ensure_target_empty(session, process.id)
 
-    assert kind.rstrip("s") in str(exc_info.value.detail)
+    assert expected_detail in str(exc_info.value.detail)
 
 
-def test_assignment_cap_ignores_cancelled_and_missing_requirement(
-    client: TestClient, session: Session
-) -> None:
-    process, teacher, requirement = _seed_assignment_process(session)
-    factories.make_assignment(
-        session,
-        process,
-        requirement,
-        teacher,
-        assigned_hours=99,
-        status=AssignmentStatus.CANCELLED,
-    )
-    allowed = client.post(
-        f"/reparto/assignment-processes/{process.id}/assignments/",
-        json={
-            "assignment_process_id": str(process.id),
-            "hour_requirement_id": str(requirement.id),
-            "process_teacher_id": str(teacher.id),
-            "assigned_hours": 4,
-        },
-    )
-    missing = client.post(
-        f"/reparto/assignment-processes/{process.id}/assignments/",
-        json={
-            "assignment_process_id": str(process.id),
-            "hour_requirement_id": str(uuid.uuid4()),
-            "process_teacher_id": str(teacher.id),
-            "assigned_hours": 4,
-        },
-    )
-
-    assert allowed.status_code == 201
-    assert missing.status_code == 404
-
-
-def test_assignment_get_not_found_and_deleted_requirement_cap(
-    client: TestClient, session: Session
-) -> None:
-    process, teacher, requirement = _seed_assignment_process(session)
-    assignment = factories.make_assignment(session, process, requirement, teacher)
-    missing_assignment = client.get(
-        f"/reparto/assignment-processes/{process.id}/assignments/{uuid.uuid4()}"
-    )
-    session.delete(requirement)
-    session.commit()
-    update_resp = client.patch(
-        f"/reparto/assignment-processes/{process.id}/assignments/{assignment.id}",
-        json={"assigned_hours": 5},
-    )
-
-    assert missing_assignment.status_code == 404
-    assert update_resp.status_code == 404
-
-
-def test_copy_assignments_skips_stale_source_references(session: Session) -> None:
-    source = factories.make_assignment_process(session)
-    target = factories.make_assignment_process(session)
-    profile = factories.make_teacher_profile(session)
-    teacher = factories.make_process_teacher(session, source, profile)
-    subject = factories.make_subject(session, source)
-    group = factories.make_teaching_group(session, source)
-    requirement = factories.make_hour_requirement(session, source, group, subject)
-    stale_requirement = factories.make_assignment(session, source, requirement, teacher)
-    stale_teacher = factories.make_assignment(session, source, requirement, teacher)
-    skipped_mapping = factories.make_assignment(session, source, requirement, teacher)
-    session.delete(requirement)
-    session.delete(teacher)
-    session.commit()
-
-    AssignmentProcessController._copy_assignments(session, source, target)
-
-    assert stale_requirement.id
-    assert stale_teacher.id
-    assert skipped_mapping.id
-
-
-def _seed_assignment_process(session: Session):
-    process = factories.make_assignment_process(session)
-    profile = factories.make_teacher_profile(session)
-    teacher = factories.make_process_teacher(session, process, profile)
-    subject = factories.make_subject(session, process)
-    group = factories.make_teaching_group(session, process)
-    requirement = factories.make_hour_requirement(
-        session, process, group, subject, required_hours=4
-    )
-    return process, teacher, requirement
-
-
-def test_summary_validation_remaining_states(session: Session) -> None:
-    process = factories.make_assignment_process(session)
-    profile = factories.make_teacher_profile(session)
-    teacher = factories.make_process_teacher(
-        session, process, profile, base_weekly_hours=4
-    )
-    subject = factories.make_subject(session, process)
-    group = factories.make_teaching_group(session, process)
-    partial = factories.make_hour_requirement(
-        session, process, group, subject, required_hours=4
-    )
-    factories.make_assignment(session, process, partial, teacher, assigned_hours=2)
-
-    partial_messages = SummaryService.compute_validations(session, process.id)
-    assert any(
-        msg.code == CODE_REQ_NOT_FULLY_ASSIGNED
-        and msg.severity == ValidationSeverity.WARNING
-        for msg in partial_messages
-    )
-
-    overloaded_process = factories.make_assignment_process(session)
-    overloaded_profile = factories.make_teacher_profile(session, display_name="Over")
-    overloaded_teacher = factories.make_process_teacher(
-        session, overloaded_process, overloaded_profile, base_weekly_hours=1
-    )
-    overloaded_subject = factories.make_subject(session, overloaded_process)
-    overloaded_group = factories.make_teaching_group(session, overloaded_process)
-    overloaded_requirement = factories.make_hour_requirement(
-        session,
-        overloaded_process,
-        overloaded_group,
-        overloaded_subject,
-        required_hours=1,
-    )
-    factories.make_assignment(
-        session,
-        overloaded_process,
-        overloaded_requirement,
-        overloaded_teacher,
-        assigned_hours=2,
-        override_reason="Approved",
-    )
-    overloaded_messages = SummaryService.compute_validations(
-        session, overloaded_process.id
-    )
-    assert any(
-        msg.code == CODE_REQ_OVER_ASSIGNED_OVERRIDDEN for msg in overloaded_messages
-    )
-    assert any(
-        msg.code == CODE_TEACHER_OVERLOADED_OVERRIDDEN for msg in overloaded_messages
-    )
-
-    exceeded_process = factories.make_assignment_process(session)
-    exceeded_profile = factories.make_teacher_profile(session, display_name="Exceeded")
-    exceeded_teacher = factories.make_process_teacher(
-        session, exceeded_process, exceeded_profile, base_weekly_hours=10
-    )
-    exceeded_subject = factories.make_subject(session, exceeded_process)
-    exceeded_group = factories.make_teaching_group(session, exceeded_process)
-    exceeded_requirement = factories.make_hour_requirement(
-        session, exceeded_process, exceeded_group, exceeded_subject, required_hours=1
-    )
-    session.add(
-        Assignment(
-            assignment_process_id=exceeded_process.id,
-            hour_requirement_id=exceeded_requirement.id,
-            process_teacher_id=exceeded_teacher.id,
-            assigned_hours=2,
-            status=AssignmentStatus.CONFIRMED,
-        )
-    )
-    session.commit()
-    exceeded_messages = SummaryService.compute_validations(session, exceeded_process.id)
-    assert any(msg.code == CODE_PROCESS_HAS_OVERAGE for msg in exceeded_messages)
-
-
-def test_summary_non_participating_and_warning_without_messages(
-    session: Session,
-) -> None:
-    process = factories.make_assignment_process(session)
-    profile = factories.make_teacher_profile(session)
-    factories.make_process_teacher(
-        session,
-        process,
-        profile,
-        participates_in_selection=False,
-    )
-    balances = SummaryService.compute_teacher_balances(session, process.id)
-    assert balances[0].state.value == "not_participating"
-
-    warning_process = factories.make_assignment_process(session)
-    warning_profile = factories.make_teacher_profile(session)
-    warning_teacher = factories.make_process_teacher(
-        session, warning_process, warning_profile, base_weekly_hours=10
-    )
-    warning_subject = factories.make_subject(session, warning_process)
-    warning_group = factories.make_teaching_group(session, warning_process)
-    warning_requirement = factories.make_hour_requirement(
-        session, warning_process, warning_group, warning_subject, required_hours=1
-    )
-    factories.make_assignment(
-        session,
-        warning_process,
-        warning_requirement,
-        warning_teacher,
-        assigned_hours=2,
-        override_reason="Approved",
-    )
-
-    messages = SummaryService.compute_validations(session, warning_process.id)
-
-    assert all(msg.code != CODE_PROCESS_HAS_OVERAGE for msg in messages)
+# The complete-slot assignment surface — create/get/update/cancel, the unknown
+# requirement and cross-process guards, the cancelled-assignment-frees-the-slot
+# path and both DB invariants — is covered end to end by
+# ``test_routes_assignments.py``. Copy-from-previous-year no longer copies
+# assignments at all (``_copy_assignments`` is gone, plan §10.1); what it does
+# copy is covered by ``test_routes_process_lifecycle.py``.
 
 
 @pytest.mark.anyio
