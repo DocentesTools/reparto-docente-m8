@@ -45,7 +45,12 @@ class ExportBackupRestoreRequest(SQLModel):
     )
     restore_assignments: bool = Field(
         default=True,
-        description="Whether confirmed/draft assignments should be restored.",
+        description=(
+            "The restore mode (plan §10.4): when ``True`` the generated "
+            "requirement slots and their assignments are restored; when "
+            "``False`` only the configuration, allocation history, plan and "
+            "activities are restored and the slots are left to be regenerated."
+        ),
     )
 
 

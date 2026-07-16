@@ -166,8 +166,22 @@ and `GET /compare-previous-year` diff two snapshots along the plan §10.3
 dimensions: whether the allocation, group hours, teacher load, subject category,
 activities, group links, teacher-position count, participant targets or
 requirement generation changed, plus signed hour and count deltas (hours as
-canonical decimal strings). Consult the OpenAPI schema for request and response
-models.
+canonical decimal strings). `POST /exports` generates an export artifact (JSON or
+CSV); a `backup` artifact carries the complete restorable three-stage domain —
+process settings, allocation revisions, teaching plan, subjects, groups,
+group-subject matrix, teaching activities and their links, the generated
+indivisible requirement slots and the assignments — plus the version list, while a
+`final` artifact is refused (`400`) while any blocking validation remains and
+archives the process on success. `POST /restore-draft` rebuilds a backup into an
+empty draft process: it remaps every id, always restores the configuration,
+allocation history, plan and activities, and restores the generated requirement
+slots and their assignments only when `restore_assignments` is set (the restore
+mode). A restore never re-enables live LAN/direct access, never carries auth-user
+attribution and always recomputes feasibility — a stored feasibility result is
+never trusted — and it validates the backup's generation and reconciliation
+consistency (generations within the plan, supersession links, and one active
+assignment per slot / one teacher per activity) before writing anything. Consult
+the OpenAPI schema for request and response models.
 
 ## Quality gates
 
