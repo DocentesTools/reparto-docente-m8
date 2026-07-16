@@ -11,12 +11,14 @@ guard for the intermediate teaching plan (plan §5.2, §9, §20.14):
   before it is applied, so no controller can drive an illegal edge;
 * marking the plan stale resets feasibility to ``NOT_EVALUATED`` (plan §20.14).
 
-The balance, lock, requirement-generation and feasibility-evaluation *behaviour*
-that drives these transitions lives in the dedicated later tasks (plan §13.1
-"Replace SummaryService…", "Build plan lock…", §20.20 feasibility items); this
-controller establishes the model, the ownership invariant and the reusable
-lifecycle guard those tasks build on. ``mark_stale`` is the concrete
-allocation-change side effect (plan §3.11, §9) exposed for that wiring.
+``get_summary`` and ``get_validations`` are the plan's read surface (plan §7.3):
+both delegate to the services that own the numbers and the findings, and both
+are solver-free. The lock and feasibility-evaluation *behaviour* that drives the
+remaining transitions lives in the dedicated later tasks (plan §13.1 "Build plan
+lock…", §20.20 feasibility items); this controller establishes the model, the
+ownership invariant and the reusable lifecycle guard those tasks build on.
+``mark_stale`` is the concrete allocation-change side effect (plan §3.11, §9)
+exposed for that wiring.
 """
 
 from __future__ import annotations
@@ -39,7 +41,8 @@ from reparto_service.enums import (
     SseEventType,
     TeachingPlanStatus,
 )
-from reparto_service.schemas.planning import PlanValidationReport
+from reparto_service.schemas.planning import PlanBalance, PlanValidationReport
+from reparto_service.services.calculations import PlanningCalculationService
 from reparto_service.services.planning_lifecycle import (
     TEACHING_PLAN_LIFECYCLE,
     IllegalStateTransitionError,
@@ -60,6 +63,25 @@ class TeachingPlanController(DomainController):
                 detail=f"No teaching plan for process {process_id}.",
             )
         return TeachingPlanPublic.model_validate(plan)
+
+    @staticmethod
+    def get_summary(session: Session, process_id: uuid.UUID) -> PlanBalance:
+        """Return both independent plan balances (plan §3.1, §6.1, §7.3).
+
+        The planning-stage numbers only: the group teaching-hour balance against
+        the current leadership allocation and the teacher workload balance
+        against the participant target total. They are reported on separate axes
+        and never summed — plan §3.2's co-teaching case is 120 group hours /
+        124 teacher-load hours, and both are correct.
+        """
+        DomainController.get_process_or_404(session, process_id)
+        plan = TeachingPlanController._plan_row(session, process_id)
+        if plan is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No teaching plan for process {process_id}.",
+            )
+        return PlanningCalculationService.compute_plan_balance(session, plan)
 
     @staticmethod
     def get_validations(

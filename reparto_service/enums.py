@@ -76,27 +76,6 @@ class SelectionTurnStatus(str, Enum):
     OVERRIDDEN = "overridden"
 
 
-class RequirementType(str, Enum):
-    """Type of required hours communicated by school leadership."""
-
-    ORDINARY = "ordinary"
-    REINFORCEMENT = "reinforcement"
-    SPLIT_GROUP = "split_group"
-    OPTIONAL = "optional"
-    BILINGUAL = "bilingual"
-    OTHER = "other"
-
-
-class AssignmentType(str, Enum):
-    """Type of an assignment record."""
-
-    MAIN = "main"
-    SHARED = "shared"
-    REINFORCEMENT = "reinforcement"
-    SPLIT_GROUP = "split_group"
-    OTHER = "other"
-
-
 class AssignmentSource(str, Enum):
     """Origin of an assignment record."""
 
@@ -163,35 +142,6 @@ class PlanningExportMode(str, Enum):
 # ── Balance and validation states (plan 9) ────────────────────────────────────
 
 
-class GlobalBalanceState(str, Enum):
-    """Aggregate balance state of an assignment process."""
-
-    BALANCED = "balanced"
-    PENDING = "pending"
-    EXCEEDED = "exceeded"
-    WARNING = "warning"
-
-
-class TeacherBalanceState(str, Enum):
-    """Per-teacher balance state inside one assignment process."""
-
-    BALANCED = "balanced"
-    PENDING = "pending"
-    OVERLOADED = "overloaded"
-    INACTIVE = "inactive"
-    NOT_PARTICIPATING = "not_participating"
-
-
-class RequirementBalanceState(str, Enum):
-    """Per-requirement balance state."""
-
-    UNCOVERED = "uncovered"
-    PARTIAL = "partial"
-    COVERED = "covered"
-    OVER_ASSIGNED = "over_assigned"
-    EXPLICITLY_SHARED = "explicitly_shared"
-
-
 class ValidationSeverity(str, Enum):
     """Severity of a single validation message (plan 9.4)."""
 
@@ -202,12 +152,13 @@ class ValidationSeverity(str, Enum):
 
 # ── Three-stage planning adaptation (plan §5, §6, §20) ────────────────────────
 #
-# The enums below introduce the intermediate department teaching-load planning
-# stage and the assignment-feasibility third invariant. They are ADDED alongside
-# the existing two-stage vocabulary; the obsolete members (``AssignmentType``,
-# ``RequirementType``, ``RequirementBalanceState``, ``TeacherBalanceState``,
-# ``GlobalBalanceState``) are removed in the later model-redesign tasks, so this
-# step keeps every existing model, service, route and test importable and green.
+# The enums below carry the intermediate department teaching-load planning stage
+# and the assignment-feasibility third invariant. The two-stage vocabulary they
+# replaced (``AssignmentType``, ``RequirementType``, ``RequirementBalanceState``,
+# ``TeacherBalanceState``, ``GlobalBalanceState``) is gone: those members modelled
+# shared assignments, leadership-typed requirement rows, partial coverage and a
+# single global balance — concepts the three-stage domain does not have (plan
+# §3.1, §3.6, §5.10).
 #
 # Allowed transitions for the enums that carry a lifecycle (``TeachingPlanStatus``,
 # ``HourRequirementStatus``, ``FeasibilityStatus``) are documented centrally in
@@ -323,7 +274,7 @@ class FeasibilityStatus(str, Enum):
 class HourRequirementStatus(str, Enum):
     """Status of one generated, indivisible teacher-position slot (plan §5.9).
 
-    Replaces the obsolete :class:`RequirementBalanceState` (which modelled
+    Replaces the removed ``RequirementBalanceState`` (which modelled the
     partial/shared coverage that no longer exists). No partial-coverage state
     exists: a slot is either ``AVAILABLE`` or fully ``ASSIGNED``. Legal edges:
     see
@@ -339,7 +290,10 @@ class HourRequirementStatus(str, Enum):
 class ParticipantBalanceState(str, Enum):
     """Per-participant assignment state (plan §6.2).
 
-    Replaces the obsolete :class:`TeacherBalanceState` semantics.
+    Replaces the removed ``TeacherBalanceState`` semantics — in particular its
+    ``OVERLOADED`` member, which meant "assigned beyond capacity, possibly via a
+    department-head override". An over-target assignment is now impossible
+    (plan §3.8): hours are authorized in advance or not at all.
     ``OVERLOADED_AUTHORIZED`` identifies ``extra_weekly_hours > 0``; it does NOT
     mean assigned hours exceed the target (plan §6.2).
     """

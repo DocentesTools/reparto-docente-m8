@@ -4,8 +4,8 @@
 :mod:`reparto_service.services.calculations` and a handful of cheap structural
 queries into the human/​machine validation findings the department head sees
 before locking a plan or starting the assignment stage. It is the message layer
-the "Replace ``SummaryService``" task deliberately deferred here — that task owns
-the numbers, this one owns the findings.
+that :mod:`reparto_service.services.calculations` deliberately leaves out — that
+module owns the numbers, this one owns the findings.
 
 Scope and cost (plan §20.19/§20.23): every check here is O(rows) — a balance
 comparison or an existence query. The **exponential feasibility solver is never

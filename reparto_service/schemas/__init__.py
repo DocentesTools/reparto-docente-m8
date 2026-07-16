@@ -1,10 +1,18 @@
 """reparto_service API schemas.
 
 Domain request/response schemas that are not bound to a database table
-(summary, balance, validation, dashboard) live in dedicated submodules
+(balance, validation, dashboard, exchange, event) live in dedicated submodules
 and are re-exported from here.
 """
 
+from .dashboard import (
+    AssignmentSection,
+    CurrentTurnSummary,
+    PlanningSection,
+    ProcessDashboard,
+    ProcessSummary,
+    TeacherLanSummary,
+)
 from .exchange import (
     PlanningExportActivity,
     PlanningExportArtifact,
@@ -22,19 +30,12 @@ from .planning import (
     PlanValidationReport,
     TeacherLoadBalance,
 )
-from .summary import (
-    GlobalBalance,
-    ProcessDashboard,
-    ProcessSummary,
-    RequirementBalance,
-    TeacherBalance,
-    ValidationMessage,
-)
 
 __all__ = [
+    "AssignmentSection",
     "AssignmentSummary",
     "AssignmentValidationReport",
-    "GlobalBalance",
+    "CurrentTurnSummary",
     "GroupBalance",
     "ParticipantBalance",
     "PlanBalance",
@@ -43,12 +44,11 @@ __all__ = [
     "PlanningImportActivity",
     "PlanningImportRequest",
     "PlanningImportResult",
+    "PlanningSection",
     "PlanValidationMessage",
     "PlanValidationReport",
     "ProcessDashboard",
     "ProcessSummary",
-    "RequirementBalance",
-    "TeacherBalance",
+    "TeacherLanSummary",
     "TeacherLoadBalance",
-    "ValidationMessage",
 ]

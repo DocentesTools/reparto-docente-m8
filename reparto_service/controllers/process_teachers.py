@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
@@ -11,8 +12,8 @@ from sqlmodel import Session, select
 from auth_sdk_m8.schemas.user import UserModel
 
 from reparto_service.controllers.base import DomainController
+from reparto_service.core.decimals import quantize_hours
 from reparto_service.db_models.assignment_processes import AssignmentProcess
-from reparto_service.db_models.assignments import Assignment
 from reparto_service.db_models.process_teachers import (
     ProcessTeacher,
     ProcessTeacherCreate,
@@ -22,13 +23,9 @@ from reparto_service.db_models.process_teachers import (
     ProcessTeacherUpdate,
 )
 from reparto_service.db_models.teacher_profiles import TeacherProfile
-from reparto_service.enums import AssignmentStatus, AuditEventType, SseEventType
+from reparto_service.enums import AuditEventType, SseEventType
+from reparto_service.services.calculations import AssignmentCalculationService
 from reparto_service.services.sse import hours_string
-
-# Tolerance for the decimal-hour comparison guarding an extra-hours
-# reduction. Hours are still stored as floats until the §3.9 Decimal
-# sweep; a sub-epsilon gap counts as equal.
-_HOUR_EPSILON = 1e-6
 
 
 class ProcessTeacherController(DomainController):
@@ -153,14 +150,19 @@ class ProcessTeacherController(DomainController):
             session, process_id, process_teacher_id
         )
         DomainController.ensure_process_mutable(process)
-        new_target = process_teacher.base_weekly_hours + payload.extra_weekly_hours
-        assigned = ProcessTeacherController._assigned_hours(session, process_teacher.id)
-        if new_target + _HOUR_EPSILON < assigned:
+        new_target = quantize_hours(
+            Decimal(str(process_teacher.base_weekly_hours))
+            + Decimal(str(payload.extra_weekly_hours))
+        )
+        assigned = AssignmentCalculationService.compute_participant_assigned_hours(
+            session, process_teacher
+        )
+        if new_target < assigned:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
                     "Cannot reduce extra hours below the hours already assigned: "
-                    f"new target {new_target:.2f} h < assigned {assigned:.2f} h."
+                    f"new target {new_target} h < assigned {assigned} h."
                 ),
             )
         before = ProcessTeacher.model_validate(process_teacher.model_dump())
@@ -229,18 +231,6 @@ class ProcessTeacherController(DomainController):
         return ProcessTeacherPublic.model_validate(process_teacher)
 
     # ── Internal helpers ─────────────────────────────────────────────────────
-
-    @staticmethod
-    def _assigned_hours(session: Session, process_teacher_id: uuid.UUID) -> float:
-        """Return the participant's currently assigned hours (active only)."""
-        statement = select(Assignment).where(
-            Assignment.process_teacher_id == process_teacher_id
-        )
-        return sum(
-            assignment.assigned_hours
-            for assignment in session.exec(statement).all()
-            if assignment.status != AssignmentStatus.CANCELLED
-        )
 
     @staticmethod
     def _get_or_404(

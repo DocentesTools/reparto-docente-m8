@@ -1,10 +1,10 @@
 """Teaching-plan routes (nested under an assignment process, plan §7.3).
 
 This slice exposes the plan's ownership surface, the read-only planning
-``validations`` endpoint and the ``materialize-main`` action (plan §7.3). The
-``summary``, ``lock``/``unlock`` and ``feasibility`` endpoints (plan §7.3)
-depend on the generation and feasibility services introduced by their dedicated
-later tasks and are added there.
+``summary`` and ``validations`` endpoints and the ``materialize-main`` action
+(plan §7.3). The ``lock``/``unlock`` and ``feasibility`` endpoints (plan §7.3)
+depend on the balance-recompute and feasibility services introduced by their
+dedicated later tasks and are added there.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from reparto_service.controllers.teaching_activities import TeachingActivityCont
 from reparto_service.controllers.teaching_plans import TeachingPlanController
 from reparto_service.db_models.teaching_activities import MainMaterializationResult
 from reparto_service.db_models.teaching_plans import TeachingPlanPublic
-from reparto_service.schemas.planning import PlanValidationReport
+from reparto_service.schemas.planning import PlanBalance, PlanValidationReport
 
 router = APIRouter(
     prefix="/assignment-processes/{process_id}/teaching-plan",
@@ -29,6 +29,13 @@ router = APIRouter(
 @router.get("", response_model=TeachingPlanPublic)
 def get_teaching_plan(session: SessionDep, process_id: uuid.UUID) -> TeachingPlanPublic:
     return TeachingPlanController.get_plan(session, process_id)
+
+
+@router.get("/summary", response_model=PlanBalance)
+def get_teaching_plan_summary(
+    session: SessionDep, process_id: uuid.UUID
+) -> PlanBalance:
+    return TeachingPlanController.get_summary(session, process_id)
 
 
 @router.get("/validations", response_model=PlanValidationReport)

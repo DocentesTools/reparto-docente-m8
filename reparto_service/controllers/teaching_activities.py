@@ -19,7 +19,7 @@ server-side, and every mutation enforces the structural invariants §5/§20 fix:
   ``group_weekly_hours_per_group`` for every group (plan §20.11).
 
 Balance recomputation and the balanced→unbalanced status transition that an
-activity change triggers (plan §20.14) belong to the dual-balance SummaryService
+activity change triggers (plan §20.14) belong to the dedicated balance-recompute
 task and are deferred here, matching every prior model task. Guarded retirement
 against generated requirements / assignments (plan §20.12) is a no-op today
 because the redesigned ``HourRequirement.teaching_activity_id`` link does not

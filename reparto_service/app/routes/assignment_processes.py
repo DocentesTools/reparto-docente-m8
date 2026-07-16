@@ -31,7 +31,7 @@ from reparto_service.db_models.assignment_processes import (
     ProcessReopenRequest,
     ProcessTransitionRequest,
 )
-from reparto_service.schemas.summary import (
+from reparto_service.schemas.dashboard import (
     ProcessDashboard,
     ProcessSummary,
     TeacherLanSummary,

@@ -71,7 +71,7 @@ to a LAN.
 | Reference administration | `/reparto/academic-years`, `/schools`, `/classroom-stages`, `/departments`, `/teacher-profiles` |
 | Assignment process | `/reparto/assignment-processes` |
 | Per-process resources | `/reparto/assignment-processes/{process_id}/teachers`, `/subjects`, `/groups`, `/requirements`, `/assignments` |
-| Teaching-load planning | `/reparto/assignment-processes/{process_id}/allocation-revisions`, `/teaching-plan`, `/teaching-plan/validations`, `/teaching-plan/materialize-main`, `/group-subjects`, `/teaching-activities` |
+| Teaching-load planning | `/reparto/assignment-processes/{process_id}/allocation-revisions`, `/teaching-plan`, `/teaching-plan/summary`, `/teaching-plan/validations`, `/teaching-plan/materialize-main`, `/group-subjects`, `/teaching-activities` |
 | Planning exchange | `/reparto/assignment-processes/{process_id}/exports/planning-draft`, `/exports/planning-provisional`, `/exports/planning-final`, `/imports/planning` |
 | Lifecycle and read models | `/transition`, `/reopen`, `/copy-previous-year`, `/summary`, `/dashboard`, `/lan/me`, `/events` under an assignment process |
 | Audit and history | `/audit-events`, `/versions`, `/compare-previous-year`, `/exports`, `/restore-draft` under an assignment process |
@@ -117,10 +117,14 @@ main-subject activities: one single-group `MAIN_GENERATED` activity per active
 main group-subject cell (hours inherited from the cell, then the subject
 default). It is idempotent — cells already materialised are skipped, never
 duplicated — and requires an unlocked plan.
-`GET /teaching-plan/validations` returns the plan's blocking and warning
-findings (missing allocation, group/teacher-load imbalance, unmaterialised main
-subjects, invalid activity/group links, ungenerated or stale requirements); it is
-read-only and never triggers a feasibility solve. `GET /assignments/validations`
+`GET /teaching-plan/summary` returns the plan's two independent balances — group
+teaching hours against the current leadership allocation, and teacher workload
+against the participant target total. They are reported on separate axes and are
+never summed: a co-teaching plan of 120 group hours and 124 teacher-load hours is
+correct on both. `GET /teaching-plan/validations` returns the plan's blocking and
+warning findings (missing allocation, group/teacher-load imbalance, unmaterialised
+main subjects, invalid activity/group links, ungenerated or stale requirements);
+it is read-only and never triggers a feasibility solve. `GET /assignments/validations`
 is its assignment-stage twin: it reports the blocking findings that stop final
 closure (unassigned indivisible slots, participants assigned above their exact
 target, and active participants still below target) plus the authorized-overload
@@ -133,6 +137,19 @@ teachers carry `base_weekly_hours` and department-head authorized
 non-zero extra flags `is_overloaded`. Extra hours change only through the audited
 `POST /teachers/{process_teacher_id}/extra-hours` action (reason required, blocked
 below already-assigned hours), never through the generic teacher `PATCH`.
+The process read models report the two stages side by side rather than one
+aggregate balance. `GET /dashboard` returns a planning section (both balances and
+the planning validations) and an assignment section (the per-participant slot
+occupancy view and the assignment validations), plus the coarse plan readiness,
+the current turn and the blocking count across both. A process that has not
+entered planning yet reports an empty planning section rather than an error.
+`GET /summary` is the same payload without the message lists or the participant
+rows. `GET /lan/me` is the teacher's own view: the aggregate, identifier-free plan
+balances, **only the caller's own** participation row (base, extra, target,
+assigned and remaining hours — never another teacher's figures), the available
+slot count, the current turn, and whether selection is blocked. Readiness on all
+three comes from the same lifecycle-gate status sets the write path consults, so
+what a viewer is shown can never disagree with what the gates let them do.
 Meeting and assignment operations are gated on plan readiness: opening a meeting
 requires a balanced, locked and generated plan (`REQUIREMENTS_GENERATED`) — an
 inexact, unlocked, un-generated or missing plan is refused with `409` — and new
