@@ -180,8 +180,19 @@ mode). A restore never re-enables live LAN/direct access, never carries auth-use
 attribution and always recomputes feasibility — a stored feasibility result is
 never trusted — and it validates the backup's generation and reconciliation
 consistency (generations within the plan, supersession links, and one active
-assignment per slot / one teacher per activity) before writing anything. Consult
-the OpenAPI schema for request and response models.
+assignment per slot / one teacher per activity) before writing anything.
+`GET /audit-events` returns the process's mutation trail oldest first. Every
+three-stage mutation is recorded with a canonical event type drawn from a single
+registry (`AuditEventType`) — allocation revisions (`allocation.revised`), the
+group-subject matrix including one row-detailed event per bulk apply
+(`group_subject.bulk_applied`), teaching-plan creation and staleness, activity
+creation/materialisation/import, requirement generation and reconciliation
+(`requirements.generated`, `requirements.reconciled`), audited extra-hour changes
+(`process_teacher.extra_hours_updated`) and every assignment and selection-turn
+action — each carrying the actor, role, before/after payloads and an optional
+reason. The trail can be narrowed with the optional `event_type` (validated
+against the registry; an unknown value is rejected with `422`) and `entity_type`
+query parameters. Consult the OpenAPI schema for request and response models.
 
 ## Quality gates
 

@@ -388,3 +388,69 @@ class WitnessStatus(str, Enum):
     MISSING = "missing"
     INVALID = "invalid"
     EXPIRED = "expired"
+
+
+class AuditEventType(str, Enum):
+    """Canonical registry of every domain audit event type (plan §8.14, §13.1).
+
+    Historically each controller passed a free-form ``event_type`` string to
+    :meth:`DomainController.record_audit_event`. This registry is the single
+    source of truth for that vocabulary so the whole three-stage audit trail is
+    declared once, discoverable, and typo-proof, and so the read side can offer
+    a validated ``event_type`` filter (plan §13.1 "Extend audit events").
+
+    The member *values* are byte-identical to the strings the controllers have
+    always persisted, so introducing the registry changes no stored data. The
+    dotted ``entity.action`` convention is kept.
+    """
+
+    # ── Assignment process lifecycle (plan §8.4) ──────────────────────────────
+    PROCESS_CREATED = "process.created"
+    PROCESS_UPDATED = "process.updated"
+    PROCESS_TRANSITIONED = "process.transitioned"
+    PROCESS_REOPENED = "process.reopened"
+    PROCESS_COPIED_FROM_PREVIOUS_YEAR = "process.copied_from_previous_year"
+    PROCESS_RESTORED_FROM_BACKUP = "process.restored_from_backup"
+
+    # ── Stage 1: configuration ────────────────────────────────────────────────
+    PROCESS_TEACHER_CREATED = "process_teacher.created"
+    PROCESS_TEACHER_UPDATED = "process_teacher.updated"
+    PROCESS_TEACHER_EXTRA_HOURS_UPDATED = "process_teacher.extra_hours_updated"
+    PROCESS_TEACHER_DELETED = "process_teacher.deleted"
+    SUBJECT_CREATED = "subject.created"
+    SUBJECT_UPDATED = "subject.updated"
+    SUBJECT_DELETED = "subject.deleted"
+    TEACHING_GROUP_CREATED = "teaching_group.created"
+    TEACHING_GROUP_UPDATED = "teaching_group.updated"
+    TEACHING_GROUP_DELETED = "teaching_group.deleted"
+
+    # ── Stage 2: department teaching-load planning ────────────────────────────
+    ALLOCATION_REVISED = "allocation.revised"
+    GROUP_SUBJECT_CREATED = "group_subject.created"
+    GROUP_SUBJECT_UPDATED = "group_subject.updated"
+    GROUP_SUBJECT_DELETED = "group_subject.deleted"
+    GROUP_SUBJECT_BULK_APPLIED = "group_subject.bulk_applied"
+    TEACHING_PLAN_CREATED = "teaching_plan.created"
+    TEACHING_PLAN_STALE = "teaching_plan.stale"
+    # Reserved for the dedicated "Build plan lock and requirement generation"
+    # workflow task (plan §7.3, §20.1); registered here so the lock/unlock audit
+    # vocabulary is fixed up front even though the endpoints land later.
+    TEACHING_PLAN_LOCKED = "teaching_plan.locked"
+    TEACHING_PLAN_UNLOCKED = "teaching_plan.unlocked"
+    TEACHING_ACTIVITY_CREATED = "teaching_activity.created"
+    TEACHING_ACTIVITY_UPDATED = "teaching_activity.updated"
+    TEACHING_ACTIVITY_DELETED = "teaching_activity.deleted"
+    TEACHING_ACTIVITY_MATERIALIZED = "teaching_activity.materialized"
+    TEACHING_ACTIVITY_IMPORTED = "teaching_activity.imported"
+    REQUIREMENTS_GENERATED = "requirements.generated"
+    REQUIREMENTS_RECONCILED = "requirements.reconciled"
+
+    # ── Stage 3: assignment to teachers ───────────────────────────────────────
+    ASSIGNMENT_CREATED = "assignment.created"
+    ASSIGNMENT_DIRECT_CHOICE = "assignment.direct_choice"
+    ASSIGNMENT_UPDATED = "assignment.updated"
+    ASSIGNMENT_CANCELLED = "assignment.cancelled"
+    SELECTION_TURN_STARTED = "selection_turn.started"
+    SELECTION_TURN_COMPLETED = "selection_turn.completed"
+    SELECTION_TURN_SKIPPED = "selection_turn.skipped"
+    SELECTION_TURN_OVERRIDDEN = "selection_turn.overridden"

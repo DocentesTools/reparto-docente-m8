@@ -37,7 +37,7 @@ from reparto_service.db_models.group_subjects import (
 )
 from reparto_service.db_models.subjects import Subject
 from reparto_service.db_models.teaching_groups import TeachingGroup
-from reparto_service.enums import GroupSubjectBulkMode
+from reparto_service.enums import AuditEventType, GroupSubjectBulkMode
 
 # Planning-value fields a bulk operation may set on a cell.
 _BULK_VALUE_FIELDS = (
@@ -114,7 +114,7 @@ class GroupSubjectController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="group_subject.created",
+            event_type=AuditEventType.GROUP_SUBJECT_CREATED,
             entity_type="group_subject",
             entity_id=group_subject.id,
             before=None,
@@ -155,7 +155,7 @@ class GroupSubjectController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="group_subject.updated",
+            event_type=AuditEventType.GROUP_SUBJECT_UPDATED,
             entity_type="group_subject",
             entity_id=group_subject.id,
             before=before,
@@ -184,7 +184,7 @@ class GroupSubjectController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="group_subject.deleted",
+            event_type=AuditEventType.GROUP_SUBJECT_DELETED,
             entity_type="group_subject",
             entity_id=group_subject.id,
             before=before,
@@ -280,7 +280,7 @@ class GroupSubjectController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="group_subject.bulk_applied",
+            event_type=AuditEventType.GROUP_SUBJECT_BULK_APPLIED,
             entity_type="group_subject",
             entity_id=subject.id,
             before=None,

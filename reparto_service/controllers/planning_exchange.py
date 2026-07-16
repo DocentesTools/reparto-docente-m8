@@ -44,7 +44,11 @@ from reparto_service.db_models.teaching_activities import (
     TeachingActivityGroup,
 )
 from reparto_service.db_models.teaching_plans import TeachingPlan
-from reparto_service.enums import PlanningExportMode, TeachingActivitySource
+from reparto_service.enums import (
+    AuditEventType,
+    PlanningExportMode,
+    TeachingActivitySource,
+)
 from reparto_service.schemas.exchange import (
     PlanningExportActivity,
     PlanningExportArtifact,
@@ -150,7 +154,7 @@ class PlanningExchangeController(DomainController):
                 session,
                 process_id=process_id,
                 current_user=current_user,
-                event_type="teaching_activity.imported",
+                event_type=AuditEventType.TEACHING_ACTIVITY_IMPORTED,
                 entity_type="teaching_activity",
                 entity_id=activity.id,
                 before=None,

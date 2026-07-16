@@ -32,6 +32,7 @@ from reparto_service.db_models.department_hour_allocation_revisions import (
     DepartmentHourAllocationRevisionPublic,
     DepartmentHourAllocationRevisionsPublic,
 )
+from reparto_service.enums import AuditEventType
 
 
 class DepartmentHourAllocationRevisionController(DomainController):
@@ -114,7 +115,7 @@ class DepartmentHourAllocationRevisionController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="allocation.revised",
+            event_type=AuditEventType.ALLOCATION_REVISED,
             entity_type="department_hour_allocation_revision",
             entity_id=revision.id,
             before=None,

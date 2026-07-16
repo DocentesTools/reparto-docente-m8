@@ -49,6 +49,7 @@ from reparto_service.db_models.teaching_activities import (
 )
 from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
+    AuditEventType,
     SubjectAllocationCategory,
     TeachingActivitySource,
     TeachingPlanStatus,
@@ -169,7 +170,7 @@ class TeachingActivityController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="teaching_activity.created",
+            event_type=AuditEventType.TEACHING_ACTIVITY_CREATED,
             entity_type="teaching_activity",
             entity_id=activity.id,
             before=None,
@@ -214,7 +215,7 @@ class TeachingActivityController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="teaching_activity.updated",
+            event_type=AuditEventType.TEACHING_ACTIVITY_UPDATED,
             entity_type="teaching_activity",
             entity_id=activity.id,
             before=before,
@@ -247,7 +248,7 @@ class TeachingActivityController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="teaching_activity.deleted",
+            event_type=AuditEventType.TEACHING_ACTIVITY_DELETED,
             entity_type="teaching_activity",
             entity_id=activity.id,
             before=before,
@@ -321,7 +322,7 @@ class TeachingActivityController(DomainController):
                 session,
                 process_id=process_id,
                 current_user=current_user,
-                event_type="teaching_activity.materialized",
+                event_type=AuditEventType.TEACHING_ACTIVITY_MATERIALIZED,
                 entity_type="teaching_activity",
                 entity_id=activity.id,
                 before=None,

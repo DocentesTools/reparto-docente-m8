@@ -33,7 +33,7 @@ from reparto_service.db_models.teaching_plans import (
     TeachingPlan,
     TeachingPlanPublic,
 )
-from reparto_service.enums import FeasibilityStatus, TeachingPlanStatus
+from reparto_service.enums import AuditEventType, FeasibilityStatus, TeachingPlanStatus
 from reparto_service.schemas.planning import PlanValidationReport
 from reparto_service.services.planning_lifecycle import (
     TEACHING_PLAN_LIFECYCLE,
@@ -105,7 +105,7 @@ class TeachingPlanController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="teaching_plan.created",
+            event_type=AuditEventType.TEACHING_PLAN_CREATED,
             entity_type="teaching_plan",
             entity_id=plan.id,
             before=None,
@@ -143,7 +143,7 @@ class TeachingPlanController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="teaching_plan.stale",
+            event_type=AuditEventType.TEACHING_PLAN_STALE,
             entity_type="teaching_plan",
             entity_id=plan.id,
             before=None,

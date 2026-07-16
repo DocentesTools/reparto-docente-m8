@@ -69,6 +69,7 @@ from reparto_service.db_models.teaching_activities import TeachingActivity
 from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
     AssignmentStatus,
+    AuditEventType,
     HourRequirementStatus,
     TeachingPlanStatus,
 )
@@ -246,7 +247,7 @@ class HourRequirementController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="requirements.generated",
+            event_type=AuditEventType.REQUIREMENTS_GENERATED,
             entity_type="teaching_plan",
             entity_id=plan.id,
             before=None,
@@ -345,7 +346,7 @@ class HourRequirementController(DomainController):
                 session,
                 process_id=process_id,
                 current_user=current_user,
-                event_type="assignment.cancelled",
+                event_type=AuditEventType.ASSIGNMENT_CANCELLED,
                 entity_type="assignment",
                 entity_id=assignment.id,
                 before=before,
@@ -397,7 +398,7 @@ class HourRequirementController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="requirements.reconciled",
+            event_type=AuditEventType.REQUIREMENTS_RECONCILED,
             entity_type="teaching_plan",
             entity_id=plan.id,
             before=None,

@@ -22,7 +22,7 @@ from reparto_service.db_models.process_teachers import (
     ProcessTeacherUpdate,
 )
 from reparto_service.db_models.teacher_profiles import TeacherProfile
-from reparto_service.enums import AssignmentStatus
+from reparto_service.enums import AssignmentStatus, AuditEventType
 
 # Tolerance for the decimal-hour comparison guarding an extra-hours
 # reduction. Hours are still stored as floats until the §3.9 Decimal
@@ -83,7 +83,7 @@ class ProcessTeacherController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="process_teacher.created",
+            event_type=AuditEventType.PROCESS_TEACHER_CREATED,
             entity_type="process_teacher",
             entity_id=process_teacher.id,
             before=None,
@@ -124,7 +124,7 @@ class ProcessTeacherController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="process_teacher.updated",
+            event_type=AuditEventType.PROCESS_TEACHER_UPDATED,
             entity_type="process_teacher",
             entity_id=process_teacher.id,
             before=before,
@@ -172,7 +172,7 @@ class ProcessTeacherController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="process_teacher.extra_hours_updated",
+            event_type=AuditEventType.PROCESS_TEACHER_EXTRA_HOURS_UPDATED,
             entity_type="process_teacher",
             entity_id=process_teacher.id,
             before=before,
@@ -200,7 +200,7 @@ class ProcessTeacherController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="process_teacher.deleted",
+            event_type=AuditEventType.PROCESS_TEACHER_DELETED,
             entity_type="process_teacher",
             entity_id=process_teacher.id,
             before=before,
