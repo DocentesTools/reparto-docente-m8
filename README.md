@@ -148,7 +148,15 @@ the strict gate and is refused (`400`) while any blocking validation remains.
 every referenced subject and group-subject cell is validated against the target
 process, every hour must be a canonical decimal string (a binary float or a
 value with more than two decimal places is rejected), and an import never creates
-or activates an assignment. `POST /versions` captures an immutable three-stage
+or activates an assignment.
+`POST /copy-from/{source_process_id}` seeds a fresh draft process from a previous
+year: it always copies the configuration structure — subjects and their defaults,
+teaching groups, group-subject cells and participants (base hours carried, but the
+extra-hour approvals dropped) — and never activates the previous leadership
+allocation, nor copies assignments, meetings, turns or extra-hour approvals. Pass
+`copy_activities: true` to additionally copy the source plan's live
+secondary-activity templates into a fresh draft teaching plan (main-generated and
+retired activities are excluded). `POST /versions` captures an immutable three-stage
 snapshot of the whole process — the allocation revisions and current allocation,
 the teaching-plan status and generation, both independent balances, the
 per-participant assignment summary (base/extra/target hours), the group-subject

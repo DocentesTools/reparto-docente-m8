@@ -203,15 +203,23 @@ class ProcessCopyRequest(SQLModel):
     The receiving process is the URL ``{id}``; the source process is the
     URL ``{source_id}``. The target process must exist, belong to the
     same school, and currently be in a state that has not yet been
-    populated (plan §14.1: copy *structure* is the default, assignments
-    require an explicit flag).
+    populated (plan §10.1).
+
+    Copy always carries the configuration structure — subjects and their
+    defaults, teaching groups, group-subject cells and participants
+    (with their extra-hour approvals dropped, plan §10.1). It NEVER copies
+    the leadership allocation as an active revision, assignments, meetings,
+    turns or extra-hour approvals. Optional secondary-activity templates are
+    copied only when ``copy_activities`` is explicitly requested.
     """
 
-    copy_assignments: bool = Field(
+    copy_activities: bool = Field(
         default=False,
         description=(
-            "When ``True``, copy the source's existing assignments to the "
-            "target process. Default is ``False``: only the structure "
-            "(teachers, subjects, groups, hour requirements) is copied."
+            "When ``True``, also copy the source plan's live secondary-activity "
+            "templates into a fresh draft teaching plan on the target (plan "
+            "§10.1, 'optional activity templates when explicitly selected'). "
+            "Default ``False``: only the configuration structure is copied. "
+            "Generated requirements and assignments are never copied."
         ),
     )

@@ -8,9 +8,12 @@ machine (plan §8.4, §10.2, §14.1):
   ``final`` edge.
 * ``reopen_process`` — explicit ``final`` → ``reopened`` edge with a
   mandatory reason; clears the close metadata.
-* ``copy_from_process`` — copies the structure (and optionally the
-  assignments) of a previous-year process into a fresh ``draft``
-  process (plan §14.1).
+* ``copy_from_process`` — copies the *configuration* of a previous-year
+  process (subjects, groups, group-subject cells, participants) into a
+  fresh ``draft`` process, optionally carrying the secondary-activity
+  templates. It never activates the previous leadership allocation and
+  never copies assignments, meetings, turns or extra-hour approvals
+  (plan §10.1).
 
 ``update_process`` no longer accepts ``status``: the field is owned by
 the transition endpoint so the table cannot be bypassed with a
@@ -39,17 +42,21 @@ from reparto_service.db_models.assignment_processes import (
     ProcessReopenRequest,
     ProcessTransitionRequest,
 )
-from reparto_service.db_models.assignments import Assignment
 from reparto_service.db_models.departments import Department
-from reparto_service.db_models.hour_requirements import HourRequirement
+from reparto_service.db_models.group_subjects import GroupSubject
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.schools import School
 from reparto_service.db_models.subjects import Subject
+from reparto_service.db_models.teaching_activities import (
+    TeachingActivity,
+    TeachingActivityGroup,
+)
 from reparto_service.db_models.teaching_groups import TeachingGroup
+from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
     AssignmentProcessStatus,
-    AssignmentSource,
-    AssignmentStatus,
+    TeachingActivitySource,
+    TeachingPlanStatus,
 )
 from reparto_service.services.process_lifecycle import (
     IllegalTransitionError,
@@ -260,20 +267,27 @@ class AssignmentProcessController(DomainController):
         request: ProcessCopyRequest,
         current_user: UserModel,
     ) -> AssignmentProcessPublic:
-        """Copy structure (and optionally assignments) from a source process.
+        """Copy the configuration of a source process into a fresh draft.
 
         The target process must:
 
         * exist,
         * belong to the same school as the source,
         * be in ``draft``,
-        * currently be empty (no teachers, subjects, groups, requirements,
-          or assignments).
+        * currently be empty (no participants, subjects, groups, group-subject
+          cells or teaching plan).
 
-        The selection-order fields of the target are kept as configured
-        by the head (no source values are copied). When
-        ``copy_assignments`` is true, each copied assignment is
-        re-marked as ``draft`` with the source-original author cleared.
+        The configuration always copied is: subjects and their defaults,
+        teaching groups, group-subject cells and participants — the latter
+        with base hours preserved but **extra-hour approvals dropped**
+        (``extra_weekly_hours`` reset to ``0`` and the extra-hours audit
+        pointer cleared, plan §10.1). The selection-order fields are kept
+        from the source. The previous leadership allocation is **never**
+        activated (no allocation revision is copied); assignments, meetings,
+        turns and extra-hour approvals are **never** copied. When
+        ``copy_activities`` is true, the source plan's live secondary-activity
+        templates are additionally copied into a fresh ``draft`` teaching plan
+        (plan §10.1).
         """
         target = DomainController.get_process_or_404(session, target_process_id)
         source = DomainController.get_process_or_404(session, source_process_id)
@@ -294,12 +308,12 @@ class AssignmentProcessController(DomainController):
                 detail=("Copy is only allowed into a process in status 'draft'."),
             )
         AssignmentProcessController._ensure_target_empty(session, target.id)
-        requirement_map = AssignmentProcessController._copy_structure(
+        subject_map, cell_map = AssignmentProcessController._copy_structure(
             session, source, target
         )
-        if request.copy_assignments:
-            AssignmentProcessController._copy_assignments(
-                session, source, target, requirement_map
+        if request.copy_activities:
+            AssignmentProcessController._copy_activity_templates(
+                session, source, target, subject_map, cell_map
             )
         target.created_from_process_id = source.id
         session.add(target)
@@ -362,44 +376,50 @@ class AssignmentProcessController(DomainController):
         if (
             session.exec(
                 select(func.count())
-                .select_from(HourRequirement)
-                .where(HourRequirement.assignment_process_id == target_id)
+                .select_from(GroupSubject)
+                .where(GroupSubject.assignment_process_id == target_id)
             ).one()
             > 0
         ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Target process already has hour requirements.",
+                detail="Target process already has group-subject cells.",
             )
         if (
             session.exec(
                 select(func.count())
-                .select_from(Assignment)
-                .where(Assignment.assignment_process_id == target_id)
+                .select_from(TeachingPlan)
+                .where(TeachingPlan.assignment_process_id == target_id)
             ).one()
             > 0
         ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Target process already has assignments.",
+                detail="Target process already has a teaching plan.",
             )
 
     @staticmethod
     def _copy_structure(
         session: Session, source: AssignmentProcess, target: AssignmentProcess
-    ) -> dict[uuid.UUID, uuid.UUID]:
-        """Copy subjects, teaching groups and hour requirements.
+    ) -> tuple[dict[uuid.UUID, uuid.UUID], dict[uuid.UUID, uuid.UUID]]:
+        """Copy the configuration structure (plan §10.1).
 
-        ``ProcessTeacher`` rows are copied one-to-one: the same
-        ``teacher_profile_id`` is reused and the selection-order fields
-        are preserved (plan §14.1, the previous-year column is the
-        teacher, not the per-process row). Available hours are reset to
-        ``0`` so the head must re-enter the contract values for the new
-        academic year.
+        Copies subjects and their defaults, teaching groups, group-subject
+        cells and participants. ``ProcessTeacher`` rows are copied one-to-one:
+        the same ``teacher_profile_id`` and the selection-order fields are
+        preserved, ``base_weekly_hours`` is carried, but the extra-hour
+        approval is dropped (``extra_weekly_hours`` reset to ``0`` and the
+        extra-hours audit pointer cleared) so no prior authorization survives
+        into the new year (plan §10.1). Generated hour requirements and
+        assignments are deliberately NOT copied — requirements are regenerated
+        from the plan and assignments never carry over.
+
+        Returns the source→target id maps for subjects and group-subject cells
+        so the optional activity-template copy can remap its references.
         """
         subject_map: dict[uuid.UUID, uuid.UUID] = {}
         group_map: dict[uuid.UUID, uuid.UUID] = {}
-        requirement_map: dict[uuid.UUID, uuid.UUID] = {}
+        cell_map: dict[uuid.UUID, uuid.UUID] = {}
         for subject in session.exec(
             select(Subject).where(Subject.assignment_process_id == source.id)
         ).all():
@@ -443,8 +463,11 @@ class AssignmentProcessController(DomainController):
                 ProcessTeacher(
                     assignment_process_id=target.id,
                     teacher_profile_id=teacher.teacher_profile_id,
-                    base_weekly_hours=0,
+                    base_weekly_hours=teacher.base_weekly_hours,
                     extra_weekly_hours=0,
+                    extra_hours_reason=None,
+                    extra_hours_updated_by_user_id=None,
+                    extra_hours_updated_at=None,
                     participates_in_selection=teacher.participates_in_selection,
                     selection_position=teacher.selection_position,
                     selection_points=teacher.selection_points,
@@ -454,111 +477,96 @@ class AssignmentProcessController(DomainController):
                     status=teacher.status,
                 )
             )
-        for requirement in session.exec(
-            select(HourRequirement).where(
-                HourRequirement.assignment_process_id == source.id
-            )
+        for cell in session.exec(
+            select(GroupSubject).where(GroupSubject.assignment_process_id == source.id)
         ).all():
-            copied_requirement = HourRequirement(
+            copied_cell = GroupSubject(
                 assignment_process_id=target.id,
-                teaching_group_id=group_map[requirement.teaching_group_id],
-                subject_id=subject_map[requirement.subject_id],
-                required_hours=requirement.required_hours,
-                requirement_type=requirement.requirement_type,
-                flags=requirement.flags,
-                notes=requirement.notes,
+                teaching_group_id=group_map[cell.teaching_group_id],
+                subject_id=subject_map[cell.subject_id],
+                group_weekly_hours=cell.group_weekly_hours,
+                teacher_weekly_hours_per_position=(
+                    cell.teacher_weekly_hours_per_position
+                ),
+                required_teacher_count=cell.required_teacher_count,
+                active=cell.active,
+                notes=cell.notes,
             )
-            requirement_map[requirement.id] = copied_requirement.id
-            session.add(copied_requirement)
+            cell_map[cell.id] = copied_cell.id
+            session.add(copied_cell)
         session.flush()
-        return requirement_map
+        return subject_map, cell_map
 
     @staticmethod
-    def _copy_assignments(
+    def _copy_activity_templates(
         session: Session,
         source: AssignmentProcess,
         target: AssignmentProcess,
-        requirement_map: dict[uuid.UUID, uuid.UUID] | None = None,
+        subject_map: dict[uuid.UUID, uuid.UUID],
+        cell_map: dict[uuid.UUID, uuid.UUID],
     ) -> None:
-        """Copy assignments from the source to the target process.
+        """Copy live secondary-activity templates into a fresh draft plan.
 
-        The mapping between old and new requirement / process-teacher
-        rows is built by re-resolving the source rows' identifiers
-        against the freshly-inserted target rows (group+subject for
-        requirements, teacher-profile-id for process-teachers). The
-        fresh rows are those just inserted in the same transaction; this
-        works because ``_copy_structure`` runs first and ``session.flush``
-        is called to obtain their IDs.
+        Only runs when ``copy_activities`` was explicitly requested (plan
+        §10.1, "optional activity templates when explicitly selected").
+        Requires a source teaching plan; if the source has none there is
+        nothing to copy. A fresh ``DRAFT`` :class:`TeachingPlan` is created on
+        the target (generation ``0``, no allocation, no generated requirements)
+        and every live ``SECONDARY_MANUAL`` activity is re-created under it with
+        its subject and group-subject links remapped through the source→target
+        id maps from :meth:`_copy_structure`.
+
+        ``MAIN_GENERATED`` activities are never copied — they are re-materialised
+        from the copied group-subject cells by the materialisation flow — and
+        retired activities are skipped.
         """
-        target_requirements: dict[tuple[uuid.UUID, uuid.UUID, str], uuid.UUID] = {}
-        for requirement in session.exec(
-            select(HourRequirement).where(
-                HourRequirement.assignment_process_id == target.id
+        source_plan = session.exec(
+            select(TeachingPlan).where(TeachingPlan.assignment_process_id == source.id)
+        ).first()
+        if source_plan is None:
+            return
+        target_plan = TeachingPlan(
+            assignment_process_id=target.id,
+            status=TeachingPlanStatus.DRAFT,
+            current_generation_number=0,
+        )
+        session.add(target_plan)
+        for activity in session.exec(
+            select(TeachingActivity).where(
+                TeachingActivity.teaching_plan_id == source_plan.id
             )
         ).all():
-            key = (
-                requirement.teaching_group_id,
-                requirement.subject_id,
-                requirement.requirement_type.value,
-            )
-            target_requirements[key] = requirement.id
-        target_process_teachers: dict[uuid.UUID, uuid.UUID] = {}
-        for teacher in session.exec(
-            select(ProcessTeacher).where(
-                ProcessTeacher.assignment_process_id == target.id
-            )
-        ).all():
-            target_process_teachers[teacher.teacher_profile_id] = teacher.id
-        for source_assignment in session.exec(
-            select(Assignment).where(Assignment.assignment_process_id == source.id)
-        ).all():
-            source_requirement = session.get(
-                HourRequirement, source_assignment.hour_requirement_id
-            )
-            if source_requirement is None:
+            if (
+                activity.source != TeachingActivitySource.SECONDARY_MANUAL
+                or activity.retired_at is not None
+            ):
                 continue
-            new_requirement_id = (
-                requirement_map.get(source_requirement.id)
-                if requirement_map is not None
-                else target_requirements.get(
-                    (
-                        source_requirement.teaching_group_id,
-                        source_requirement.subject_id,
-                        source_requirement.requirement_type.value,
+            copied_activity = TeachingActivity(
+                teaching_plan_id=target_plan.id,
+                subject_id=subject_map[activity.subject_id],
+                allocation_category=activity.allocation_category,
+                activity_type=activity.activity_type,
+                group_weekly_hours_per_group=activity.group_weekly_hours_per_group,
+                teacher_weekly_hours_per_position=(
+                    activity.teacher_weekly_hours_per_position
+                ),
+                required_teacher_count=activity.required_teacher_count,
+                source=TeachingActivitySource.SECONDARY_MANUAL,
+                notes=activity.notes,
+            )
+            session.add(copied_activity)
+            for link in session.exec(
+                select(TeachingActivityGroup).where(
+                    TeachingActivityGroup.teaching_activity_id == activity.id
+                )
+            ).all():
+                session.add(
+                    TeachingActivityGroup(
+                        teaching_activity_id=copied_activity.id,
+                        group_subject_id=cell_map[link.group_subject_id],
                     )
                 )
-            )
-            source_teacher = session.get(
-                ProcessTeacher, source_assignment.process_teacher_id
-            )
-            if source_teacher is None:  # pragma: no cover
-                continue
-            new_process_teacher_id = target_process_teachers.get(
-                source_teacher.teacher_profile_id
-            )
-            if (
-                new_requirement_id is None or new_process_teacher_id is None
-            ):  # pragma: no cover
-                # The source row references a structure element that was
-                # not copied over (e.g. a teacher profile that was not
-                # in the target). Skip rather than invent data.
-                continue
-            session.add(
-                Assignment(
-                    assignment_process_id=target.id,
-                    hour_requirement_id=new_requirement_id,
-                    process_teacher_id=new_process_teacher_id,
-                    assigned_hours=source_assignment.assigned_hours,
-                    assignment_type=source_assignment.assignment_type,
-                    source=AssignmentSource.SYSTEM_COPY,
-                    status=AssignmentStatus.DRAFT,
-                    chosen_by_user_id=None,
-                    confirmed_by_user_id=None,
-                    override_reason=None,
-                    overridden_by_user_id=None,
-                    notes=source_assignment.notes,
-                )
-            )
+        session.flush()
 
 
 __all__ = ["AssignmentProcessController"]
