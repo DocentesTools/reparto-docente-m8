@@ -192,18 +192,6 @@ def test_teacher_lan_summary_requires_linked_profile(
     assert "linked" in resp.json()["detail"]
 
 
-def test_process_summary_event_stream(client: TestClient, session: Session) -> None:
-    process = factories.make_assignment_process(session)
-    with client.stream(
-        "GET", f"/reparto/assignment-processes/{process.id}/events"
-    ) as resp:
-        assert resp.status_code == 200
-        assert resp.headers["content-type"].startswith("text/event-stream")
-        text = "".join(resp.iter_text())
-    assert "event: process.summary" in text
-    assert f'"process_id":"{process.id}"' in text
-
-
 def test_summary_returns_404_for_missing_process(
     client: TestClient,
 ) -> None:

@@ -6,17 +6,16 @@ and the read-only summary/dashboard endpoints used by the
 department-head view. Per-resource child endpoints (teachers, subjects,
 groups, requirements, assignments) live in their own route files but
 are mounted under the ``/assignment-processes/{process_id}/...``
-namespace.
+namespace — including the SSE stream
+(:mod:`reparto_service.app.routes.process_events`).
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterator
 from typing import Optional
 
 from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
 
 from reparto_service.app.deps import CurrentUser, SessionDep
 from reparto_service.controllers.assignment_processes import (
@@ -159,14 +158,3 @@ def get_teacher_lan_summary(
     return DashboardController.get_teacher_lan_summary(
         session, process_id, current_user
     )
-
-
-@router.get("/{process_id}/events", response_class=StreamingResponse)
-def stream_process_summary(
-    session: SessionDep, process_id: uuid.UUID
-) -> StreamingResponse:
-    def generate() -> Iterator[str]:
-        payload = DashboardController.get_summary(session, process_id)
-        yield f"event: process.summary\ndata: {payload.model_dump_json()}\n\n"
-
-    return StreamingResponse(generate(), media_type="text/event-stream")

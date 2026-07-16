@@ -17,7 +17,8 @@ auth contract and owns no auth-service database or private signing keys.
 - Per-process teachers, subjects, teaching groups, generated hour-requirement
   slots, and capacity-enforced assignments.
 - Process lifecycle transitions, reopening, draft restoration, summaries,
-  dashboards, audit events, and a server-sent event stream.
+  dashboards, audit events, and a server-sent event stream with role-projected
+  payloads.
 - LAN teacher read access, meeting sessions, ordered selection turns, and
   direct assignment choices.
 - Process versions, previous-year comparison, and export artifact endpoints.
@@ -192,7 +193,24 @@ creation/materialisation/import, requirement generation and reconciliation
 action — each carrying the actor, role, before/after payloads and an optional
 reason. The trail can be narrowed with the optional `event_type` (validated
 against the registry; an unknown value is rejected with `422`) and `entity_type`
-query parameters. Consult the OpenAPI schema for request and response models.
+query parameters.
+`GET /events` is a Server-Sent Events stream of that same process's changes, for
+LAN clients and the shared meeting screen. It opens with a `stream.opened` frame
+carrying the current plan readiness (so a client needs no separate fetch) and
+then relays `allocation.revised`, `teaching_plan.updated`, `teaching_plan.stale`,
+`requirements.generated`, `requirements.reconciled` and
+`participant.extra_hours_updated`, plus a keep-alive comment while idle. Every
+payload is projected to the viewer's role: a department head or administrator
+receives the full payload; a teacher receives the plan readiness, whether
+selection is blocked, and hour figures **only for their own participation** —
+never another teacher's target; the shared screen receives readiness alone
+(`ready` / `not_ready` / `recalculation_required`) with no identifiers. A caller
+may request a *less* privileged tier with `?audience=teacher|shared_screen` (a
+projection screen should), but requesting a more privileged tier than the role
+grants is refused with `403`. The stream is best-effort — the database remains
+authoritative — so a subscriber that falls behind receives a `stream.gap` frame
+telling it to refetch rather than silently missing a change.
+Consult the OpenAPI schema for request and response models.
 
 ## Quality gates
 

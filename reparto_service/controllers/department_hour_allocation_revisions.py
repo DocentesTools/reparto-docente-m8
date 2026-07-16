@@ -32,7 +32,8 @@ from reparto_service.db_models.department_hour_allocation_revisions import (
     DepartmentHourAllocationRevisionPublic,
     DepartmentHourAllocationRevisionsPublic,
 )
-from reparto_service.enums import AuditEventType
+from reparto_service.enums import AuditEventType, SseEventType
+from reparto_service.services.sse import hours_string
 
 
 class DepartmentHourAllocationRevisionController(DomainController):
@@ -131,6 +132,20 @@ class DepartmentHourAllocationRevisionController(DomainController):
                 detail="Could not create allocation revision; please retry.",
             ) from exc
         session.refresh(revision)
+        DepartmentHourAllocationRevisionController.publish_event(
+            session,
+            process_id=process_id,
+            event_type=SseEventType.ALLOCATION_REVISED,
+            payload={
+                "revision_id": str(revision.id),
+                "revision_number": revision.revision_number,
+                "allocated_group_weekly_hours": hours_string(
+                    revision.allocated_group_weekly_hours
+                ),
+                "source": revision.source.value,
+                "reason": revision.reason,
+            },
+        )
         return DepartmentHourAllocationRevisionPublic.model_validate(revision)
 
     # ── Internal helpers ─────────────────────────────────────────────────────

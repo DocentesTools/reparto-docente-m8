@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any
 
@@ -15,7 +16,11 @@ from sqlmodel import SQLModel
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.audit_events import AuditEvent
 from reparto_service.db_models.departments import Department
-from reparto_service.enums import AssignmentProcessStatus, AuditEventType
+from reparto_service.enums import AssignmentProcessStatus, AuditEventType, SseEventType
+from reparto_service.schemas.events import DomainEvent
+from reparto_service.services.sse import current_readiness, event_broker
+
+logger = logging.getLogger(__name__)
 
 # Child resources cannot be mutated when the parent process is in one of
 # these statuses. ``final`` is locked by plan §8.4; ``archived`` is the
@@ -184,6 +189,51 @@ class DomainController(BaseController):
         )
         session.add(event)
         return event
+
+    @staticmethod
+    def publish_event(
+        session: Session,
+        *,
+        process_id: uuid.UUID,
+        event_type: SseEventType,
+        payload: dict[str, Any] | None = None,
+        subject_process_teacher_id: uuid.UUID | None = None,
+    ) -> DomainEvent | None:
+        """Fan one committed change out to the SSE subscribers (plan §11).
+
+        The counterpart to :meth:`record_audit_event`, and its mirror image in
+        two ways. It is called **after** ``session.commit()``, never before: an
+        audit row is part of the transaction and must roll back with it, whereas
+        an event announces a change that already happened — publishing inside the
+        transaction would advertise a state a rollback could still erase.
+
+        And it never raises. A failed audit write must fail the request; a failed
+        broadcast must not, because the write already succeeded and the stream is
+        explicitly best-effort (a viewer converges on the next event, gap frame or
+        refetch — see :mod:`reparto_service.services.sse`). Returns the published
+        event, or ``None`` if publishing failed.
+
+        The plan readiness carried to the teacher/shared-screen tiers is read
+        here, once, rather than at each emit site, so no caller can publish a
+        readiness that disagrees with the committed plan status.
+        """
+        try:
+            readiness, selection_blocked = current_readiness(session, process_id)
+            return event_broker.publish(
+                process_id=process_id,
+                event_type=event_type,
+                readiness=readiness,
+                selection_blocked=selection_blocked,
+                payload=payload,
+                subject_process_teacher_id=subject_process_teacher_id,
+            )
+        except Exception:
+            logger.exception(
+                "sse publish failed event_type=%s process_id=%s",
+                event_type.value,
+                process_id,
+            )
+            return None
 
     @staticmethod
     def _audit_payload(row: SQLModel | None) -> dict[str, Any] | None:

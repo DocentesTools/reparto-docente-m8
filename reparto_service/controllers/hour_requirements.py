@@ -71,6 +71,7 @@ from reparto_service.enums import (
     AssignmentStatus,
     AuditEventType,
     HourRequirementStatus,
+    SseEventType,
     TeachingPlanStatus,
 )
 
@@ -258,6 +259,19 @@ class HourRequirementController(DomainController):
         for requirement in created:
             session.refresh(requirement)
         live = HourRequirementController._live_requirements(session, process_id)
+        HourRequirementController.publish_event(
+            session,
+            process_id=process_id,
+            event_type=SseEventType.REQUIREMENTS_GENERATED,
+            payload={
+                "teaching_plan_id": str(plan.id),
+                "generation_number": number,
+                "created_count": len(created),
+                "preserved_count": len(generation.to_preserve),
+                "retired_count": len(generation.to_retire),
+                "live_slot_count": len(live),
+            },
+        )
         return RequirementGenerationResult(
             generation_number=number,
             created=[HourRequirementPublic.model_validate(r) for r in created],
@@ -410,6 +424,25 @@ class HourRequirementController(DomainController):
         for requirement in created:
             session.refresh(requirement)
         live = HourRequirementController._live_requirements(session, process_id)
+        # A reconciliation released active assignments, so it is announced as its
+        # own event rather than a plain generation: the affected teachers' clients
+        # must refetch a selection they had already been granted (plan §9).
+        HourRequirementController.publish_event(
+            session,
+            process_id=process_id,
+            event_type=SseEventType.REQUIREMENTS_RECONCILED,
+            payload={
+                "teaching_plan_id": str(plan.id),
+                "generation_number": number,
+                "resolved_count": len(resolved),
+                "released_assignment_ids": [str(i) for i in released_ids],
+                "created_count": len(created),
+                "preserved_count": len(generation.to_preserve),
+                "retired_count": len(generation.to_retire),
+                "live_slot_count": len(live),
+                "reason": request.reason,
+            },
+        )
         return RequirementReconciliationResult(
             generation_number=number,
             resolved=resolved,

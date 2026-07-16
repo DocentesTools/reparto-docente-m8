@@ -33,7 +33,12 @@ from reparto_service.db_models.teaching_plans import (
     TeachingPlan,
     TeachingPlanPublic,
 )
-from reparto_service.enums import AuditEventType, FeasibilityStatus, TeachingPlanStatus
+from reparto_service.enums import (
+    AuditEventType,
+    FeasibilityStatus,
+    SseEventType,
+    TeachingPlanStatus,
+)
 from reparto_service.schemas.planning import PlanValidationReport
 from reparto_service.services.planning_lifecycle import (
     TEACHING_PLAN_LIFECYCLE,
@@ -113,6 +118,9 @@ class TeachingPlanController(DomainController):
         )
         session.commit()
         session.refresh(plan)
+        TeachingPlanController._publish_plan_event(
+            session, plan, SseEventType.TEACHING_PLAN_UPDATED
+        )
         return TeachingPlanPublic.model_validate(plan)
 
     @staticmethod
@@ -152,7 +160,40 @@ class TeachingPlanController(DomainController):
         )
         session.commit()
         session.refresh(plan)
+        TeachingPlanController._publish_plan_event(
+            session, plan, SseEventType.TEACHING_PLAN_STALE, reason=reason
+        )
         return TeachingPlanPublic.model_validate(plan)
+
+    # ── SSE emission (plan §11) ──────────────────────────────────────────────
+
+    @staticmethod
+    def _publish_plan_event(
+        session: Session,
+        plan: TeachingPlan,
+        event_type: SseEventType,
+        *,
+        reason: str | None = None,
+    ) -> None:
+        """Fan a committed plan-status change out to subscribers (plan §11).
+
+        Shared by every plan emit site so each one publishes the same shape.
+        ``status`` is department-head-only by construction: the teacher and
+        shared-screen tiers receive the coarse readiness the projection derives
+        instead (plan §20.25), never the raw planning stage.
+        """
+        TeachingPlanController.publish_event(
+            session,
+            process_id=plan.assignment_process_id,
+            event_type=event_type,
+            payload={
+                "teaching_plan_id": str(plan.id),
+                "status": plan.status.value,
+                "current_generation_number": plan.current_generation_number,
+                "feasibility_status": plan.feasibility_status.value,
+                "reason": reason,
+            },
+        )
 
     # ── Lifecycle guard (reused by later balance/lock/generation tasks) ──────
 

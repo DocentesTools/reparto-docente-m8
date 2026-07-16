@@ -22,7 +22,8 @@ from reparto_service.db_models.process_teachers import (
     ProcessTeacherUpdate,
 )
 from reparto_service.db_models.teacher_profiles import TeacherProfile
-from reparto_service.enums import AssignmentStatus, AuditEventType
+from reparto_service.enums import AssignmentStatus, AuditEventType, SseEventType
+from reparto_service.services.sse import hours_string
 
 # Tolerance for the decimal-hour comparison guarding an extra-hours
 # reduction. Hours are still stored as floats until the §3.9 Decimal
@@ -181,6 +182,24 @@ class ProcessTeacherController(DomainController):
         )
         session.commit()
         session.refresh(process_teacher)
+        # Participant-scoped: only this teacher (and the head) ever sees the
+        # figures — another teacher's target is never published (plan §20.25).
+        ProcessTeacherController.publish_event(
+            session,
+            process_id=process_id,
+            event_type=SseEventType.PARTICIPANT_EXTRA_HOURS_UPDATED,
+            subject_process_teacher_id=process_teacher.id,
+            payload={
+                "process_teacher_id": str(process_teacher.id),
+                "base_weekly_hours": hours_string(process_teacher.base_weekly_hours),
+                "extra_weekly_hours": hours_string(process_teacher.extra_weekly_hours),
+                "target_weekly_hours": hours_string(
+                    process_teacher.target_weekly_hours
+                ),
+                "is_overloaded": process_teacher.extra_weekly_hours > 0,
+                "reason": process_teacher.extra_hours_reason,
+            },
+        )
         return ProcessTeacherPublic.model_validate(process_teacher)
 
     @staticmethod

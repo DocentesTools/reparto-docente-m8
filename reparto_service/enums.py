@@ -454,3 +454,78 @@ class AuditEventType(str, Enum):
     SELECTION_TURN_COMPLETED = "selection_turn.completed"
     SELECTION_TURN_SKIPPED = "selection_turn.skipped"
     SELECTION_TURN_OVERRIDDEN = "selection_turn.overridden"
+
+
+# ── SSE stream (plan §11, §20.25) ─────────────────────────────────────────────
+
+
+class SseEventType(str, Enum):
+    """Canonical registry of every server-sent domain event type (plan §11).
+
+    The SSE vocabulary is deliberately *separate* from
+    :class:`AuditEventType`. The audit trail is an append-only forensic record
+    of who changed what; the SSE stream is a live cache-invalidation signal for
+    connected viewers. The two overlap in name for the changes that are both
+    audited and streamed, but they are not the same vocabulary: the stream adds
+    control frames (``stream.opened``/``stream.gap``) that are never audited,
+    and the audit trail records configuration edits that no viewer streams.
+
+    Every payload is projected per viewer role before it leaves the process
+    (plan §11 "LAN-safe response schemas appropriate to the viewer role",
+    §20.25); see :mod:`reparto_service.services.sse`.
+    """
+
+    # ── Stream control (not domain changes) ───────────────────────────────────
+    #: Sent once when a subscriber connects, carrying the current readiness so a
+    #: client has a baseline without a separate fetch.
+    STREAM_OPENED = "stream.opened"
+    #: Sent when the subscriber's buffer overflowed and events were dropped. The
+    #: client must refetch rather than assume continuity — the same best-effort
+    #: contract the auth event stream uses (:mod:`reparto_service.core.events`).
+    STREAM_GAP = "stream.gap"
+
+    # ── Stage 2: department teaching-load planning (plan §3.11, §9) ────────────
+    ALLOCATION_REVISED = "allocation.revised"
+    TEACHING_PLAN_UPDATED = "teaching_plan.updated"
+    TEACHING_PLAN_BALANCED = "teaching_plan.balanced"
+    TEACHING_PLAN_LOCKED = "teaching_plan.locked"
+    TEACHING_PLAN_STALE = "teaching_plan.stale"
+    REQUIREMENTS_GENERATED = "requirements.generated"
+    REQUIREMENTS_RECONCILED = "requirements.reconciled"
+    REQUIREMENTS_RECONCILIATION_REQUIRED = "requirements.reconciliation_required"
+
+    # ── Stage 1/3: participant hours (plan §3.8) ──────────────────────────────
+    PARTICIPANT_EXTRA_HOURS_UPDATED = "participant.extra_hours_updated"
+
+
+class SseAudience(str, Enum):
+    """Viewer tier deciding how much of an event payload is published (§20.25).
+
+    Ordered from most to least privileged; :func:`~reparto_service.services.sse.resolve_audience`
+    only ever *downgrades* a caller from the tier their role grants, never up.
+    """
+
+    #: Department head / administrator: the full payload.
+    DEPARTMENT_HEAD = "department_head"
+    #: A participating teacher on the LAN: plan readiness, whether selection is
+    #: blocked, and their **own** participant figures — never another teacher's.
+    TEACHER = "teacher"
+    #: The shared projection screen: readiness only, no identifiers at all.
+    SHARED_SCREEN = "shared_screen"
+
+
+class PlanReadiness(str, Enum):
+    """Coarse, role-safe projection of the teaching-plan status (plan §20.25).
+
+    The shared screen and teacher tiers see only this three-value axis instead
+    of the full :class:`TeachingPlanStatus`, which would leak planning-stage
+    detail to viewers who must not act on it.
+    """
+
+    #: The plan is generated: selections may proceed.
+    READY = "ready"
+    #: Planning is still in progress; the assignment stage cannot be entered.
+    NOT_READY = "not_ready"
+    #: An allocation change invalidated the plan; the head must reconcile before
+    #: selections continue.
+    RECALCULATION_REQUIRED = "recalculation_required"
