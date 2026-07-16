@@ -10,7 +10,7 @@ import uuid
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlmodel import Session, col, func, select
+from sqlmodel import Session, col, select
 
 from auth_sdk_m8.schemas.user import UserModel
 
@@ -30,13 +30,7 @@ from reparto_service.db_models.export_artifacts import (
 )
 from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.process_teachers import ProcessTeacher
-from reparto_service.db_models.process_versions import (
-    ProcessVersion,
-    ProcessVersionCreate,
-    ProcessVersionPublic,
-    ProcessVersionsPublic,
-    VersionComparison,
-)
+from reparto_service.db_models.process_versions import ProcessVersion
 from reparto_service.db_models.subjects import Subject
 from reparto_service.db_models.teaching_groups import TeachingGroup
 from reparto_service.enums import (
@@ -55,85 +49,6 @@ from reparto_service.services.summary import SummaryService
 
 class HistoryController(DomainController):
     """Snapshot, compare and export process state."""
-
-    @staticmethod
-    def list_versions(session: Session, process_id: uuid.UUID) -> ProcessVersionsPublic:
-        DomainController.get_process_or_404(session, process_id)
-        rows = list(
-            session.exec(
-                select(ProcessVersion)
-                .where(ProcessVersion.assignment_process_id == process_id)
-                .order_by(col(ProcessVersion.version_number))
-            ).all()
-        )
-        return ProcessVersionsPublic(
-            data=[ProcessVersionPublic.model_validate(row) for row in rows],
-            count=len(rows),
-        )
-
-    @staticmethod
-    def create_version(
-        session: Session,
-        process_id: uuid.UUID,
-        current_user: UserModel,
-        payload: ProcessVersionCreate,
-    ) -> ProcessVersionPublic:
-        process = DomainController.get_process_or_404(session, process_id)
-        next_number = (
-            session.exec(
-                select(func.max(ProcessVersion.version_number)).where(
-                    ProcessVersion.assignment_process_id == process_id
-                )
-            ).one()
-            or 0
-        ) + 1
-        version = ProcessVersion(
-            assignment_process_id=process_id,
-            version_number=next_number,
-            status=process.status,
-            reason=payload.reason,
-            created_by_user_id=uuid.UUID(str(current_user.id)),
-            snapshot_json=HistoryController._snapshot(session, process_id),
-        )
-        session.add(version)
-        session.commit()
-        session.refresh(version)
-        return ProcessVersionPublic.model_validate(version)
-
-    @staticmethod
-    def compare_versions(
-        session: Session,
-        process_id: uuid.UUID,
-        left_version_id: uuid.UUID,
-        right_version_id: uuid.UUID,
-    ) -> VersionComparison:
-        left = HistoryController._get_version_or_404(
-            session, process_id, left_version_id
-        )
-        right = HistoryController._get_version_or_404(
-            session, process_id, right_version_id
-        )
-        return HistoryController._compare_snapshots(left, right)
-
-    @staticmethod
-    def compare_previous_year(
-        session: Session, process_id: uuid.UUID
-    ) -> VersionComparison:
-        process = DomainController.get_process_or_404(session, process_id)
-        if process.created_from_process_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Process has no previous-year source process.",
-            )
-        left_snapshot = HistoryController._snapshot(
-            session, process.created_from_process_id
-        )
-        right_snapshot = HistoryController._snapshot(session, process_id)
-        left = HistoryController._virtual_version(
-            process.created_from_process_id, left_snapshot
-        )
-        right = HistoryController._virtual_version(process_id, right_snapshot)
-        return HistoryController._compare_snapshots(left, right)
 
     @staticmethod
     def list_artifacts(
@@ -528,56 +443,6 @@ class HistoryController(DomainController):
                 detail=f"ProcessVersion {version_id} not found.",
             )
         return version
-
-    @staticmethod
-    def _virtual_version(
-        process_id: uuid.UUID, snapshot: dict[str, Any]
-    ) -> ProcessVersion:
-        return ProcessVersion(
-            assignment_process_id=process_id,
-            version_number=1,
-            status=AssignmentProcessStatus(snapshot["process"]["status"]),
-            reason=None,
-            created_by_user_id=uuid.UUID(snapshot["process"]["created_by_user_id"]),
-            snapshot_json=snapshot,
-        )
-
-    @staticmethod
-    def _compare_snapshots(
-        left: ProcessVersion, right: ProcessVersion
-    ) -> VersionComparison:
-        left_summary = left.snapshot_json["summary"]["global_balance"]
-        right_summary = right.snapshot_json["summary"]["global_balance"]
-        changed = [
-            section
-            for section in ("teachers", "requirements", "assignments")
-            if left.snapshot_json[section] != right.snapshot_json[section]
-        ]
-        return VersionComparison(
-            left_version_id=left.id,
-            right_version_id=right.id,
-            changed_sections=changed,
-            required_hours_delta=(
-                right_summary["total_required_hours"]
-                - left_summary["total_required_hours"]
-            ),
-            assigned_hours_delta=(
-                right_summary["total_assigned_hours"]
-                - left_summary["total_assigned_hours"]
-            ),
-            teacher_count_delta=(
-                len(right.snapshot_json["teachers"])
-                - len(left.snapshot_json["teachers"])
-            ),
-            requirement_count_delta=(
-                len(right.snapshot_json["requirements"])
-                - len(left.snapshot_json["requirements"])
-            ),
-            assignment_count_delta=(
-                len(right.snapshot_json["assignments"])
-                - len(left.snapshot_json["assignments"])
-            ),
-        )
 
 
 __all__ = ["HistoryController"]

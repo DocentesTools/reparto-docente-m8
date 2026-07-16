@@ -27,6 +27,7 @@ from .process_lifecycle import (
     is_reopen_to_close_edge,
     is_terminal,
 )
+from .snapshots import SnapshotService
 from .validations import (
     AssignmentValidationService,
     PlanValidationService,
@@ -65,6 +66,7 @@ __all__ = [
     "IllegalTransitionError",
     "PlanValidationService",
     "PlanningCalculationService",
+    "SnapshotService",
     "SummaryService",
     "TEACHING_PLAN_LIFECYCLE",
     "TransitionTable",

@@ -148,7 +148,17 @@ the strict gate and is refused (`400`) while any blocking validation remains.
 every referenced subject and group-subject cell is validated against the target
 process, every hour must be a canonical decimal string (a binary float or a
 value with more than two decimal places is rejected), and an import never creates
-or activates an assignment. Consult the OpenAPI schema for request and response
+or activates an assignment. `POST /versions` captures an immutable three-stage
+snapshot of the whole process — the allocation revisions and current allocation,
+the teaching-plan status and generation, both independent balances, the
+per-participant assignment summary (base/extra/target hours), the group-subject
+matrix, the live activities with their linked group cells and the generated
+requirement slots — and `GET /versions` lists them. `GET /versions/{left}/compare/{right}`
+and `GET /compare-previous-year` diff two snapshots along the plan §10.3
+dimensions: whether the allocation, group hours, teacher load, subject category,
+activities, group links, teacher-position count, participant targets or
+requirement generation changed, plus signed hour and count deltas (hours as
+canonical decimal strings). Consult the OpenAPI schema for request and response
 models.
 
 ## Quality gates

@@ -18,6 +18,7 @@ from .department_hour_allocation_revisions import (
 from .departments import DepartmentController
 from .hour_requirements import HourRequirementController
 from .process_teachers import ProcessTeacherController
+from .process_versions import ProcessVersionController
 from .schools import SchoolController
 from .subjects import SubjectController
 from .teacher_profiles import TeacherProfileController
@@ -34,6 +35,7 @@ __all__ = [
     "DomainController",
     "HourRequirementController",
     "ProcessTeacherController",
+    "ProcessVersionController",
     "SchoolController",
     "SubjectController",
     "TeacherProfileController",

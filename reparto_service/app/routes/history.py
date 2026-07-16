@@ -8,6 +8,7 @@ from fastapi import APIRouter
 
 from reparto_service.app.deps import CurrentUser, SessionDep
 from reparto_service.controllers.history import HistoryController
+from reparto_service.controllers.process_versions import ProcessVersionController
 from reparto_service.db_models.assignment_processes import AssignmentProcessPublic
 from reparto_service.db_models.export_artifacts import (
     ExportBackupRestoreRequest,
@@ -30,7 +31,7 @@ router = APIRouter(
 
 @router.get("/versions", response_model=ProcessVersionsPublic)
 def list_versions(session: SessionDep, process_id: uuid.UUID) -> ProcessVersionsPublic:
-    return HistoryController.list_versions(session, process_id)
+    return ProcessVersionController.list_versions(session, process_id)
 
 
 @router.post("/versions", response_model=ProcessVersionPublic, status_code=201)
@@ -40,8 +41,10 @@ def create_version(
     process_id: uuid.UUID,
     payload: ProcessVersionCreate,
 ) -> ProcessVersionPublic:
-    HistoryController.require_process_writer(session, current_user, process_id)
-    return HistoryController.create_version(session, process_id, current_user, payload)
+    ProcessVersionController.require_process_writer(session, current_user, process_id)
+    return ProcessVersionController.create_version(
+        session, process_id, current_user, payload
+    )
 
 
 @router.get(
@@ -54,7 +57,7 @@ def compare_versions(
     left_version_id: uuid.UUID,
     right_version_id: uuid.UUID,
 ) -> VersionComparison:
-    return HistoryController.compare_versions(
+    return ProcessVersionController.compare_versions(
         session, process_id, left_version_id, right_version_id
     )
 
@@ -63,7 +66,7 @@ def compare_versions(
 def compare_previous_year(
     session: SessionDep, process_id: uuid.UUID
 ) -> VersionComparison:
-    return HistoryController.compare_previous_year(session, process_id)
+    return ProcessVersionController.compare_previous_year(session, process_id)
 
 
 @router.get("/exports", response_model=ExportArtifactsPublic)
