@@ -25,7 +25,11 @@ from sqlalchemy import DateTime, UniqueConstraint
 from sqlmodel import Column, Field as SQLField, SQLModel
 
 from auth_sdk_m8.models.shared import TimestampMixin
-from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.core.db_models import (
+    UUIDString,
+    enum_column_type,
+    prefixed_tables,
+)
 from reparto_service.enums import DepartmentHourAllocationSource
 
 
@@ -53,8 +57,11 @@ class DepartmentHourAllocationRevisionBase(SQLModel):
         max_length=500,
         description="Mandatory justification recorded with the revision.",
     )
-    source: DepartmentHourAllocationSource = Field(
+    source: DepartmentHourAllocationSource = SQLField(
         default=DepartmentHourAllocationSource.MANUAL_TRANSCRIPTION,
+        sa_column=Column(
+            "source", enum_column_type(DepartmentHourAllocationSource), nullable=False
+        ),
         description="How the revision entered the system (plan §20.16).",
     )
     source_reference: Optional[str] = Field(

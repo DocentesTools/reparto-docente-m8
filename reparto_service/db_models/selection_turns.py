@@ -11,7 +11,11 @@ from sqlalchemy import DateTime, UniqueConstraint
 from sqlmodel import Column, Field as SQLField, SQLModel
 
 from auth_sdk_m8.models.shared import TimestampMixin
-from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.core.db_models import (
+    UUIDString,
+    enum_column_type,
+    prefixed_tables,
+)
 from reparto_service.db_models.assignments import AssignmentCreate
 from reparto_service.enums import SelectionTurnStatus
 
@@ -22,7 +26,12 @@ class SelectionTurnBase(SQLModel):
     meeting_session_id: uuid.UUID = Field(description="Owning meeting session ID.")
     process_teacher_id: uuid.UUID = Field(description="Teacher taking this turn.")
     position: int = Field(ge=0, description="Zero-based position in turn order.")
-    status: SelectionTurnStatus = Field(default=SelectionTurnStatus.PENDING)
+    status: SelectionTurnStatus = SQLField(
+        default=SelectionTurnStatus.PENDING,
+        sa_column=Column(
+            "status", enum_column_type(SelectionTurnStatus), nullable=False
+        ),
+    )
     skip_reason: Optional[str] = Field(default=None, max_length=500)
     forced_by_user_id: Optional[uuid.UUID] = Field(default=None)
     notes: Optional[str] = Field(default=None, max_length=1000)

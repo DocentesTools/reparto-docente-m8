@@ -17,7 +17,11 @@ from sqlmodel import Column, Field as SQLField, SQLModel
 from sqlalchemy import DateTime
 
 from auth_sdk_m8.models.shared import TimestampMixin
-from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.core.db_models import (
+    UUIDString,
+    enum_column_type,
+    prefixed_tables,
+)
 from reparto_service.enums import (
     AssignmentProcessStatus,
     SelectionOrderMode,
@@ -35,8 +39,11 @@ class AssignmentProcessBase(SQLModel):
     department_id: uuid.UUID = Field(
         description="Owning department ID inside the school."
     )
-    status: AssignmentProcessStatus = Field(
+    status: AssignmentProcessStatus = SQLField(
         default=AssignmentProcessStatus.DRAFT,
+        sa_column=Column(
+            "status", enum_column_type(AssignmentProcessStatus), nullable=False
+        ),
         description="Lifecycle status (plan 8.4).",
     )
     default_teacher_hours_reference: Optional[float] = Field(
@@ -51,8 +58,11 @@ class AssignmentProcessBase(SQLModel):
         default=False,
         description="Whether the process configures a turn order.",
     )
-    selection_order_mode: SelectionOrderMode = Field(
+    selection_order_mode: SelectionOrderMode = SQLField(
         default=SelectionOrderMode.NONE,
+        sa_column=Column(
+            "selection_order_mode", enum_column_type(SelectionOrderMode), nullable=False
+        ),
         description="How the configured turn order is enforced during a meeting.",
     )
     direct_teacher_selection_enabled: bool = Field(

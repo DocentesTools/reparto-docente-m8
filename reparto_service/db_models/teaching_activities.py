@@ -44,7 +44,11 @@ from sqlalchemy import DateTime, Index, UniqueConstraint, text
 from sqlmodel import Column, Field as SQLField, SQLModel
 
 from auth_sdk_m8.models.shared import TimestampMixin
-from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.core.db_models import (
+    UUIDString,
+    enum_column_type,
+    prefixed_tables,
+)
 from reparto_service.enums import (
     ActivityType,
     SubjectAllocationCategory,
@@ -65,15 +69,23 @@ class TeachingActivityBase(SQLModel):
     """
 
     subject_id: uuid.UUID = Field(description="Subject this activity teaches.")
-    allocation_category: SubjectAllocationCategory = Field(
+    allocation_category: SubjectAllocationCategory = SQLField(
         default=SubjectAllocationCategory.SECONDARY,
+        sa_column=Column(
+            "allocation_category",
+            enum_column_type(SubjectAllocationCategory),
+            nullable=False,
+        ),
         description=(
             "Whether the activity is a MAIN or SECONDARY planning item "
             "(plan §5.6). Manual activities are SECONDARY by default."
         ),
     )
-    activity_type: ActivityType = Field(
+    activity_type: ActivityType = SQLField(
         default=ActivityType.ORDINARY,
+        sa_column=Column(
+            "activity_type", enum_column_type(ActivityType), nullable=False
+        ),
         description=(
             "Descriptive category only (plan §20.17): controls labels, filters "
             "and reports. No domain behaviour may branch on this value."
@@ -191,10 +203,16 @@ class TeachingActivity(TimestampMixin, TeachingActivityBase, SQLModel, table=Tru
     )
     source: TeachingActivitySource = SQLField(
         default=TeachingActivitySource.SECONDARY_MANUAL,
+        sa_column=Column(
+            "source", enum_column_type(TeachingActivitySource), nullable=False
+        ),
         description="Origin of the activity (plan §5.6).",
     )
     sync_state: TeachingActivitySyncState = SQLField(
         default=TeachingActivitySyncState.IN_SYNC,
+        sa_column=Column(
+            "sync_state", enum_column_type(TeachingActivitySyncState), nullable=False
+        ),
         description=(
             "Sync state of a MAIN_GENERATED activity vs its source cell "
             "(plan §20.10). Always IN_SYNC for manual activities."

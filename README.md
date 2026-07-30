@@ -104,6 +104,23 @@ outright rather than kept behind a compatibility layer. Reset a development
 database through this Compose initialization flow; the migration describing the
 new schema is generated from the models by the same bootstrap.
 
+Run from `docker_compose/dev_reparto_m8`:
+
+```bash
+docker compose down
+sudo rm -rf ./db_data                      # bind-mounted PostgreSQL data
+rm -f ./shared_migrations/reparto_docentes/versions/*.py
+docker compose up -d
+```
+
+Clear both together. Dropping the revisions while keeping `db_data` leaves tables
+that no revision records. The same PostgreSQL instance backs the `fa-auth-m8`
+issuer, so a reset also clears its users.
+
+To check the schema the bootstrap will generate — without generating it — run
+`pytest tests/test_schema_migration_gate.py`, and see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §3.3 for the PostgreSQL variant.
+
 ## API map
 
 | Area | Base path |

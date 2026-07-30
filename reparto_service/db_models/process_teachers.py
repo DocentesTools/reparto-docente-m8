@@ -28,7 +28,11 @@ from sqlalchemy import UniqueConstraint
 from sqlmodel import Column, Field as SQLField, SQLModel
 
 from auth_sdk_m8.models.shared import TimestampMixin
-from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.core.db_models import (
+    UUIDString,
+    enum_column_type,
+    prefixed_tables,
+)
 from reparto_service.enums import ProcessTeacherStatus
 
 
@@ -91,8 +95,11 @@ class ProcessTeacherBase(SQLModel):
         default=False,
         description="Whether the selection order is locked for this teacher.",
     )
-    status: ProcessTeacherStatus = Field(
+    status: ProcessTeacherStatus = SQLField(
         default=ProcessTeacherStatus.ACTIVE,
+        sa_column=Column(
+            "status", enum_column_type(ProcessTeacherStatus), nullable=False
+        ),
         description="Whether the teacher is active in the process.",
     )
 

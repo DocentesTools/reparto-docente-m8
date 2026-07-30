@@ -11,7 +11,11 @@ from sqlalchemy import JSON, Column
 from sqlmodel import Field as SQLField, SQLModel
 
 from auth_sdk_m8.models.shared import TimestampMixin
-from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.core.db_models import (
+    UUIDString,
+    enum_column_type,
+    prefixed_tables,
+)
 from reparto_service.enums import AssignmentProcessStatus
 
 
@@ -20,7 +24,12 @@ class ProcessVersionBase(SQLModel):
 
     assignment_process_id: uuid.UUID = Field(description="Owning process ID.")
     version_number: int = Field(ge=1, description="Monotonic version number.")
-    status: AssignmentProcessStatus = Field(description="Process status snapshot.")
+    status: AssignmentProcessStatus = SQLField(
+        sa_column=Column(
+            "status", enum_column_type(AssignmentProcessStatus), nullable=False
+        ),
+        description="Process status snapshot.",
+    )
     reason: Optional[str] = Field(default=None, max_length=500)
     created_by_user_id: uuid.UUID = Field(description="Auth user that created it.")
     snapshot_json: dict[str, Any] = Field(description="Immutable process snapshot.")

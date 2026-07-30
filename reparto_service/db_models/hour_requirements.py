@@ -51,7 +51,11 @@ from sqlalchemy import Index, UniqueConstraint, text
 from sqlmodel import Column, Field as SQLField, SQLModel
 
 from auth_sdk_m8.models.shared import TimestampMixin
-from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.core.db_models import (
+    UUIDString,
+    enum_column_type,
+    prefixed_tables,
+)
 from reparto_service.enums import HourRequirementStatus
 
 
@@ -147,6 +151,9 @@ class HourRequirement(TimestampMixin, SQLModel, table=True):
     )
     status: HourRequirementStatus = SQLField(
         default=HourRequirementStatus.AVAILABLE,
+        sa_column=Column(
+            "status", enum_column_type(HourRequirementStatus), nullable=False
+        ),
         description=(
             "Slot lifecycle state (plan §5.9). A slot is AVAILABLE or fully "
             "ASSIGNED — there is no partial-coverage state."

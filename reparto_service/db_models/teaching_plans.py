@@ -31,7 +31,11 @@ from sqlalchemy import DateTime, UniqueConstraint
 from sqlmodel import Column, Field as SQLField, SQLModel
 
 from auth_sdk_m8.models.shared import TimestampMixin
-from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.core.db_models import (
+    UUIDString,
+    enum_column_type,
+    prefixed_tables,
+)
 from reparto_service.enums import FeasibilityStatus, TeachingPlanStatus
 
 
@@ -70,6 +74,9 @@ class TeachingPlan(TimestampMixin, SQLModel, table=True):
     )
     status: TeachingPlanStatus = SQLField(
         default=TeachingPlanStatus.DRAFT,
+        sa_column=Column(
+            "status", enum_column_type(TeachingPlanStatus), nullable=False
+        ),
         description="Operational lifecycle stage (plan §5.2).",
     )
     current_generation_number: int = SQLField(
@@ -104,6 +111,9 @@ class TeachingPlan(TimestampMixin, SQLModel, table=True):
     )
     feasibility_status: FeasibilityStatus = SQLField(
         default=FeasibilityStatus.NOT_EVALUATED,
+        sa_column=Column(
+            "feasibility_status", enum_column_type(FeasibilityStatus), nullable=False
+        ),
         description=(
             "Assignment-partition feasibility — the third invariant, on its own "
             "axis (plan §20.1). Resets to NOT_EVALUATED on any relevant change."

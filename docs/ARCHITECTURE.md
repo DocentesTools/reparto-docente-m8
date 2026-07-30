@@ -67,6 +67,37 @@ stack can mount the migrations directory as a volume shared with the auth
 service. Migration files are **generated from the declared models by the Compose
 bootstrap**, never hand-authored in this repository (workspace policy).
 
+`reparto_service/scripts/docker_start.sh` is that bootstrap. On every container
+start it:
+
+1. runs `alembic check` — no drift, no revision, so ordinary restarts do not
+   produce empty revisions;
+2. on drift, runs `alembic revision --autogenerate -m "Automatic reparto
+   migration"` against `SQLModel.metadata`;
+3. hands over to `pre_start.sh`, which waits for the database and runs
+   `alembic upgrade head`.
+
+`reparto_service/alembic/env.py` supplies the two settings that make the output
+usable: `compare_type=True`, and a `render_item` hook that emits the `import` for
+project-defined column types (`UUIDString`) so the generated revision is
+self-contained.
+
+Because nobody writes the revision, **the declared metadata is the only place a
+schema defect can be caught**. Two consequences:
+
+* every enum column must be declared with
+  `reparto_service.core.db_models.enum_column_type`, which yields
+  `sa.Enum(..., native_enum=False, create_constraint=True)` — a `VARCHAR` sized
+  to the longest member name plus a `CHECK` constraint. A native PostgreSQL
+  `ENUM` would need an `ALTER TYPE` migration for every new member, and being a
+  schema-level object it survives `DROP TABLE` and breaks the reset in §3.2. The
+  persisted token is the member *name* (`'ACTIVE'`, not `'active'`), which is
+  what the partial-index predicates are written against.
+* the gate is asserted by tests rather than by review:
+  `tests/test_schema_migration_gate.py` runs on every suite invocation, and
+  `tests/live/test_schema_postgres.py` repeats it against a real PostgreSQL
+  server (see §3.3).
+
 ### 3.2 Development database reset
 
 The three-stage adaptation is a deliberate **destructive** schema change and no
@@ -78,6 +109,38 @@ backward data migration exists:
 * obsolete assignment semantics (`assigned_hours`, shared assignments, partial
   requirement coverage, over-assignment overrides) were removed outright, with no
   compatibility layer.
+
+The reset is a full teardown of the two pieces of generated state — the database
+volume and the generated revisions — from `docker_compose/dev_reparto_m8`:
+
+```bash
+docker compose down
+sudo rm -rf ./db_data                      # bind-mounted PostgreSQL data
+rm -f ./shared_migrations/reparto_docentes/versions/*.py
+docker compose up -d
+```
+
+The bootstrap then autogenerates one revision describing the whole current
+schema and applies it to the empty database. Leaving `db_data` in place while
+clearing the revisions is the one combination to avoid: the tables would already
+exist with no revision recording them.
+
+Deleting `db_data` also resets the `fa-auth-m8` issuer, which shares the same
+PostgreSQL instance — expect to recreate the local superuser afterwards.
+
+### 3.3 Verifying the schema without generating a revision
+
+`tests/test_schema_migration_gate.py` checks, on the declared metadata and the
+SQLite test engine, that no enum column is native, that each keeps its `CHECK`,
+that no dialect emits `CREATE TYPE`, that partial unique indexes carry both
+dialect predicates, and that a database created from the metadata leaves an
+empty `compare_metadata` diff — which is exactly what makes step 1 of the
+bootstrap pass on a second start.
+
+`tests/live/test_schema_postgres.py` repeats those checks against a real
+PostgreSQL server and additionally drops every table and recreates the schema,
+proving the §3.2 reset is repeatable. It is excluded from the default run; its
+module docstring carries the disposable-database command line.
 
 ## 4. Domain model
 

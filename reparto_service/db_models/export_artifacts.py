@@ -11,7 +11,11 @@ from sqlalchemy import Column, Text
 from sqlmodel import Field as SQLField, SQLModel
 
 from auth_sdk_m8.models.shared import TimestampMixin
-from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.core.db_models import (
+    UUIDString,
+    enum_column_type,
+    prefixed_tables,
+)
 from reparto_service.enums import ExportArtifactFormat, ExportArtifactType
 
 
@@ -20,8 +24,16 @@ class ExportArtifactBase(SQLModel):
 
     assignment_process_id: uuid.UUID
     process_version_id: Optional[uuid.UUID] = None
-    export_type: ExportArtifactType
-    format: ExportArtifactFormat
+    export_type: ExportArtifactType = SQLField(
+        sa_column=Column(
+            "export_type", enum_column_type(ExportArtifactType), nullable=False
+        ),
+    )
+    format: ExportArtifactFormat = SQLField(
+        sa_column=Column(
+            "format", enum_column_type(ExportArtifactFormat), nullable=False
+        ),
+    )
     file_path: str
     created_by_user_id: uuid.UUID
     checksum: str = Field(min_length=64, max_length=64)

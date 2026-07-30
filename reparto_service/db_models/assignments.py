@@ -44,7 +44,11 @@ from sqlalchemy import ForeignKeyConstraint, Index, text
 from sqlmodel import Column, Field as SQLField, SQLModel
 
 from auth_sdk_m8.models.shared import TimestampMixin
-from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.core.db_models import (
+    UUIDString,
+    enum_column_type,
+    prefixed_tables,
+)
 from reparto_service.enums import AssignmentSource, AssignmentStatus
 
 
@@ -69,12 +73,14 @@ class AssignmentBase(SQLModel):
     process_teacher_id: uuid.UUID = Field(
         description="Process teacher occupying the slot."
     )
-    source: AssignmentSource = Field(
+    source: AssignmentSource = SQLField(
         default=AssignmentSource.DEPARTMENT_HEAD,
+        sa_column=Column("source", enum_column_type(AssignmentSource), nullable=False),
         description="Origin of the assignment record (plan §5.10).",
     )
-    status: AssignmentStatus = Field(
+    status: AssignmentStatus = SQLField(
         default=AssignmentStatus.ACTIVE,
+        sa_column=Column("status", enum_column_type(AssignmentStatus), nullable=False),
         description="Lifecycle status: ACTIVE occupancy or CANCELLED (plan §5.10).",
     )
     chosen_by_user_id: Optional[uuid.UUID] = Field(

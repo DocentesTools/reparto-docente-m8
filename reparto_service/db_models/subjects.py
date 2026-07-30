@@ -31,7 +31,11 @@ from sqlalchemy import UniqueConstraint
 from sqlmodel import Column, Field as SQLField, SQLModel
 
 from auth_sdk_m8.models.shared import TimestampMixin
-from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.core.db_models import (
+    UUIDString,
+    enum_column_type,
+    prefixed_tables,
+)
 from reparto_service.enums import ActivityType, SubjectAllocationCategory
 
 
@@ -49,15 +53,23 @@ class SubjectBase(SQLModel):
         max_length=150,
         description="Subject name, e.g. 'Mathematics'.",
     )
-    allocation_category: SubjectAllocationCategory = Field(
+    allocation_category: SubjectAllocationCategory = SQLField(
         default=SubjectAllocationCategory.MAIN,
+        sa_column=Column(
+            "allocation_category",
+            enum_column_type(SubjectAllocationCategory),
+            nullable=False,
+        ),
         description=(
             "Whether the subject is a mandatory MAIN planning input or an "
             "optional SECONDARY one (plan §3.5). Never a boolean ``is_main``."
         ),
     )
-    activity_type: ActivityType = Field(
+    activity_type: ActivityType = SQLField(
         default=ActivityType.ORDINARY,
+        sa_column=Column(
+            "activity_type", enum_column_type(ActivityType), nullable=False
+        ),
         description=(
             "Descriptive activity category (plan §5.3). Controls only labels, "
             "filters, defaults, reports and analytics — no behaviour may branch "
