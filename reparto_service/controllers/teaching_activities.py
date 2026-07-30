@@ -54,6 +54,7 @@ from reparto_service.enums import (
     TeachingActivitySource,
     TeachingPlanStatus,
 )
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 
 # Plan statuses in which normal activity mutation is allowed (plan §5.6, §20.14):
 # still-planning states. LOCKED / REQUIREMENTS_GENERATED / STALE /
@@ -176,6 +177,7 @@ class TeachingActivityController(DomainController):
             before=None,
             after=activity,
         )
+        FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(activity)
         return TeachingActivityController._to_public(session, activity)
@@ -221,6 +223,7 @@ class TeachingActivityController(DomainController):
             before=before,
             after=activity,
         )
+        FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(activity)
         return TeachingActivityController._to_public(session, activity)
@@ -254,6 +257,7 @@ class TeachingActivityController(DomainController):
             before=before,
             after=None,
         )
+        FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         return public
 
@@ -330,6 +334,8 @@ class TeachingActivityController(DomainController):
             )
             created.append(TeachingActivityController._to_public(session, activity))
 
+        if created:
+            FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         return MainMaterializationResult(
             created=created,

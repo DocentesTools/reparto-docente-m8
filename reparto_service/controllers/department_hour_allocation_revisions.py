@@ -33,6 +33,7 @@ from reparto_service.db_models.department_hour_allocation_revisions import (
     DepartmentHourAllocationRevisionsPublic,
 )
 from reparto_service.enums import AuditEventType, SseEventType
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 from reparto_service.services.sse import hours_string
 
 
@@ -123,6 +124,7 @@ class DepartmentHourAllocationRevisionController(DomainController):
             after=revision,
             reason=revision_in.reason,
         )
+        FeasibilityWitnessService.invalidate(session, process_id)
         try:
             session.commit()
         except Exception as exc:  # pragma: no cover - DB race guard

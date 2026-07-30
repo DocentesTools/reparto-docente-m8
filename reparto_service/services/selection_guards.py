@@ -7,8 +7,8 @@ oversized-slot detection and per-activity bipartite matching (plan §20.5).
 
 Witness validation and repair are also local: repair starts from an already
 complete deterministic witness and permits only a bounded number of
-balance-improving slot moves.  Witness persistence is a separate orchestration
-concern (plan §20.20).
+balance-improving slot moves. Witness persistence is owned by
+``services.feasibility_witnesses`` (plan §20.20).
 """
 
 from __future__ import annotations
@@ -313,6 +313,15 @@ def validate_proposed_assignment_against_witness(
     )
 
 
+def validate_feasibility_witness(
+    state: FeasibilityState,
+    witness: tuple[FeasibilityWitnessEntry, ...],
+) -> bool:
+    """Return whether ``witness`` is a complete exact mapping for ``state``."""
+
+    return _validated_witness_mapping(state, witness) is not None
+
+
 def _validated_witness_mapping(
     state: FeasibilityState,
     witness: tuple[FeasibilityWitnessEntry, ...],
@@ -531,5 +540,6 @@ __all__ = [
     "WitnessRepairResult",
     "build_remaining_assignment_state",
     "compute_fast_feasibility_checks",
+    "validate_feasibility_witness",
     "validate_proposed_assignment_against_witness",
 ]

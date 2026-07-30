@@ -74,6 +74,7 @@ from reparto_service.enums import (
     SseEventType,
     TeachingPlanStatus,
 )
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 
 # Plan statuses from which a generation may run (plan §20.8, §20.14): the plan is
 # LOCKED (first generation of the just-locked plan) or STALE (regeneration of an
@@ -254,6 +255,7 @@ class HourRequirementController(DomainController):
             before=None,
             after=plan,
         )
+        FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
 
         for requirement in created:
@@ -419,6 +421,7 @@ class HourRequirementController(DomainController):
             after=plan,
             reason=request.reason,
         )
+        FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
 
         for requirement in created:

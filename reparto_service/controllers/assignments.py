@@ -25,8 +25,9 @@ in one canonical order (slot → participant → siblings, identical on the manu
 and direct paths so the two can never deadlock against each other). The
 slot-availability, distinct-teacher and exact-target rechecks then run against
 that serialized, freshly re-read view (plan §20.5 guards 1–2/4). The persisted
-witness repair and the full solver stay off this path — they are
-department-head-only (plan §20.24) and remain their own §20.20 tasks.
+witness is loaded and boundedly repaired on this path. The full solver stays off
+it and is available only through the administrator evaluation operation
+(plan §20.24).
 """
 
 from __future__ import annotations
@@ -70,9 +71,12 @@ from reparto_service.services.calculations import AssignmentCalculationService
 from reparto_service.services.lifecycle_gates import PlanReadinessGate
 from reparto_service.services.selection_guards import (
     FastGuardFinding,
+    WitnessRepairCode,
     build_remaining_assignment_state,
     compute_fast_feasibility_checks,
 )
+from reparto_service.services.feasibility import FeasibilityWitnessEntry
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 from reparto_service.services.validations import AssignmentValidationService
 
 _ZERO = Decimal("0.00")
@@ -306,6 +310,7 @@ class AssignmentController(DomainController):
                 requirement.status = HourRequirementStatus.AVAILABLE
                 session.add(requirement)
             session.add(assignment)
+            FeasibilityWitnessService.invalidate(session, process_id)
         AssignmentController.record_audit_event(
             session,
             process_id=process_id,
@@ -364,7 +369,7 @@ class AssignmentController(DomainController):
             session, requirement.teaching_activity_id, process_teacher.id
         )
         AssignmentController._ensure_fits_target(session, process_teacher, requirement)
-        AssignmentController._ensure_fast_feasibility(
+        repaired_witness = AssignmentController._ensure_fast_feasibility(
             session,
             process_id=process_id,
             requirement=requirement,
@@ -384,6 +389,12 @@ class AssignmentController(DomainController):
         session.add(assignment)
         requirement.status = HourRequirementStatus.ASSIGNED
         session.add(requirement)
+        if repaired_witness is not None:
+            FeasibilityWitnessService.persist_repair(
+                session,
+                process_id=process_id,
+                repaired_remaining=repaired_witness,
+            )
         return assignment
 
     @staticmethod
@@ -525,7 +536,7 @@ class AssignmentController(DomainController):
         process_id: uuid.UUID,
         requirement: HourRequirement,
         process_teacher: ProcessTeacher,
-    ) -> None:
+    ) -> tuple[FeasibilityWitnessEntry, ...] | None:
         """Run the process-wide polynomial guards inside the transaction.
 
         During the staged §20.20 rollout, legacy NOT_EVALUATED plans continue
@@ -538,7 +549,7 @@ class AssignmentController(DomainController):
             select(TeachingPlan).where(TeachingPlan.assignment_process_id == process_id)
         ).first()
         if plan is None or plan.feasibility_status != FeasibilityStatus.FEASIBLE:
-            return
+            return None
         state = build_remaining_assignment_state(session, process_id)
         result = compute_fast_feasibility_checks(
             state,
@@ -547,6 +558,22 @@ class AssignmentController(DomainController):
         )
         if result.findings:
             AssignmentController._raise_fast_guard(result.findings[0])
+        repair = FeasibilityWitnessService.repair_for_selection(
+            session,
+            process_id=process_id,
+            proposed_slot_id=requirement.id,
+            proposed_participant_id=process_teacher.id,
+        )
+        if repair.code != WitnessRepairCode.REPAIRED or repair.witness is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Selection is blocked because the deterministic witness "
+                    f"could not be repaired ({repair.code.value}); administrative "
+                    "feasibility evaluation is required."
+                ),
+            )
+        return repair.witness
 
     @staticmethod
     def _raise_fast_guard(finding: FastGuardFinding) -> None:

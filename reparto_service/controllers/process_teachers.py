@@ -25,6 +25,7 @@ from reparto_service.db_models.process_teachers import (
 from reparto_service.db_models.teacher_profiles import TeacherProfile
 from reparto_service.enums import AuditEventType, SseEventType
 from reparto_service.services.calculations import AssignmentCalculationService
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 from reparto_service.services.sse import hours_string
 
 
@@ -87,6 +88,7 @@ class ProcessTeacherController(DomainController):
             before=None,
             after=process_teacher,
         )
+        FeasibilityWitnessService.invalidate(session, process_id)
         try:
             session.commit()
         except Exception as exc:
@@ -128,6 +130,7 @@ class ProcessTeacherController(DomainController):
             before=before,
             after=process_teacher,
         )
+        FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(process_teacher)
         return ProcessTeacherPublic.model_validate(process_teacher)
@@ -182,6 +185,7 @@ class ProcessTeacherController(DomainController):
             after=process_teacher,
             reason=payload.reason,
         )
+        FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(process_teacher)
         # Participant-scoped: only this teacher (and the head) ever sees the
@@ -227,6 +231,7 @@ class ProcessTeacherController(DomainController):
             before=before,
             after=None,
         )
+        FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         return ProcessTeacherPublic.model_validate(process_teacher)
 

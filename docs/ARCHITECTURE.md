@@ -166,6 +166,10 @@ Stage 2 (planning):
   (`DRAFT`, `UNBALANCED`, `BALANCED`, `LOCKED`, `REQUIREMENTS_GENERATED`, `STALE`,
   `RECONCILIATION_REQUIRED`), the `current_generation_number` processing counter,
   lock metadata, and the **orthogonal** `feasibility_*` axis (§8.3).
+* `FeasibilityWitness` — restricted one-to-one internal cache for the complete
+  provisional slot-to-participant mapping and administration-only diagnostics.
+  It is never part of common plan, teacher, shared-screen, audit, snapshot or
+  export schemas.
 * `GroupSubject` — the group × subject matrix cell, unique per
   `(process, group, subject)`. Its two hour fields are *optional overrides*: NULL
   inherits the subject default at materialization.
@@ -410,8 +414,18 @@ builds the current remaining state and applies one proposal using only residual
 total equality, exact slot fit, oversized-slot detection and per-activity Hall
 matching. It also validates an existing deterministic witness and attempts a
 strictly bounded, balance-improving local repair; it never calls the full solver.
-Persisting that witness and the lock/meeting-open gates remain separate work
-(§11).
+`services/feasibility_witnesses.py` owns persistence and orchestration. It hashes
+the solver version plus every active participant target, live slot identity/hour
+and active slot-to-participant assignment with stable JSON ordering and SHA-256.
+`POST /assignment-processes/{process_id}/teaching-plan/feasibility/evaluate`
+runs or reuses the bounded evaluation for that exact fingerprint; the full
+witness is available only through the administrator-gated
+`GET .../feasibility/witness`. Relevant participant, planning, allocation,
+generation, reconciliation and undo mutations immediately reset the plan to
+`NOT_EVALUATED` and delete the cached row. A valid assignment hot path loads the
+matching row, performs bounded local repair, and persists the repaired mapping
+against the post-selection fingerprint in the same transaction. It never runs
+the full solver.
 
 ## 9. API design
 
@@ -570,12 +584,10 @@ silently missing a change.
 These are tracked adaptation tasks, not oversights. Each has its schema or
 extension point already in place.
 
-* **Feasibility orchestration and witness persistence** — persist the solver's
-  deterministic witness with fingerprint/solver-version invalidation, wire the
-  implemented bounded local repair to that store, add per-process solve
-  serialization, and drive evaluation only from the authorized lifecycle entry
-  points. The pure bounded solver and solver-free in-transaction guards are
-  implemented; no route invokes the full solver yet.
+* **Feasibility lifecycle gates and solve serialization** — the persisted
+  witness and explicit administrator evaluation route are implemented.
+  Per-process in-flight solve serialization and mandatory lock/generation/
+  meeting-open/final-close gates remain the separate lifecycle bullet.
 * **Plan lock/unlock endpoints** — `BALANCED → LOCKED` is a legal edge in the
   lifecycle table but no route drives it, so `LOCKED` is currently reached only
   via restore. Locking is the operation that will require all three invariants.

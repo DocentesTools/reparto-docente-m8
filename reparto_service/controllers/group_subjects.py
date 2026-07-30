@@ -38,6 +38,7 @@ from reparto_service.db_models.group_subjects import (
 from reparto_service.db_models.subjects import Subject
 from reparto_service.db_models.teaching_groups import TeachingGroup
 from reparto_service.enums import AuditEventType, GroupSubjectBulkMode
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 
 # Planning-value fields a bulk operation may set on a cell.
 _BULK_VALUE_FIELDS = (
@@ -121,6 +122,7 @@ class GroupSubjectController(DomainController):
             after=group_subject,
         )
         try:
+            FeasibilityWitnessService.invalidate(session, process_id)
             session.commit()
         except Exception as exc:
             session.rollback()
@@ -161,6 +163,7 @@ class GroupSubjectController(DomainController):
             before=before,
             after=group_subject,
         )
+        FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(group_subject)
         return GroupSubjectPublic.model_validate(group_subject)
@@ -190,6 +193,7 @@ class GroupSubjectController(DomainController):
             before=before,
             after=None,
         )
+        FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         return GroupSubjectPublic.model_validate(group_subject)
 
@@ -292,6 +296,7 @@ class GroupSubjectController(DomainController):
                 rows=rows_detail,
             ),
         )
+        FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         for row in affected:
             session.refresh(row)

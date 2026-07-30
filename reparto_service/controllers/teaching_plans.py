@@ -13,10 +13,10 @@ guard for the intermediate teaching plan (plan §5.2, §9, §20.14):
 
 ``get_summary`` and ``get_validations`` are the plan's read surface (plan §7.3):
 both delegate to the services that own the numbers and the findings, and both
-are solver-free. The lock and feasibility-evaluation *behaviour* that drives the
-remaining transitions lives in the dedicated later tasks (plan §13.1 "Build plan
-lock…", §20.20 feasibility items); this controller establishes the model, the
-ownership invariant and the reusable lifecycle guard those tasks build on.
+are solver-free. The remaining lock/lifecycle behaviour lives in its dedicated
+later task (plan §13.1 "Build plan lock…"). This controller also exposes the
+administrator-only feasibility evaluation and witness retrieval operations from
+§20.20.
 ``mark_stale`` is the concrete allocation-change side effect (plan §3.11, §9)
 exposed for that wiring.
 """
@@ -35,6 +35,10 @@ from reparto_service.db_models.teaching_plans import (
     TeachingPlan,
     TeachingPlanPublic,
 )
+from reparto_service.db_models.feasibility_witnesses import (
+    FeasibilityEvaluationPublic,
+    FeasibilityWitnessPublic,
+)
 from reparto_service.enums import (
     AuditEventType,
     FeasibilityStatus,
@@ -48,6 +52,7 @@ from reparto_service.services.planning_lifecycle import (
     IllegalStateTransitionError,
 )
 from reparto_service.services.validations import PlanValidationService
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 
 
 class TeachingPlanController(DomainController):
@@ -100,6 +105,24 @@ class TeachingPlanController(DomainController):
                 detail=f"No teaching plan for process {process_id}.",
             )
         return PlanValidationService.compute_plan_validations(session, plan)
+
+    @staticmethod
+    def evaluate_feasibility(
+        session: Session, process_id: uuid.UUID
+    ) -> FeasibilityEvaluationPublic:
+        """Run or reuse the bounded solver for the current exact fingerprint."""
+
+        DomainController.get_process_or_404(session, process_id)
+        return FeasibilityWitnessService.evaluate(session, process_id)
+
+    @staticmethod
+    def get_feasibility_witness(
+        session: Session, process_id: uuid.UUID
+    ) -> FeasibilityWitnessPublic:
+        """Return the current complete witness to an authorized caller."""
+
+        DomainController.get_process_or_404(session, process_id)
+        return FeasibilityWitnessService.get_witness(session, process_id)
 
     @staticmethod
     def create_plan(
@@ -168,6 +191,7 @@ class TeachingPlanController(DomainController):
         TeachingPlanController.apply_status_transition(
             plan, TeachingPlanStatus.STALE, stale_reason=reason
         )
+        FeasibilityWitnessService.invalidate(session, process_id)
         session.add(plan)
         TeachingPlanController.record_audit_event(
             session,

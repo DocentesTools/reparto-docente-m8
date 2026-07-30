@@ -24,6 +24,11 @@ from .feasibility import (
     evaluate_assignment_feasibility,
     hours_to_units,
 )
+from .feasibility_witnesses import (
+    FeasibilitySnapshot,
+    FeasibilityWitnessService,
+    build_feasibility_snapshot,
+)
 from .planning_lifecycle import (
     FEASIBILITY_LIFECYCLE,
     HOUR_REQUIREMENT_LIFECYCLE,
@@ -92,7 +97,10 @@ __all__ = [
     "assert_allowed_transition",
     "build_remaining_assignment_state",
     "compute_fast_feasibility_checks",
+    "build_feasibility_snapshot",
     "evaluate_assignment_feasibility",
+    "FeasibilitySnapshot",
+    "FeasibilityWitnessService",
     "hours_to_units",
     "is_allowed_transition",
     "is_closing_transition",

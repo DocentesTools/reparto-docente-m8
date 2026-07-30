@@ -46,6 +46,12 @@ from .export_artifacts import (
     ExportArtifactPublic,
     ExportArtifactsPublic,
 )
+from .feasibility_witnesses import (
+    FeasibilityEvaluationPublic,
+    FeasibilityWitness,
+    FeasibilityWitnessEntryPublic,
+    FeasibilityWitnessPublic,
+)
 from .department_hour_allocation_revisions import (
     DepartmentHourAllocationRevision,
     DepartmentHourAllocationRevisionCreate,
@@ -185,6 +191,10 @@ __all__ = [
     "ExportArtifactCreate",
     "ExportArtifactPublic",
     "ExportArtifactsPublic",
+    "FeasibilityEvaluationPublic",
+    "FeasibilityWitness",
+    "FeasibilityWitnessEntryPublic",
+    "FeasibilityWitnessPublic",
     "Department",
     "DepartmentCreate",
     "DepartmentGenerators",

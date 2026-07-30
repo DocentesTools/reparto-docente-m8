@@ -1,10 +1,9 @@
 """Teaching-plan routes (nested under an assignment process, plan §7.3).
 
 This slice exposes the plan's ownership surface, the read-only planning
-``summary`` and ``validations`` endpoints and the ``materialize-main`` action
-(plan §7.3). The ``lock``/``unlock`` and ``feasibility`` endpoints (plan §7.3)
-depend on the balance-recompute and feasibility services introduced by their
-dedicated later tasks and are added there.
+``summary`` and ``validations`` endpoints, the ``materialize-main`` action, and
+the administrator-only feasibility evaluation/witness operations (plan §7.3,
+§20.20). The ``lock``/``unlock`` endpoints remain in their later lifecycle task.
 """
 
 from __future__ import annotations
@@ -17,6 +16,10 @@ from reparto_service.app.deps import CurrentUser, SessionDep
 from reparto_service.controllers.teaching_activities import TeachingActivityController
 from reparto_service.controllers.teaching_plans import TeachingPlanController
 from reparto_service.db_models.teaching_activities import MainMaterializationResult
+from reparto_service.db_models.feasibility_witnesses import (
+    FeasibilityEvaluationPublic,
+    FeasibilityWitnessPublic,
+)
 from reparto_service.db_models.teaching_plans import TeachingPlanPublic
 from reparto_service.schemas.planning import PlanBalance, PlanValidationReport
 
@@ -43,6 +46,36 @@ def get_teaching_plan_validations(
     session: SessionDep, process_id: uuid.UUID
 ) -> PlanValidationReport:
     return TeachingPlanController.get_validations(session, process_id)
+
+
+@router.post(
+    "/feasibility/evaluate",
+    response_model=FeasibilityEvaluationPublic,
+)
+def evaluate_teaching_plan_feasibility(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+) -> FeasibilityEvaluationPublic:
+    """Run the full bounded solver only for an administrator."""
+
+    TeachingPlanController.require_admin(current_user)
+    return TeachingPlanController.evaluate_feasibility(session, process_id)
+
+
+@router.get(
+    "/feasibility/witness",
+    response_model=FeasibilityWitnessPublic,
+)
+def get_teaching_plan_feasibility_witness(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+) -> FeasibilityWitnessPublic:
+    """Expose the provisional mapping only to an administrator."""
+
+    TeachingPlanController.require_admin(current_user)
+    return TeachingPlanController.get_feasibility_witness(session, process_id)
 
 
 @router.post("", response_model=TeachingPlanPublic, status_code=201)

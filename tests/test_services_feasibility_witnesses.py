@@ -1,0 +1,307 @@
+"""Persistence, caching, confidentiality and repair of feasibility witnesses."""
+
+from __future__ import annotations
+
+import uuid
+
+import pytest
+from fastapi import HTTPException
+from fastapi.testclient import TestClient
+from sqlmodel import Session, select
+
+from reparto_service.db_models.feasibility_witnesses import FeasibilityWitness
+from reparto_service.enums import FeasibilityStatus, HourRequirementStatus
+from reparto_service.services.feasibility import SOLVER_VERSION, FeasibilityWitnessEntry
+from reparto_service.services.feasibility_witnesses import (
+    FeasibilityWitnessService,
+    build_feasibility_snapshot,
+)
+from reparto_service.services.selection_guards import (
+    WitnessRepairCode,
+    WitnessRepairResult,
+)
+from tests import factories
+
+
+def _path(process_id: uuid.UUID, suffix: str) -> str:
+    return (
+        f"/reparto/assignment-processes/{process_id}/teaching-plan/feasibility/{suffix}"
+    )
+
+
+def _feasible_setup(session: Session):
+    process = factories.make_assignment_process(session)
+    plan = factories.make_teaching_plan(session, process)
+    subject = factories.make_subject(session, process)
+    activity = factories.make_teaching_activity(
+        session,
+        plan,
+        subject,
+        required_teacher_count=2,
+        teacher_weekly_hours_per_position=4.0,
+    )
+    slots = [
+        factories.make_hour_requirement(
+            session,
+            process,
+            activity,
+            position_index=index,
+            required_teacher_hours=4.0,
+        )
+        for index in range(2)
+    ]
+    teachers = [
+        factories.make_process_teacher(
+            session,
+            process,
+            factories.make_teacher_profile(session, display_name=f"Teacher {index}"),
+            base_weekly_hours=4.0,
+        )
+        for index in range(2)
+    ]
+    return process, plan, slots, teachers
+
+
+def test_admin_evaluation_persists_reuses_and_exposes_stable_witness(
+    admin_client: TestClient,
+    session: Session,
+) -> None:
+    process, plan, slots, teachers = _feasible_setup(session)
+
+    first = admin_client.post(_path(process.id, "evaluate"))
+    assert first.status_code == 200
+    assert first.json()["status"] == FeasibilityStatus.FEASIBLE.value
+    assert first.json()["cache_reused"] is False
+    assert first.json()["witness_available"] is True
+
+    second = admin_client.post(_path(process.id, "evaluate"))
+    assert second.status_code == 200
+    assert second.json()["cache_reused"] is True
+    assert second.json()["input_fingerprint"] == first.json()["input_fingerprint"]
+
+    witness = admin_client.get(_path(process.id, "witness"))
+    assert witness.status_code == 200
+    body = witness.json()
+    assert body["solver_version"] == SOLVER_VERSION
+    assert [item["slot_id"] for item in body["witness"]] == sorted(
+        str(slot.id) for slot in slots
+    )
+    assert {item["process_teacher_id"] for item in body["witness"]} == {
+        str(teacher.id) for teacher in teachers
+    }
+
+    session.refresh(plan)
+    assert plan.feasibility_input_fingerprint == first.json()["input_fingerprint"]
+
+
+def test_regular_writer_cannot_evaluate_or_read_witness(
+    client: TestClient, session: Session
+) -> None:
+    process, _plan, _slots, _teachers = _feasible_setup(session)
+    assert client.post(_path(process.id, "evaluate")).status_code == 403
+    assert client.get(_path(process.id, "witness")).status_code == 403
+
+
+def test_evaluation_includes_fixed_assignments_in_complete_witness(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _plan, slots, teachers = _feasible_setup(session)
+    factories.make_assignment(session, process, slots[0], teachers[0])
+    slots[0].status = HourRequirementStatus.ASSIGNED
+    session.add(slots[0])
+    session.commit()
+
+    response = admin_client.post(_path(process.id, "evaluate"))
+    assert response.status_code == 200
+    witness = admin_client.get(_path(process.id, "witness")).json()["witness"]
+    mapping = {item["slot_id"]: item["process_teacher_id"] for item in witness}
+    assert mapping[str(slots[0].id)] == str(teachers[0].id)
+    assert mapping[str(slots[1].id)] == str(teachers[1].id)
+
+
+def test_alternative_selection_repairs_and_persists_post_state_witness(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, plan, slots, teachers = _feasible_setup(session)
+    assert admin_client.post(_path(process.id, "evaluate")).status_code == 200
+    before = plan.feasibility_input_fingerprint
+    persisted = admin_client.get(_path(process.id, "witness")).json()["witness"]
+    initial = {item["slot_id"]: item["process_teacher_id"] for item in persisted}
+    chosen_slot = slots[0]
+    alternative = next(
+        teacher
+        for teacher in teachers
+        if str(teacher.id) != initial[str(chosen_slot.id)]
+    )
+
+    assignment = admin_client.post(
+        f"/reparto/assignment-processes/{process.id}/assignments/",
+        json={
+            "hour_requirement_id": str(chosen_slot.id),
+            "process_teacher_id": str(alternative.id),
+        },
+    )
+    assert assignment.status_code == 201
+    session.refresh(plan)
+    assert plan.feasibility_status == FeasibilityStatus.FEASIBLE
+    assert plan.feasibility_input_fingerprint != before
+    repaired = admin_client.get(_path(process.id, "witness")).json()["witness"]
+    repaired_map = {item["slot_id"]: item["process_teacher_id"] for item in repaired}
+    assert repaired_map[str(chosen_slot.id)] == str(alternative.id)
+
+
+def test_feasible_selection_fails_closed_without_current_witness(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, plan, slots, teachers = _feasible_setup(session)
+    plan.feasibility_status = FeasibilityStatus.FEASIBLE
+    session.add(plan)
+    session.commit()
+
+    response = admin_client.post(
+        f"/reparto/assignment-processes/{process.id}/assignments/",
+        json={
+            "hour_requirement_id": str(slots[0].id),
+            "process_teacher_id": str(teachers[0].id),
+        },
+    )
+    assert response.status_code == 409
+    assert "missing or stale" in response.json()["detail"]
+
+
+def test_selection_fails_closed_when_bounded_repair_cannot_finish(
+    admin_client: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    process, _plan, slots, teachers = _feasible_setup(session)
+    admin_client.post(_path(process.id, "evaluate"))
+    monkeypatch.setattr(
+        FeasibilityWitnessService,
+        "repair_for_selection",
+        lambda *args, **kwargs: WitnessRepairResult(
+            WitnessRepairCode.REPAIR_LIMIT_REACHED, None, 1
+        ),
+    )
+
+    response = admin_client.post(
+        f"/reparto/assignment-processes/{process.id}/assignments/",
+        json={
+            "hour_requirement_id": str(slots[0].id),
+            "process_teacher_id": str(teachers[0].id),
+        },
+    )
+    assert response.status_code == 409
+    assert WitnessRepairCode.REPAIR_LIMIT_REACHED.value in response.json()["detail"]
+
+
+def test_fingerprint_drift_expires_witness_and_re_evaluates(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, plan, _slots, teachers = _feasible_setup(session)
+    first = admin_client.post(_path(process.id, "evaluate")).json()
+    teachers[0].base_weekly_hours = 5.0
+    teachers[1].base_weekly_hours = 3.0
+    session.add(teachers[0])
+    session.add(teachers[1])
+    session.commit()
+
+    assert admin_client.get(_path(process.id, "witness")).status_code == 409
+    second = admin_client.post(_path(process.id, "evaluate")).json()
+    assert second["cache_reused"] is False
+    assert second["input_fingerprint"] != first["input_fingerprint"]
+    session.refresh(plan)
+    assert plan.feasibility_status == FeasibilityStatus.INFEASIBLE
+
+
+def test_invalidation_removes_witness_and_is_safe_without_plan(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, plan, _slots, _teachers = _feasible_setup(session)
+    admin_client.post(_path(process.id, "evaluate"))
+    FeasibilityWitnessService.invalidate(session, process.id)
+    session.commit()
+    session.refresh(plan)
+    assert plan.feasibility_status == FeasibilityStatus.NOT_EVALUATED
+    assert plan.feasibility_input_fingerprint is None
+    assert session.exec(select(FeasibilityWitness)).first() is None
+
+    other = factories.make_assignment_process(session)
+    FeasibilityWitnessService.invalidate(session, other.id)
+
+
+def test_participant_mutation_endpoint_invalidates_cached_witness(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, plan, _slots, teachers = _feasible_setup(session)
+    admin_client.post(_path(process.id, "evaluate"))
+    response = admin_client.patch(
+        f"/reparto/assignment-processes/{process.id}/teachers/{teachers[0].id}",
+        json={"base_weekly_hours": 5.0},
+    )
+    assert response.status_code == 200
+    session.refresh(plan)
+    assert plan.feasibility_status == FeasibilityStatus.NOT_EVALUATED
+    assert session.exec(select(FeasibilityWitness)).first() is None
+
+
+def test_infeasible_result_is_cached_without_exposing_a_witness(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _plan, slots, teachers = _feasible_setup(session)
+    teachers[0].base_weekly_hours = 3.0
+    teachers[1].base_weekly_hours = 5.0
+    session.add(teachers[0])
+    session.add(teachers[1])
+    session.commit()
+
+    first = admin_client.post(_path(process.id, "evaluate"))
+    assert first.json()["status"] == FeasibilityStatus.INFEASIBLE.value
+    assert first.json()["witness_available"] is False
+    assert admin_client.get(_path(process.id, "witness")).status_code == 409
+    assert admin_client.post(_path(process.id, "evaluate")).json()["cache_reused"]
+    row = session.exec(select(FeasibilityWitness)).one()
+    assert row.witness_json == []
+    assert row.diagnostics_json
+    assert len(slots) == 2
+
+
+def test_service_rejects_missing_plan_and_inconsistent_repair(
+    session: Session,
+) -> None:
+    missing = factories.make_assignment_process(session)
+    with pytest.raises(HTTPException) as error:
+        FeasibilityWitnessService.evaluate(session, missing.id)
+    assert error.value.status_code == 404
+
+    process, _plan, _slots, _teachers = _feasible_setup(session)
+    with pytest.raises(HTTPException) as inconsistent:
+        FeasibilityWitnessService.persist_repair(
+            session,
+            process_id=process.id,
+            repaired_remaining=(FeasibilityWitnessEntry("unknown", "unknown"),),
+        )
+    assert inconsistent.value.status_code == 409
+
+
+def test_snapshot_fingerprint_is_deterministic(session: Session) -> None:
+    process, _plan, _slots, _teachers = _feasible_setup(session)
+    first = build_feasibility_snapshot(session, process.id)
+    second = build_feasibility_snapshot(session, process.id)
+    assert first == second
+
+
+def test_missing_or_mismatched_internal_row_is_never_reused(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _plan, _slots, _teachers = _feasible_setup(session)
+    admin_client.post(_path(process.id, "evaluate"))
+    row = session.exec(select(FeasibilityWitness)).one()
+    row.input_fingerprint = "mismatch"
+    session.add(row)
+    session.commit()
+    assert admin_client.get(_path(process.id, "witness")).status_code == 409
+
+    session.delete(row)
+    session.commit()
+    refreshed = admin_client.post(_path(process.id, "evaluate"))
+    assert refreshed.status_code == 200
+    assert refreshed.json()["cache_reused"] is False

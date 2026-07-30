@@ -635,20 +635,18 @@ def test_create_assignment_fits_with_authorized_extra(
 
 
 def test_feasible_plan_accepts_selection_that_preserves_fast_guards(
-    client: TestClient, session: Session
+    admin_client: TestClient, session: Session
 ) -> None:
-    """The shared occupancy path runs the cheap checks without a full solve."""
+    """The shared occupancy path repairs a persisted witness without a full solve."""
     process, _activity, slot0, _slot1 = _plan_setup(session)
     first = _teacher_with_hours(session, process, base=4.0)
     _teacher_with_hours(session, process, base=4.0)
-    plan = session.exec(
-        select(TeachingPlan).where(TeachingPlan.assignment_process_id == process.id)
-    ).one()
-    plan.feasibility_status = FeasibilityStatus.FEASIBLE
-    session.add(plan)
-    session.commit()
+    evaluation = admin_client.post(
+        f"/reparto/assignment-processes/{process.id}/teaching-plan/feasibility/evaluate"
+    )
+    assert evaluation.status_code == 200
 
-    resp = client.post(
+    resp = admin_client.post(
         f"{_assignments_path(process.id)}/",
         json={
             "hour_requirement_id": str(slot0.id),
