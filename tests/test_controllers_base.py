@@ -20,22 +20,23 @@ from reparto_service.db_models.departments import Department
 def _make_user(
     role: RoleType | str,
     *,
-    superuser: bool = False,
     user_id: uuid.UUID | None = None,
 ) -> UserModel:
+    """Build a user whose privilege claims satisfy the auth-sdk invariant.
+
+    ``is_superuser`` is derived from the role instead of being passed in:
+    ``auth_sdk_m8`` rejects any pair where the two claims disagree
+    (``SUPERADMIN`` pairs with ``is_superuser=True``, every other role with
+    ``False``), so an inconsistent pair cannot be built here either.
+    """
     role_value = role.value if isinstance(role, RoleType) else role
     return UserModel(
         id=str(user_id or uuid.uuid4()),
         email="t@example.com",
         is_active=True,
-        is_superuser=superuser,
+        is_superuser=role_value == RoleType.SUPERADMIN.value,
         role=role_value,
     )
-
-
-def test_require_writer_passes_for_superuser() -> None:
-    user = _make_user("user", superuser=True)
-    DomainController.require_writer(user)  # should not raise
 
 
 def test_require_writer_passes_for_writer_role() -> None:
@@ -48,8 +49,10 @@ def test_require_writer_passes_for_admin_role() -> None:
     DomainController.require_writer(user)
 
 
-def test_require_writer_passes_for_superadmin_role() -> None:
+def test_require_writer_passes_for_canonical_superadmin() -> None:
+    """A ``SUPERADMIN`` (necessarily ``is_superuser``) clears the writer gate."""
     user = _make_user("superadmin")
+    assert user.is_superuser is True
     DomainController.require_writer(user)
 
 
