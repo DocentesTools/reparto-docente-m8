@@ -397,11 +397,14 @@ input fingerprint, the solver version and a diagnostics reference. Teacher
 eligibility in this design is `HOURS_ONLY_FUNGIBILITY`: any active participant may
 take any slot, and there are no subject/group/stage eligibility models.
 
-The bounded deterministic solver, the persisted witness, the cheap in-transaction
-guards and the lock/meeting-open gates are **not implemented yet** (§11). The
-schema fields, the enums and the orthogonal lifecycle table are already in place
-so adding them requires no schema change, and the plan-level validation already
-reports `plan.feasibility_not_confirmed`.
+`services/feasibility.py` owns the pure bounded deterministic solver. Its inputs
+are immutable remaining targets and indivisible slots expressed only in integer
+hundredths. Stable largest-slot-first DFS uses residual-target and per-activity
+matching prunes, deterministic memoization, and configurable instance, step and
+time limits. It returns `FEASIBLE` with a complete deterministic witness,
+`INFEASIBLE` with an internal diagnostic, or fail-closed `UNKNOWN` when a bound
+is reached. Persisting and repairing that witness, the cheap in-transaction
+guards, and the lock/meeting-open gates remain separate work (§11).
 
 ## 9. API design
 
@@ -560,11 +563,11 @@ silently missing a change.
 These are tracked adaptation tasks, not oversights. Each has its schema or
 extension point already in place.
 
-* **Feasibility solver and witness** — the bounded deterministic solver, the
-  persisted witness with fingerprint/solver-version invalidation, the cheap
-  in-transaction selection guards and per-process solve serialization. The
-  `feasibility_*` fields, enums and lifecycle table exist; nothing evaluates them
-  yet.
+* **Feasibility orchestration and witness persistence** — persist the solver's
+  deterministic witness with fingerprint/solver-version invalidation, add cheap
+  in-transaction selection guards, witness repair and per-process solve
+  serialization, and drive evaluation only from the authorized lifecycle entry
+  points. The pure bounded solver is implemented; no route invokes it yet.
 * **Plan lock/unlock endpoints** — `BALANCED → LOCKED` is a legal edge in the
   lifecycle table but no route drives it, so `LOCKED` is currently reached only
   via restore. Locking is the operation that will require all three invariants.
