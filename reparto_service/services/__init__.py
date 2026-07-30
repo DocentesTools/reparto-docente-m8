@@ -41,6 +41,18 @@ from .process_lifecycle import (
     is_reopen_to_close_edge,
     is_terminal,
 )
+from .selection_guards import (
+    DEFAULT_WITNESS_REPAIR_LIMITS,
+    FastGuardCode,
+    FastGuardFinding,
+    FastGuardResult,
+    WitnessRepairCode,
+    WitnessRepairLimits,
+    WitnessRepairResult,
+    build_remaining_assignment_state,
+    compute_fast_feasibility_checks,
+    validate_proposed_assignment_against_witness,
+)
 from .snapshots import SnapshotService
 from .validations import (
     AssignmentValidationService,
@@ -52,6 +64,7 @@ __all__ = [
     "AssignmentCalculationService",
     "AssignmentValidationService",
     "DEFAULT_SOLVER_LIMITS",
+    "DEFAULT_WITNESS_REPAIR_LIMITS",
     "FEASIBILITY_LIFECYCLE",
     "SOLVER_VERSION",
     "FeasibilityDiagnostic",
@@ -61,6 +74,9 @@ __all__ = [
     "FeasibilitySlot",
     "FeasibilityState",
     "FeasibilityWitnessEntry",
+    "FastGuardCode",
+    "FastGuardFinding",
+    "FastGuardResult",
     "HOUR_REQUIREMENT_LIFECYCLE",
     "IllegalStateTransitionError",
     "IllegalTransitionError",
@@ -70,7 +86,12 @@ __all__ = [
     "SolverLimits",
     "TEACHING_PLAN_LIFECYCLE",
     "TransitionTable",
+    "WitnessRepairCode",
+    "WitnessRepairLimits",
+    "WitnessRepairResult",
     "assert_allowed_transition",
+    "build_remaining_assignment_state",
+    "compute_fast_feasibility_checks",
     "evaluate_assignment_feasibility",
     "hours_to_units",
     "is_allowed_transition",
@@ -78,4 +99,5 @@ __all__ = [
     "is_reopen_edge",
     "is_reopen_to_close_edge",
     "is_terminal",
+    "validate_proposed_assignment_against_witness",
 ]

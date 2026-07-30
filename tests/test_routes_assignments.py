@@ -24,6 +24,7 @@ from reparto_service.enums import (
     AssignmentProcessStatus,
     AssignmentSource,
     AssignmentStatus,
+    FeasibilityStatus,
     HourRequirementStatus,
     MeetingSessionStatus,
     SelectionOrderMode,
@@ -631,6 +632,84 @@ def test_create_assignment_fits_with_authorized_extra(
         },
     )
     assert resp.status_code == 201
+
+
+def test_feasible_plan_accepts_selection_that_preserves_fast_guards(
+    client: TestClient, session: Session
+) -> None:
+    """The shared occupancy path runs the cheap checks without a full solve."""
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    first = _teacher_with_hours(session, process, base=4.0)
+    _teacher_with_hours(session, process, base=4.0)
+    plan = session.exec(
+        select(TeachingPlan).where(TeachingPlan.assignment_process_id == process.id)
+    ).one()
+    plan.feasibility_status = FeasibilityStatus.FEASIBLE
+    session.add(plan)
+    session.commit()
+
+    resp = client.post(
+        f"{_assignments_path(process.id)}/",
+        json={
+            "hour_requirement_id": str(slot0.id),
+            "process_teacher_id": str(first.id),
+        },
+    )
+    assert resp.status_code == 201
+
+
+def test_feasible_plan_rejects_residual_total_mismatch(
+    client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    teacher = _teacher_with_hours(session, process, base=10.0)
+    plan = session.exec(
+        select(TeachingPlan).where(TeachingPlan.assignment_process_id == process.id)
+    ).one()
+    plan.feasibility_status = FeasibilityStatus.FEASIBLE
+    session.add(plan)
+    session.commit()
+
+    resp = client.post(
+        f"{_assignments_path(process.id)}/",
+        json={
+            "hour_requirement_id": str(slot0.id),
+            "process_teacher_id": str(teacher.id),
+        },
+    )
+    assert resp.status_code == 409
+    assert "residual_totals_mismatch" in resp.json()["detail"]
+
+
+def test_feasible_plan_rejects_selection_that_strands_oversized_slot(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    plan = factories.make_teaching_plan(
+        session, process, feasibility_status=FeasibilityStatus.FEASIBLE
+    )
+    subject = factories.make_subject(session, process)
+    chosen_activity = factories.make_teaching_activity(session, plan, subject)
+    large_activity = factories.make_teaching_activity(session, plan, subject)
+    chosen = factories.make_hour_requirement(
+        session, process, chosen_activity, required_teacher_hours=4
+    )
+    factories.make_hour_requirement(
+        session, process, large_activity, required_teacher_hours=6
+    )
+    teacher = _teacher_with_hours(session, process, base=5.0)
+    _teacher_with_hours(session, process, base=5.0)
+
+    resp = client.post(
+        f"{_assignments_path(process.id)}/",
+        json={
+            "hour_requirement_id": str(chosen.id),
+            "process_teacher_id": str(teacher.id),
+        },
+    )
+    assert resp.status_code == 409
+    assert "slot_exceeds_every_target" in resp.json()["detail"]
+    assert str(chosen.id) not in resp.json()["detail"]
 
 
 def test_create_assignment_accumulates_toward_target(

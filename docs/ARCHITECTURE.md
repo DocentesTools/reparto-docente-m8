@@ -403,8 +403,15 @@ hundredths. Stable largest-slot-first DFS uses residual-target and per-activity
 matching prunes, deterministic memoization, and configurable instance, step and
 time limits. It returns `FEASIBLE` with a complete deterministic witness,
 `INFEASIBLE` with an internal diagnostic, or fail-closed `UNKNOWN` when a bound
-is reached. Persisting and repairing that witness, the cheap in-transaction
-guards, and the lock/meeting-open gates remain separate work (§11).
+is reached.
+
+`services/selection_guards.py` owns the solver-free assignment hot path. It
+builds the current remaining state and applies one proposal using only residual
+total equality, exact slot fit, oversized-slot detection and per-activity Hall
+matching. It also validates an existing deterministic witness and attempts a
+strictly bounded, balance-improving local repair; it never calls the full solver.
+Persisting that witness and the lock/meeting-open gates remain separate work
+(§11).
 
 ## 9. API design
 
@@ -564,10 +571,11 @@ These are tracked adaptation tasks, not oversights. Each has its schema or
 extension point already in place.
 
 * **Feasibility orchestration and witness persistence** — persist the solver's
-  deterministic witness with fingerprint/solver-version invalidation, add cheap
-  in-transaction selection guards, witness repair and per-process solve
+  deterministic witness with fingerprint/solver-version invalidation, wire the
+  implemented bounded local repair to that store, add per-process solve
   serialization, and drive evaluation only from the authorized lifecycle entry
-  points. The pure bounded solver is implemented; no route invokes it yet.
+  points. The pure bounded solver and solver-free in-transaction guards are
+  implemented; no route invokes the full solver yet.
 * **Plan lock/unlock endpoints** — `BALANCED → LOCKED` is a legal edge in the
   lifecycle table but no route drives it, so `LOCKED` is currently reached only
   via restore. Locking is the operation that will require all three invariants.

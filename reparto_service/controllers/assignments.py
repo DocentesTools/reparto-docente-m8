@@ -55,9 +55,11 @@ from reparto_service.db_models.meeting_sessions import MeetingSession
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.selection_turns import SelectionTurn
 from reparto_service.db_models.teacher_profiles import TeacherProfile
+from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
     AssignmentSource,
     AssignmentStatus,
+    FeasibilityStatus,
     HourRequirementStatus,
     MeetingSessionStatus,
     SelectionOrderMode,
@@ -66,6 +68,11 @@ from reparto_service.enums import (
 from reparto_service.schemas.planning import AssignmentValidationReport
 from reparto_service.services.calculations import AssignmentCalculationService
 from reparto_service.services.lifecycle_gates import PlanReadinessGate
+from reparto_service.services.selection_guards import (
+    FastGuardFinding,
+    build_remaining_assignment_state,
+    compute_fast_feasibility_checks,
+)
 from reparto_service.services.validations import AssignmentValidationService
 
 _ZERO = Decimal("0.00")
@@ -357,6 +364,12 @@ class AssignmentController(DomainController):
             session, requirement.teaching_activity_id, process_teacher.id
         )
         AssignmentController._ensure_fits_target(session, process_teacher, requirement)
+        AssignmentController._ensure_fast_feasibility(
+            session,
+            process_id=process_id,
+            requirement=requirement,
+            process_teacher=process_teacher,
+        )
         assignment = Assignment(
             assignment_process_id=process_id,
             hour_requirement_id=requirement.id,
@@ -504,6 +517,49 @@ class AssignmentController(DomainController):
                     f"{teaching_activity_id}; distinct teachers are required."
                 ),
             )
+
+    @staticmethod
+    def _ensure_fast_feasibility(
+        session: Session,
+        *,
+        process_id: uuid.UUID,
+        requirement: HourRequirement,
+        process_teacher: ProcessTeacher,
+    ) -> None:
+        """Run the process-wide polynomial guards inside the transaction.
+
+        During the staged §20.20 rollout, legacy NOT_EVALUATED plans continue
+        through the existing exact-fit and distinct-teacher checks.  Once a plan
+        is FEASIBLE, every proposal must preserve the cheap invariants here.
+        The later lifecycle-gate bullet makes FEASIBLE mandatory for all entry
+        points; witness persistence then adds the bounded repair result.
+        """
+        plan = session.exec(
+            select(TeachingPlan).where(TeachingPlan.assignment_process_id == process_id)
+        ).first()
+        if plan is None or plan.feasibility_status != FeasibilityStatus.FEASIBLE:
+            return
+        state = build_remaining_assignment_state(session, process_id)
+        result = compute_fast_feasibility_checks(
+            state,
+            proposed_slot_id=str(requirement.id),
+            proposed_participant_id=str(process_teacher.id),
+        )
+        if result.findings:
+            AssignmentController._raise_fast_guard(result.findings[0])
+
+    @staticmethod
+    def _raise_fast_guard(finding: FastGuardFinding) -> None:
+        """Raise a stable conflict without exposing a full provisional reparto."""
+        related = f" ({', '.join(finding.related_ids)})" if finding.related_ids else ""
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Selection would strand the remaining assignment state: "
+                f"{finding.code.value}{related}. Administrative feasibility "
+                "evaluation is required."
+            ),
+        )
 
     # ── Internal lookups ──────────────────────────────────────────────────────
 
