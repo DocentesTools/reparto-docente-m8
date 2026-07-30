@@ -21,7 +21,7 @@ The API prefix defaults to `/reparto`; OpenAPI documentation is enabled when
 - Enforce assignment capacity, assignment-process lifecycle transitions, and
   selection-turn ordering.
 - Serve LAN teacher read access, meeting turns, dashboards, and the SSE stream.
-- Consume `fa-auth-m8` through its authentication contract. Do not own its
+- Consume `fa-auth-m8` through its authentication contract from `fastapi-m8`. Do not own its
   database or private signing keys, and do not directly depend on other services
   beyond that contract.
 - Keep domain logic in `controllers/` and `services/`, separate from FastAPI
