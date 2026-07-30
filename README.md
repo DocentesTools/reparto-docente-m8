@@ -10,6 +10,27 @@ Local-first FastAPI service for the Docentes teaching-assignment domain. It is
 an authenticated consumer of `fa-auth-m8`: it validates access tokens over the
 auth contract and owns no auth-service database or private signing keys.
 
+## The three stages
+
+The service models teaching allocation as three ordered stages:
+
+1. **Configuration** — school, academic year, department, participants and their
+   base/extra hours, subjects, teaching groups and the group-subject matrix.
+2. **Department teaching-load planning** — the leadership group-hour allocation,
+   materialized main-subject activities, optional secondary activities (tutoring,
+   co-teaching, department-level work), two independent hour balances, and the
+   generated indivisible teacher-position slots.
+3. **Assignment to teachers** — manual department-head assignment, the ordered
+   meeting, LAN direct selection, versions, exports and final closure.
+
+Stage 2 keeps **two** hour totals that are related but not equal: group teaching
+hours against the leadership allocation, and teacher workload against the
+participant target total. A co-teaching plan of 120 group hours and 124
+teacher-load hours is correct on both axes, so the two are reported separately and
+never summed. Stage 3 assigns *indivisible* slots: one teacher takes one whole
+slot, or nobody does. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the
+full invariant set.
+
 ## What it provides
 
 - School, academic-year, department, teacher-profile, classroom-stage, and
@@ -26,15 +47,24 @@ auth contract and owns no auth-service database or private signing keys.
 The API prefix defaults to `/reparto`. Interactive OpenAPI documentation is
 available when `SET_DOCS=true` in the service environment.
 
-## Quick start (Windows)
+## Quick start
 
-Use the repository's required conda environment:
+Activate the Python 3.12+ environment you use for this repository — any
+interpreter isolated from the system Python works; do not install into a global
+interpreter.
+
+```bash
+pip install -r reparto_service/requirements_dev.txt
+cp reparto_service/.example_env reparto_service/.env
+# Replace every changethis value in reparto_service/.env.
+
+PYTHONPATH=. pytest --cov --cov-fail-under=100
+uvicorn reparto_service.main:app --reload --port 9000
+```
+
+On Windows PowerShell the same steps read:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-. C:\Users\mexse\anaconda3\shell\condabin\conda-hook.ps1
-conda activate fa_auth_m8
-
 pip install -r reparto_service\requirements_dev.txt
 Copy-Item reparto_service\.example_env reparto_service\.env
 # Replace every changethis value in reparto_service\.env.
@@ -44,9 +74,9 @@ pytest --cov --cov-fail-under=100
 uvicorn reparto_service.main:app --reload --port 9000
 ```
 
-The application validates its configuration at startup. Do not use global
-Python or manually author Alembic revisions; the Compose workflow generates
-and applies schema migrations from the models.
+The application validates its configuration at startup. Never manually author
+Alembic revisions; the Compose workflow generates and applies schema migrations
+from the models.
 
 ## Docker development stack
 
@@ -63,6 +93,16 @@ The stack includes PostgreSQL, Redis, the `fa-auth-m8` issuer, this service,
 and Traefik. It is localhost-only by default; follow
 [the stack guide](docker_compose/dev_reparto_m8/README.md) before exposing it
 to a LAN.
+
+### Development database reset
+
+The three-stage schema is a deliberate destructive change and there is no
+backward data migration: current development records are test data only, and the
+obsolete two-stage assignment semantics (per-assignment hours, shared
+assignments, partial requirement coverage, over-assignment overrides) were removed
+outright rather than kept behind a compatibility layer. Reset a development
+database through this Compose initialization flow; the migration describing the
+new schema is generated from the models by the same bootstrap.
 
 ## API map
 
@@ -231,8 +271,8 @@ Consult the OpenAPI schema for request and response models.
 
 ## Quality gates
 
-Run these commands from the repository root in the `fa_auth_m8` conda
-environment:
+Run these commands from the repository root in the repository's Python
+environment; each must report zero issues:
 
 ```bash
 ruff format .
