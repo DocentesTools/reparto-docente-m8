@@ -409,6 +409,92 @@ class FeasibilityWitnessService:
         )
 
     @staticmethod
+    def repair_for_reassignment(
+        session: Session,
+        *,
+        process_id: uuid.UUID,
+        assignment: Assignment,
+        requirement: HourRequirement,
+        proposed_participant_id: uuid.UUID,
+    ) -> WitnessRepairResult | None:
+        """Repair a current witness around an atomic undo plus replacement.
+
+        A pure undo cannot destroy feasibility, so the existing complete witness
+        remains a valid starting point after releasing the old fixed pair. The
+        replacement is checked with the same cheap guards and bounded local
+        repair as a normal selection, without invoking the full solver.
+        """
+
+        plan = FeasibilityWitnessService._plan_or_404(session, process_id)
+        if plan.feasibility_status != FeasibilityStatus.FEASIBLE:
+            return None
+        snapshot = build_feasibility_snapshot(session, process_id)
+        row = FeasibilityWitnessService._current_row(session, plan, snapshot)
+        if row is None or plan.feasibility_generation != plan.current_generation_number:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Reassignment is blocked because the deterministic witness is "
+                    "missing or stale; administrative feasibility evaluation is "
+                    "required."
+                ),
+            )
+        released_state = FeasibilityWitnessService._released_assignment_state(
+            snapshot.state, assignment, requirement
+        )
+        remaining_ids = {item.slot_id for item in released_state.slots}
+        remaining = tuple(
+            FeasibilityWitnessEntry(item["slot_id"], item["participant_id"])
+            for item in row.witness_json
+            if item["slot_id"] in remaining_ids
+        )
+        return validate_proposed_assignment_against_witness(
+            released_state,
+            remaining,
+            proposed_slot_id=str(requirement.id),
+            proposed_participant_id=str(proposed_participant_id),
+        )
+
+    @staticmethod
+    def _released_assignment_state(
+        state: FeasibilityState,
+        assignment: Assignment,
+        requirement: HourRequirement,
+    ) -> FeasibilityState:
+        """Return the hypothetical remaining state after releasing one pair."""
+
+        participant_id = str(assignment.process_teacher_id)
+        activity_id = str(requirement.teaching_activity_id)
+        slot = FeasibilitySlot(
+            str(requirement.id),
+            activity_id,
+            requirement.position_index,
+            hours_to_units(str(requirement.required_teacher_hours)),
+        )
+        participants = tuple(
+            FeasibilityParticipant(
+                item.participant_id,
+                item.remaining_target_units + slot.hours_units,
+                item.occupied_activity_ids - {activity_id},
+            )
+            if item.participant_id == participant_id
+            else item
+            for item in state.participants
+        )
+        slots = tuple(
+            sorted(
+                (*state.slots, slot),
+                key=lambda item: (
+                    -item.hours_units,
+                    item.activity_id,
+                    item.position_index,
+                    item.slot_id,
+                ),
+            )
+        )
+        return FeasibilityState(participants=participants, slots=slots)
+
+    @staticmethod
     def persist_repair(
         session: Session,
         *,

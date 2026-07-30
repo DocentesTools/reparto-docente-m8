@@ -18,6 +18,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from reparto_service.db_models.assignments import Assignment
+from reparto_service.db_models.audit_events import AuditEvent
+from reparto_service.db_models.feasibility_witnesses import FeasibilityWitness
 from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
@@ -27,6 +29,7 @@ from reparto_service.enums import (
     FeasibilityStatus,
     HourRequirementStatus,
     MeetingSessionStatus,
+    ProcessTeacherStatus,
     SelectionOrderMode,
     SelectionTurnStatus,
     TeachingPlanStatus,
@@ -72,6 +75,14 @@ def _make_teacher(session: Session, process, *, selection_position=None):
 
 def _assignments_path(process_id) -> str:
     return f"/reparto/assignment-processes/{process_id}/assignments"
+
+
+def _undo_path(process_id, assignment_id) -> str:
+    return f"{_assignments_path(process_id)}/{assignment_id}/undo"
+
+
+def _reassign_path(process_id, assignment_id) -> str:
+    return f"{_assignments_path(process_id)}/{assignment_id}/reassign"
 
 
 # ── Manual (department-head) create ───────────────────────────────────────────
@@ -347,8 +358,8 @@ def test_update_assignment_notes(client: TestClient, session: Session) -> None:
 # ── Cancel (soft delete) ──────────────────────────────────────────────────────
 
 
-def test_delete_assignment_cancels_and_frees_slot(
-    client: TestClient, session: Session
+def test_undo_assignment_cancels_and_frees_slot(
+    admin_client: TestClient, session: Session
 ) -> None:
     process, _activity, slot0, _slot1 = _plan_setup(session)
     teacher = _make_teacher(session, process)
@@ -356,7 +367,9 @@ def test_delete_assignment_cancels_and_frees_slot(
     slot0.status = HourRequirementStatus.ASSIGNED
     session.add(slot0)
     session.commit()
-    resp = client.delete(f"{_assignments_path(process.id)}/{assignment.id}")
+    resp = admin_client.post(
+        _undo_path(process.id, assignment.id), json={"reason": "Wrong selection"}
+    )
     assert resp.status_code == 200
     assert resp.json()["status"] == AssignmentStatus.CANCELLED.value
     session.refresh(assignment)
@@ -366,15 +379,17 @@ def test_delete_assignment_cancels_and_frees_slot(
     assert slot0.status == HourRequirementStatus.AVAILABLE
 
 
-def test_delete_assignment_reassignable_after_cancel(
-    client: TestClient, session: Session
+def test_undo_assignment_reassignable_after_cancel(
+    admin_client: TestClient, session: Session
 ) -> None:
     process, _activity, slot0, _slot1 = _plan_setup(session)
     first = _make_teacher(session, process)
     assignment = factories.make_assignment(session, process, slot0, first)
-    client.delete(f"{_assignments_path(process.id)}/{assignment.id}")
+    admin_client.post(
+        _undo_path(process.id, assignment.id), json={"reason": "Correction"}
+    )
     second = _make_teacher(session, process)
-    resp = client.post(
+    resp = admin_client.post(
         f"{_assignments_path(process.id)}/",
         json={
             "hour_requirement_id": str(slot0.id),
@@ -384,21 +399,23 @@ def test_delete_assignment_reassignable_after_cancel(
     assert resp.status_code == 201
 
 
-def test_delete_assignment_already_cancelled_is_noop(
-    client: TestClient, session: Session
+def test_undo_assignment_already_cancelled_is_rejected(
+    admin_client: TestClient, session: Session
 ) -> None:
     process, _activity, slot0, _slot1 = _plan_setup(session)
     teacher = _make_teacher(session, process)
     assignment = factories.make_assignment(
         session, process, slot0, teacher, status=AssignmentStatus.CANCELLED
     )
-    resp = client.delete(f"{_assignments_path(process.id)}/{assignment.id}")
-    assert resp.status_code == 200
-    assert resp.json()["status"] == AssignmentStatus.CANCELLED.value
+    resp = admin_client.post(
+        _undo_path(process.id, assignment.id), json={"reason": "Duplicate undo"}
+    )
+    assert resp.status_code == 409
+    assert "active assignment" in resp.json()["detail"]
 
 
-def test_delete_assignment_missing_requirement(
-    client: TestClient, session: Session
+def test_undo_assignment_missing_requirement(
+    admin_client: TestClient, session: Session
 ) -> None:
     """Cancel still succeeds if the requirement row no longer exists."""
     process, _activity, slot0, _slot1 = _plan_setup(session)
@@ -408,9 +425,470 @@ def test_delete_assignment_missing_requirement(
     assert requirement is not None
     session.delete(requirement)
     session.commit()
-    resp = client.delete(f"{_assignments_path(process.id)}/{assignment.id}")
+    resp = admin_client.post(
+        _undo_path(process.id, assignment.id), json={"reason": "Retire old row"}
+    )
     assert resp.status_code == 200
     assert resp.json()["status"] == AssignmentStatus.CANCELLED.value
+
+
+def test_legacy_delete_requires_reason_and_delegates_to_undo(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    teacher = _make_teacher(session, process)
+    assignment = factories.make_assignment(session, process, slot0, teacher)
+    path = f"{_assignments_path(process.id)}/{assignment.id}"
+
+    assert admin_client.delete(path).status_code == 422
+    resp = admin_client.request("DELETE", path, json={"reason": "Legacy correction"})
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == AssignmentStatus.CANCELLED.value
+
+
+def test_undo_requires_reason_and_rejects_reader(
+    reader_client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    teacher = _make_teacher(session, process)
+    assignment = factories.make_assignment(session, process, slot0, teacher)
+    path = _undo_path(process.id, assignment.id)
+
+    assert reader_client.post(path, json={}).status_code == 422
+    assert reader_client.post(path, json={"reason": ""}).status_code == 422
+    forbidden = reader_client.post(path, json={"reason": "Not authorized"})
+
+    assert forbidden.status_code == 403
+
+
+def test_undo_and_reassign_reject_writer(client: TestClient, session: Session) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    first = _make_teacher(session, process)
+    replacement = _make_teacher(session, process)
+    assignment = factories.make_assignment(session, process, slot0, first)
+
+    undo = client.post(
+        _undo_path(process.id, assignment.id), json={"reason": "Writer attempt"}
+    )
+    reassign = client.post(
+        _reassign_path(process.id, assignment.id),
+        json={
+            "process_teacher_id": str(replacement.id),
+            "reason": "Writer attempt",
+        },
+    )
+
+    assert undo.status_code == 403
+    assert reassign.status_code == 403
+
+
+def test_undo_records_reason_and_invalidates_feasibility(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    teacher = _make_teacher(session, process)
+    assignment = factories.make_assignment(session, process, slot0, teacher)
+    plan = session.exec(
+        select(TeachingPlan).where(TeachingPlan.assignment_process_id == process.id)
+    ).one()
+    plan.feasibility_status = FeasibilityStatus.UNKNOWN
+    session.add(plan)
+    session.commit()
+
+    resp = admin_client.post(
+        _undo_path(process.id, assignment.id),
+        json={"reason": "Teacher reported an error"},
+    )
+
+    assert resp.status_code == 200
+    event = session.exec(
+        select(AuditEvent).where(AuditEvent.event_type == "assignment.undone")
+    ).one()
+    assert event.reason == "Teacher reported an error"
+    assert event.before_json is not None
+    assert event.after_json is not None
+    assert event.before_json["status"] == AssignmentStatus.ACTIVE.value
+    assert event.after_json["status"] == AssignmentStatus.CANCELLED.value
+    session.refresh(plan)
+    assert plan.feasibility_status == FeasibilityStatus.NOT_EVALUATED
+
+
+def test_undo_requeues_turn_and_recomputes_earliest_current(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, slot1 = _plan_setup(session)
+    first = _make_teacher(session, process, selection_position=0)
+    second = _make_teacher(session, process, selection_position=1)
+    third = _make_teacher(session, process, selection_position=2)
+    assignment = factories.make_assignment(session, process, slot0, first)
+    later_assignment = factories.make_assignment(session, process, slot1, third)
+    meeting = factories.make_meeting_session(
+        session, process, status=MeetingSessionStatus.SELECTING
+    )
+    first_turn = factories.make_selection_turn(
+        session, meeting, first, position=0, status=SelectionTurnStatus.COMPLETED
+    )
+    first_turn.completed_at = first_turn.updated_at
+    first_turn.skipped_at = first_turn.updated_at
+    first_turn.skip_reason = "old"
+    first_turn.forced_by_user_id = uuid.uuid4()
+    session.add(first_turn)
+    second_turn = factories.make_selection_turn(
+        session, meeting, second, position=1, status=SelectionTurnStatus.ACTIVE
+    )
+    third_turn = factories.make_selection_turn(
+        session, meeting, third, position=2, status=SelectionTurnStatus.COMPLETED
+    )
+    session.commit()
+
+    resp = admin_client.post(
+        _undo_path(process.id, assignment.id), json={"reason": "Re-open first turn"}
+    )
+
+    assert resp.status_code == 200
+    session.refresh(first_turn)
+    session.refresh(second_turn)
+    session.refresh(third_turn)
+    session.refresh(later_assignment)
+    assert first_turn.status == SelectionTurnStatus.ACTIVE
+    assert first_turn.started_at is not None
+    assert first_turn.completed_at is None
+    assert first_turn.skipped_at is None
+    assert first_turn.skip_reason is None
+    assert first_turn.forced_by_user_id is None
+    assert second_turn.status == SelectionTurnStatus.PENDING
+    assert second_turn.started_at is None
+    assert third_turn.status == SelectionTurnStatus.COMPLETED
+    assert later_assignment.status == AssignmentStatus.ACTIVE
+    event_types = session.exec(select(AuditEvent.event_type)).all()
+    assert "selection_turn.reentered" in event_types
+    assert event_types.count("selection_turn.recomputed") == 2
+
+
+def test_undo_requeues_later_turn_without_displacing_current(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    first = _make_teacher(session, process, selection_position=0)
+    second = _make_teacher(session, process, selection_position=1)
+    assignment = factories.make_assignment(session, process, slot0, second)
+    meeting = factories.make_meeting_session(
+        session, process, status=MeetingSessionStatus.SELECTING
+    )
+    current = factories.make_selection_turn(
+        session, meeting, first, position=0, status=SelectionTurnStatus.ACTIVE
+    )
+    reentered = factories.make_selection_turn(
+        session, meeting, second, position=1, status=SelectionTurnStatus.COMPLETED
+    )
+
+    resp = admin_client.post(
+        _undo_path(process.id, assignment.id), json={"reason": "Return later turn"}
+    )
+
+    assert resp.status_code == 200
+    session.refresh(current)
+    session.refresh(reentered)
+    assert current.status == SelectionTurnStatus.ACTIVE
+    assert reentered.status == SelectionTurnStatus.PENDING
+
+
+def test_undo_ignores_nonmatching_live_meeting(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    teacher = _make_teacher(session, process)
+    other = _make_teacher(session, process, selection_position=1)
+    assignment = factories.make_assignment(session, process, slot0, teacher)
+    meeting = factories.make_meeting_session(
+        session, process, status=MeetingSessionStatus.OPEN
+    )
+    factories.make_selection_turn(session, meeting, other)
+
+    resp = admin_client.post(
+        _undo_path(process.id, assignment.id), json={"reason": "No matching turn"}
+    )
+
+    assert resp.status_code == 200
+    assert (
+        session.exec(
+            select(AuditEvent).where(
+                AuditEvent.event_type == "selection_turn.reentered"
+            )
+        ).first()
+        is None
+    )
+
+
+def test_reassign_requires_reason_and_rejects_reader(
+    reader_client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    first = _make_teacher(session, process)
+    replacement = _make_teacher(session, process)
+    assignment = factories.make_assignment(session, process, slot0, first)
+    path = _reassign_path(process.id, assignment.id)
+
+    assert (
+        reader_client.post(
+            path, json={"process_teacher_id": str(replacement.id)}
+        ).status_code
+        == 422
+    )
+    forbidden = reader_client.post(
+        path,
+        json={
+            "process_teacher_id": str(replacement.id),
+            "reason": "Not authorized",
+        },
+    )
+
+    assert forbidden.status_code == 403
+
+
+def test_reassign_atomically_replaces_assignment_and_audits_reason(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    first = _make_teacher(session, process)
+    replacement = _make_teacher(session, process)
+    assignment = factories.make_assignment(session, process, slot0, first)
+    slot0.status = HourRequirementStatus.ASSIGNED
+    session.add(slot0)
+    session.commit()
+
+    resp = admin_client.post(
+        _reassign_path(process.id, assignment.id),
+        json={
+            "process_teacher_id": str(replacement.id),
+            "reason": "Correct participant",
+            "notes": "Moved by department head",
+        },
+    )
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["id"] != str(assignment.id)
+    assert body["hour_requirement_id"] == str(slot0.id)
+    assert body["process_teacher_id"] == str(replacement.id)
+    assert body["notes"] == "Moved by department head"
+    session.refresh(assignment)
+    session.refresh(slot0)
+    assert assignment.status == AssignmentStatus.CANCELLED
+    assert slot0.status == HourRequirementStatus.ASSIGNED
+    event = session.exec(
+        select(AuditEvent).where(AuditEvent.event_type == "assignment.reassigned")
+    ).one()
+    assert event.entity_id == uuid.UUID(body["id"])
+    assert event.reason == "Correct participant"
+    assert event.before_json is not None
+    assert event.after_json is not None
+    assert event.before_json["id"] == str(assignment.id)
+    assert event.after_json["process_teacher_id"] == str(replacement.id)
+
+
+def test_reassign_rejects_same_or_inactive_teacher(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    first = _make_teacher(session, process)
+    inactive = _make_teacher(session, process)
+    inactive.status = ProcessTeacherStatus.INACTIVE
+    session.add(inactive)
+    assignment = factories.make_assignment(session, process, slot0, first)
+
+    same = admin_client.post(
+        _reassign_path(process.id, assignment.id),
+        json={"process_teacher_id": str(first.id), "reason": "Same"},
+    )
+    inactive_resp = admin_client.post(
+        _reassign_path(process.id, assignment.id),
+        json={"process_teacher_id": str(inactive.id), "reason": "Inactive"},
+    )
+
+    assert same.status_code == 400
+    assert "different" in same.json()["detail"]
+    assert inactive_resp.status_code == 400
+    assert "active process teacher" in inactive_resp.json()["detail"]
+    session.refresh(assignment)
+    assert assignment.status == AssignmentStatus.ACTIVE
+
+
+def test_reassign_rechecks_capacity_and_distinct_teacher_before_release(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, slot1 = _plan_setup(session)
+    first = _make_teacher(session, process)
+    over_capacity = _teacher_with_hours(session, process, base=2.0)
+    sibling_owner = _make_teacher(session, process)
+    assignment = factories.make_assignment(session, process, slot0, first)
+    factories.make_assignment(session, process, slot1, sibling_owner)
+
+    capacity = admin_client.post(
+        _reassign_path(process.id, assignment.id),
+        json={
+            "process_teacher_id": str(over_capacity.id),
+            "reason": "Capacity check",
+        },
+    )
+    distinct = admin_client.post(
+        _reassign_path(process.id, assignment.id),
+        json={
+            "process_teacher_id": str(sibling_owner.id),
+            "reason": "Distinct check",
+        },
+    )
+
+    assert capacity.status_code == 400
+    assert "authorize extra hours" in capacity.json()["detail"]
+    assert distinct.status_code == 400
+    assert "distinct teachers" in distinct.json()["detail"]
+    session.refresh(assignment)
+    assert assignment.status == AssignmentStatus.ACTIVE
+
+
+def test_reassign_rejects_non_active_assignment_and_stale_plan(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, slot1 = _plan_setup(session)
+    first = _make_teacher(session, process)
+    replacement = _make_teacher(session, process)
+    cancelled = factories.make_assignment(
+        session, process, slot0, first, status=AssignmentStatus.CANCELLED
+    )
+    active = factories.make_assignment(session, process, slot1, first)
+    payload = {
+        "process_teacher_id": str(replacement.id),
+        "reason": "Lifecycle check",
+    }
+
+    cancelled_resp = admin_client.post(
+        _reassign_path(process.id, cancelled.id), json=payload
+    )
+    _set_plan_status(session, process.id, TeachingPlanStatus.STALE)
+    stale_resp = admin_client.post(_reassign_path(process.id, active.id), json=payload)
+
+    assert cancelled_resp.status_code == 409
+    assert stale_resp.status_code == 409
+    assert "stale" in stale_resp.json()["detail"]
+
+
+def test_reassign_repairs_and_persists_current_feasible_witness(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    first = _teacher_with_hours(session, process, base=4.0)
+    replacement = _teacher_with_hours(session, process, base=4.0)
+    evaluation = admin_client.post(
+        f"/reparto/assignment-processes/{process.id}/teaching-plan/feasibility/evaluate"
+    )
+    assert evaluation.status_code == 200
+    created = admin_client.post(
+        f"{_assignments_path(process.id)}/",
+        json={
+            "hour_requirement_id": str(slot0.id),
+            "process_teacher_id": str(first.id),
+        },
+    )
+    assert created.status_code == 201
+
+    resp = admin_client.post(
+        _reassign_path(process.id, uuid.UUID(created.json()["id"])),
+        json={
+            "process_teacher_id": str(replacement.id),
+            "reason": "Safe witness swap",
+        },
+    )
+
+    assert resp.status_code == 201
+    plan = session.exec(
+        select(TeachingPlan).where(TeachingPlan.assignment_process_id == process.id)
+    ).one()
+    assert plan.feasibility_status == FeasibilityStatus.FEASIBLE
+    witness = admin_client.get(
+        f"/reparto/assignment-processes/{process.id}/teaching-plan/feasibility/witness"
+    )
+    assert witness.status_code == 200
+
+
+def test_reassign_fails_closed_on_missing_current_witness(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _activity, slot0, _slot1 = _plan_setup(session)
+    first = _teacher_with_hours(session, process, base=4.0)
+    replacement = _teacher_with_hours(session, process, base=4.0)
+    evaluation = admin_client.post(
+        f"/reparto/assignment-processes/{process.id}/teaching-plan/feasibility/evaluate"
+    )
+    assert evaluation.status_code == 200
+    created = admin_client.post(
+        f"{_assignments_path(process.id)}/",
+        json={
+            "hour_requirement_id": str(slot0.id),
+            "process_teacher_id": str(first.id),
+        },
+    )
+    witness_row = session.exec(select(FeasibilityWitness)).one()
+    session.delete(witness_row)
+    session.commit()
+
+    resp = admin_client.post(
+        _reassign_path(process.id, uuid.UUID(created.json()["id"])),
+        json={
+            "process_teacher_id": str(replacement.id),
+            "reason": "Missing witness",
+        },
+    )
+
+    assert resp.status_code == 409
+    assert "missing or stale" in resp.json()["detail"]
+    original = session.get(Assignment, uuid.UUID(created.json()["id"]))
+    assert original is not None
+    assert original.status == AssignmentStatus.ACTIVE
+
+
+def test_reassign_rejects_witness_unsafe_insert_without_mutating_old_row(
+    admin_client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    plan = factories.make_teaching_plan(session, process)
+    subject = factories.make_subject(session, process)
+    slots = []
+    for hours in (4.0, 3.0, 3.0):
+        activity = factories.make_teaching_activity(session, plan, subject)
+        slots.append(
+            factories.make_hour_requirement(
+                session, process, activity, required_teacher_hours=hours
+            )
+        )
+    first = _teacher_with_hours(session, process, base=4.0)
+    replacement = _teacher_with_hours(session, process, base=6.0)
+    evaluation = admin_client.post(
+        f"/reparto/assignment-processes/{process.id}/teaching-plan/feasibility/evaluate"
+    )
+    assert evaluation.status_code == 200
+    created = admin_client.post(
+        f"{_assignments_path(process.id)}/",
+        json={
+            "hour_requirement_id": str(slots[0].id),
+            "process_teacher_id": str(first.id),
+        },
+    )
+
+    resp = admin_client.post(
+        _reassign_path(process.id, uuid.UUID(created.json()["id"])),
+        json={
+            "process_teacher_id": str(replacement.id),
+            "reason": "Unsafe repartition",
+        },
+    )
+
+    assert resp.status_code == 409
+    assert "strand" in resp.json()["detail"]
+    original = session.get(Assignment, uuid.UUID(created.json()["id"]))
+    assert original is not None
+    assert original.status == AssignmentStatus.ACTIVE
 
 
 # ── Direct teacher choice (LAN) ───────────────────────────────────────────────

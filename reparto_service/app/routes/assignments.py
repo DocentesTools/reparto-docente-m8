@@ -12,6 +12,8 @@ from reparto_service.db_models.assignments import (
     AssignmentCreate,
     AssignmentDirectChoice,
     AssignmentPublic,
+    AssignmentReassign,
+    AssignmentUndo,
     AssignmentsPublic,
     AssignmentUpdate,
 )
@@ -81,14 +83,51 @@ def update_assignment(
     )
 
 
-@router.delete("/{assignment_id}", response_model=AssignmentPublic)
+@router.post("/{assignment_id}/undo", response_model=AssignmentPublic)
+def undo_assignment(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    action: AssignmentUndo,
+) -> AssignmentPublic:
+    AssignmentController.require_admin(current_user)
+    return AssignmentController.undo_assignment(
+        session, process_id, assignment_id, current_user, action
+    )
+
+
+@router.post(
+    "/{assignment_id}/reassign", response_model=AssignmentPublic, status_code=201
+)
+def reassign_assignment(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    action: AssignmentReassign,
+) -> AssignmentPublic:
+    AssignmentController.require_admin(current_user)
+    return AssignmentController.reassign_assignment(
+        session, process_id, assignment_id, current_user, action
+    )
+
+
+@router.delete(
+    "/{assignment_id}",
+    response_model=AssignmentPublic,
+    deprecated=True,
+    include_in_schema=False,
+)
 def delete_assignment(
     session: SessionDep,
     current_user: CurrentUser,
     process_id: uuid.UUID,
     assignment_id: uuid.UUID,
+    action: AssignmentUndo,
 ) -> AssignmentPublic:
-    AssignmentController.require_process_writer(session, current_user, process_id)
-    return AssignmentController.delete_assignment(
-        session, process_id, assignment_id, current_user
+    """Compatibility alias for the explicit, reason-required undo action."""
+    AssignmentController.require_admin(current_user)
+    return AssignmentController.undo_assignment(
+        session, process_id, assignment_id, current_user, action
     )

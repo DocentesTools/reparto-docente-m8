@@ -159,8 +159,16 @@ binds one teacher to one complete, indivisible slot: create with just
 `{hour_requirement_id, process_teacher_id}` (no hour or share input), and the
 requirement's activity is denormalised server-side so the database enforces one
 active assignment per slot and a distinct teacher per activity. `DELETE`
-soft-cancels an assignment and frees its slot. Assignment endpoints also include
-`POST /assignments/direct-choice` for teacher LAN selection. Selection-turn
+is a reason-required compatibility alias for explicit
+`POST /assignments/{assignment_id}/undo`; both soft-cancel the assignment, free
+its slot, restore a completed participant to the live turn queue and recompute
+the sole current turn by stable position. Department-head
+`POST /assignments/{assignment_id}/reassign` atomically cancels the old row and
+occupies the same slot with a replacement participant after rechecking active
+eligibility, capacity, distinct-teacher, cheap feasibility and witness-repair
+guards under row locks. Both actions require a reason and write audit events.
+Assignment endpoints also include `POST /assignments/direct-choice` for teacher
+LAN selection. Selection-turn
 endpoints support initialization plus start, complete, skip, and override
 actions; completing a turn may carry the department head's manual slot choice,
 which is recorded through the same complete-slot service (identical

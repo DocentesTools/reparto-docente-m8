@@ -429,7 +429,10 @@ generation, reconciliation and undo mutations immediately reset the plan to
 `NOT_EVALUATED` and delete the cached row. A valid assignment hot path loads the
 matching row, performs bounded local repair, and persists the repaired mapping
 against the post-selection fingerprint in the same transaction. It never runs
-the full solver.
+the full solver. Reassignment first validates the current witness, builds the
+hypothetical post-undo remaining state, and runs that same cheap-guard plus
+bounded-repair path before atomically cancelling the old row and occupying the
+same slot with the replacement. Pure undo never runs the solver.
 
 ## 9. API design
 
@@ -453,7 +456,7 @@ Endpoint groups, by stage:
 | Configuration | `…/teachers` (+ `/extra-hours`), `/subjects`, `/groups`, `/group-subjects` (+ `/bulk-preview`, `/bulk-apply`) |
 | Planning | `…/allocation-revisions` (+ `/current`), `/teaching-plan` (+ `/lock`, `/unlock`, `/summary`, `/validations`, `/materialize-main`), `/teaching-activities` |
 | Requirements | `…/requirements` (read) + `/generation-preview`, `/generate`, `/reconciliation-preview`, `/reconcile` |
-| Assignment | `…/assignments` (+ `/direct-choice`, `/validations`), `/meeting-sessions` (+ `/close`), `…/turns` (+ `/initialize`, `/start`, `/complete`, `/skip`, `/override`) |
+| Assignment | `…/assignments` (+ `/{id}/undo`, `/{id}/reassign`, `/direct-choice`, `/validations`), `/meeting-sessions` (+ `/close`), `…/turns` (+ `/initialize`, `/start`, `/complete`, `/skip`, `/override`) |
 | Read models | `…/summary`, `/dashboard`, `/lan/me`, `/events` |
 | History | `…/versions` (+ `/{left}/compare/{right}`), `/compare-previous-year`, `/audit-events`, `/exports`, `/restore-draft` |
 | Planning exchange | `…/exports/planning-draft`, `/exports/planning-provisional`, `/exports/planning-final`, `/imports/planning` |
@@ -600,8 +603,6 @@ extension point already in place.
   and feasibility telemetry remain in the guarded-retirement/DoS task.
 * **Decimal hour columns** — `HoursNumeric` exists but no model uses it yet; hour
   columns remain `float` and are lifted to `Decimal` in the services (§8.2).
-* **Undo and reassignment** — head/admin-only undo with reason, audit and
-  deterministic turn-queue recompute.
 * **`GroupSubject → activity` sync flow** — editing a materialized source cell
   should mark the generated activity `OUT_OF_SYNC` and route through an explicit
   sync preview/apply.

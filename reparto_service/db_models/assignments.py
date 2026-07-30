@@ -132,6 +132,22 @@ class AssignmentUpdate(SQLModel):
     notes: Optional[str] = Field(default=None)
 
 
+class AssignmentUndo(SQLModel):
+    """Required justification for undoing a live assignment (plan §20.13)."""
+
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class AssignmentReassign(SQLModel):
+    """Payload for moving a live requirement slot to another participant."""
+
+    process_teacher_id: uuid.UUID = Field(
+        description="Replacement process teacher for the same requirement slot."
+    )
+    reason: str = Field(min_length=1, max_length=500)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+
+
 # ── Database model ───────────────────────────────────────────────────────────
 
 
@@ -237,6 +253,8 @@ __all__ = [
     "AssignmentBase",
     "AssignmentCreate",
     "AssignmentDirectChoice",
+    "AssignmentReassign",
+    "AssignmentUndo",
     "AssignmentUpdate",
     "AssignmentPublic",
     "AssignmentsPublic",

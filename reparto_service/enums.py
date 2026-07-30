@@ -404,10 +404,14 @@ class AuditEventType(str, Enum):
     ASSIGNMENT_DIRECT_CHOICE = "assignment.direct_choice"
     ASSIGNMENT_UPDATED = "assignment.updated"
     ASSIGNMENT_CANCELLED = "assignment.cancelled"
+    ASSIGNMENT_UNDONE = "assignment.undone"
+    ASSIGNMENT_REASSIGNED = "assignment.reassigned"
     SELECTION_TURN_STARTED = "selection_turn.started"
     SELECTION_TURN_COMPLETED = "selection_turn.completed"
     SELECTION_TURN_SKIPPED = "selection_turn.skipped"
     SELECTION_TURN_OVERRIDDEN = "selection_turn.overridden"
+    SELECTION_TURN_REENTERED = "selection_turn.reentered"
+    SELECTION_TURN_RECOMPUTED = "selection_turn.recomputed"
 
 
 # ── SSE stream (plan §11, §20.25) ─────────────────────────────────────────────

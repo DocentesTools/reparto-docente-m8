@@ -33,10 +33,11 @@ it and is available only through the administrator evaluation operation
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from auth_sdk_m8.schemas.user import UserModel
 
@@ -48,6 +49,8 @@ from reparto_service.db_models.assignments import (
     AssignmentCreate,
     AssignmentDirectChoice,
     AssignmentPublic,
+    AssignmentReassign,
+    AssignmentUndo,
     AssignmentsPublic,
     AssignmentUpdate,
 )
@@ -60,9 +63,11 @@ from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
     AssignmentSource,
     AssignmentStatus,
+    AuditEventType,
     FeasibilityStatus,
     HourRequirementStatus,
     MeetingSessionStatus,
+    ProcessTeacherStatus,
     SelectionOrderMode,
     SelectionTurnStatus,
 )
@@ -286,44 +291,137 @@ class AssignmentController(DomainController):
         return AssignmentPublic.model_validate(assignment)
 
     @staticmethod
-    def delete_assignment(
+    def undo_assignment(
         session: Session,
         process_id: uuid.UUID,
         assignment_id: uuid.UUID,
         current_user: UserModel,
+        action: AssignmentUndo,
     ) -> AssignmentPublic:
-        """Cancel a live assignment, freeing its requirement slot (plan §20.12).
+        """Undo a live assignment and restore its turn queue (plan §20.13)."""
 
-        A soft cancel (rather than a hard delete) keeps the row traceable for
-        audit and versioning; the active partial-unique indexes ignore
-        CANCELLED rows, so the slot is immediately re-assignable.
-        """
         AssignmentController._ensure_open(session, process_id)
         assignment = AssignmentController._get_or_404(
             session, process_id, assignment_id
         )
+        AssignmentController._lock_assignment(session, assignment)
+        AssignmentController._ensure_active_for_action(assignment)
         before = Assignment.model_validate(assignment.model_dump())
-        if assignment.status == AssignmentStatus.ACTIVE:
-            assignment.status = AssignmentStatus.CANCELLED
-            requirement = session.get(HourRequirement, assignment.hour_requirement_id)
-            if requirement is not None:
-                requirement.status = HourRequirementStatus.AVAILABLE
-                session.add(requirement)
-            session.add(assignment)
-            FeasibilityWitnessService.invalidate(session, process_id)
+        AssignmentController._release_assignment(session, assignment)
+        FeasibilityWitnessService.invalidate(session, process_id)
         AssignmentController.record_audit_event(
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="assignment.cancelled",
+            event_type=AuditEventType.ASSIGNMENT_UNDONE,
             entity_type="assignment",
             entity_id=assignment.id,
             before=before,
             after=assignment,
+            reason=action.reason,
+        )
+        AssignmentController._requeue_completed_turns(
+            session,
+            process_id=process_id,
+            process_teacher_id=assignment.process_teacher_id,
+            current_user=current_user,
+            reason=action.reason,
         )
         session.commit()
         session.refresh(assignment)
         return AssignmentPublic.model_validate(assignment)
+
+    @staticmethod
+    def reassign_assignment(
+        session: Session,
+        process_id: uuid.UUID,
+        assignment_id: uuid.UUID,
+        current_user: UserModel,
+        action: AssignmentReassign,
+    ) -> AssignmentPublic:
+        """Atomically move one live slot through the normal guarded insert path."""
+
+        AssignmentController._ensure_open(session, process_id)
+        PlanReadinessGate.ensure_assignments_unblocked(
+            session, process_id, operation="reassign an assignment"
+        )
+        assignment = AssignmentController._get_or_404(
+            session, process_id, assignment_id
+        )
+        AssignmentController._ensure_active_for_action(assignment)
+        requirement = AssignmentController._get_requirement_or_404(
+            session, process_id, assignment.hour_requirement_id
+        )
+        replacement = AssignmentController._get_process_teacher_or_404(
+            session, process_id, action.process_teacher_id
+        )
+        if replacement.id == assignment.process_teacher_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Reassignment requires a different process teacher.",
+            )
+        AssignmentController._lock_reassignment_state(
+            session, assignment, requirement, replacement
+        )
+        AssignmentController._ensure_active_for_action(assignment)
+        AssignmentController._ensure_eligible_process_teacher(replacement)
+        AssignmentController._ensure_distinct_teacher(
+            session, requirement.teaching_activity_id, replacement.id
+        )
+        AssignmentController._ensure_fits_target(session, replacement, requirement)
+        repaired = FeasibilityWitnessService.repair_for_reassignment(
+            session,
+            process_id=process_id,
+            assignment=assignment,
+            requirement=requirement,
+            proposed_participant_id=replacement.id,
+        )
+        if repaired is not None and (
+            repaired.code != WitnessRepairCode.REPAIRED or repaired.witness is None
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Reassignment would strand the remaining assignment state "
+                    f"({repaired.code.value}); administrative feasibility "
+                    "evaluation is required."
+                ),
+            )
+        before = Assignment.model_validate(assignment.model_dump())
+        AssignmentController._release_assignment(session, assignment)
+        replacement_assignment = AssignmentController._occupy_slot(
+            session,
+            process_id=process_id,
+            requirement=requirement,
+            process_teacher=replacement,
+            source=AssignmentSource.DEPARTMENT_HEAD,
+            chosen_by_user_id=uuid.UUID(str(current_user.id)),
+            confirmed_by_user_id=None,
+            notes=action.notes,
+            prevalidated_repair=None if repaired is None else repaired.witness,
+            feasibility_prevalidated=True,
+        )
+        AssignmentController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type=AuditEventType.ASSIGNMENT_REASSIGNED,
+            entity_type="assignment",
+            entity_id=replacement_assignment.id,
+            before=before,
+            after=replacement_assignment,
+            reason=action.reason,
+        )
+        AssignmentController._requeue_completed_turns(
+            session,
+            process_id=process_id,
+            process_teacher_id=assignment.process_teacher_id,
+            current_user=current_user,
+            reason=action.reason,
+        )
+        session.commit()
+        session.refresh(replacement_assignment)
+        return AssignmentPublic.model_validate(replacement_assignment)
 
     # ── Shared complete-slot routine ──────────────────────────────────────────
 
@@ -338,6 +436,8 @@ class AssignmentController(DomainController):
         chosen_by_user_id: uuid.UUID,
         confirmed_by_user_id: uuid.UUID | None,
         notes: str | None,
+        prevalidated_repair: tuple[FeasibilityWitnessEntry, ...] | None = None,
+        feasibility_prevalidated: bool = False,
     ) -> Assignment:
         """Occupy one complete slot, enforcing the indivisible-slot invariants.
 
@@ -365,15 +465,20 @@ class AssignmentController(DomainController):
                 ),
             )
         AssignmentController._ensure_slot_unassigned(session, requirement.id)
+        AssignmentController._ensure_eligible_process_teacher(process_teacher)
         AssignmentController._ensure_distinct_teacher(
             session, requirement.teaching_activity_id, process_teacher.id
         )
         AssignmentController._ensure_fits_target(session, process_teacher, requirement)
-        repaired_witness = AssignmentController._ensure_fast_feasibility(
-            session,
-            process_id=process_id,
-            requirement=requirement,
-            process_teacher=process_teacher,
+        repaired_witness = (
+            prevalidated_repair
+            if feasibility_prevalidated
+            else AssignmentController._ensure_fast_feasibility(
+                session,
+                process_id=process_id,
+                requirement=requirement,
+                process_teacher=process_teacher,
+            )
         )
         assignment = Assignment(
             assignment_process_id=process_id,
@@ -396,6 +501,193 @@ class AssignmentController(DomainController):
                 repaired_remaining=repaired_witness,
             )
         return assignment
+
+    @staticmethod
+    def _lock_assignment(session: Session, assignment: Assignment) -> None:
+        """Lock and refresh one assignment before an undo-style action."""
+
+        session.exec(
+            select(Assignment).where(Assignment.id == assignment.id).with_for_update()
+        ).all()
+        session.refresh(assignment)
+
+    @staticmethod
+    def _lock_reassignment_state(
+        session: Session,
+        assignment: Assignment,
+        requirement: HourRequirement,
+        replacement: ProcessTeacher,
+    ) -> None:
+        """Lock every row used by an atomic reassignment in canonical order."""
+
+        AssignmentController._lock_requirement_row(session, requirement)
+        participant_ids = sorted(
+            {assignment.process_teacher_id, replacement.id}, key=str
+        )
+        participants = session.exec(
+            select(ProcessTeacher)
+            .where(col(ProcessTeacher.id).in_(participant_ids))
+            .order_by(col(ProcessTeacher.id))
+            .with_for_update()
+        ).all()
+        for participant in participants:
+            session.refresh(participant)
+        AssignmentController._lock_activity_assignments(
+            session, requirement.teaching_activity_id
+        )
+        session.refresh(assignment)
+        session.refresh(replacement)
+
+    @staticmethod
+    def _ensure_active_for_action(assignment: Assignment) -> None:
+        """Reject repeated undo/reassignment attempts against historical rows."""
+
+        if assignment.status != AssignmentStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Only an active assignment can be undone or reassigned.",
+            )
+
+    @staticmethod
+    def _release_assignment(session: Session, assignment: Assignment) -> None:
+        """Soft-cancel an assignment and release its live requirement slot."""
+
+        assignment.status = AssignmentStatus.CANCELLED
+        requirement = session.get(HourRequirement, assignment.hour_requirement_id)
+        if requirement is not None:
+            requirement.status = HourRequirementStatus.AVAILABLE
+            session.add(requirement)
+        session.add(assignment)
+
+    @staticmethod
+    def _ensure_eligible_process_teacher(process_teacher: ProcessTeacher) -> None:
+        """Require an active participant for every new slot occupancy."""
+
+        if process_teacher.status != ProcessTeacherStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only an active process teacher is eligible for assignment.",
+            )
+
+    @staticmethod
+    def _requeue_completed_turns(
+        session: Session,
+        *,
+        process_id: uuid.UUID,
+        process_teacher_id: uuid.UUID,
+        current_user: UserModel,
+        reason: str,
+    ) -> None:
+        """Re-enter completed live-meeting turns and recompute current turns."""
+
+        meetings = session.exec(
+            select(MeetingSession)
+            .where(MeetingSession.assignment_process_id == process_id)
+            .where(
+                col(MeetingSession.status).in_(
+                    {
+                        MeetingSessionStatus.OPEN,
+                        MeetingSessionStatus.SELECTING,
+                        MeetingSessionStatus.REOPENED,
+                    }
+                )
+            )
+            .order_by(col(MeetingSession.id))
+        ).all()
+        now = datetime.now(tz=timezone.utc)
+        for meeting in meetings:
+            turn = session.exec(
+                select(SelectionTurn).where(
+                    SelectionTurn.meeting_session_id == meeting.id,
+                    SelectionTurn.process_teacher_id == process_teacher_id,
+                    SelectionTurn.status == SelectionTurnStatus.COMPLETED,
+                )
+            ).first()
+            if turn is None:
+                continue
+            before = AssignmentController._snapshot_turn(turn)
+            AssignmentController._reset_turn_to_pending(turn)
+            session.add(turn)
+            session.flush()
+            AssignmentController._recompute_current_turn(
+                session, process_id, meeting.id, current_user, reason, now
+            )
+            AssignmentController.record_audit_event(
+                session,
+                process_id=process_id,
+                current_user=current_user,
+                event_type=AuditEventType.SELECTION_TURN_REENTERED,
+                entity_type="selection_turn",
+                entity_id=turn.id,
+                before=before,
+                after=turn,
+                reason=reason,
+            )
+
+    @staticmethod
+    def _recompute_current_turn(
+        session: Session,
+        process_id: uuid.UUID,
+        meeting_session_id: uuid.UUID,
+        current_user: UserModel,
+        reason: str,
+        now: datetime,
+    ) -> None:
+        """Make the earliest unfinished turn the sole deterministic current turn."""
+
+        turns = list(
+            session.exec(
+                select(SelectionTurn)
+                .where(SelectionTurn.meeting_session_id == meeting_session_id)
+                .where(
+                    col(SelectionTurn.status).in_(
+                        {SelectionTurnStatus.PENDING, SelectionTurnStatus.ACTIVE}
+                    )
+                )
+                .order_by(col(SelectionTurn.position), col(SelectionTurn.id))
+            ).all()
+        )
+        current = turns[0]
+        for turn in turns:
+            expected = (
+                SelectionTurnStatus.ACTIVE
+                if turn.id == current.id
+                else SelectionTurnStatus.PENDING
+            )
+            if turn.status == expected:
+                continue
+            before = AssignmentController._snapshot_turn(turn)
+            turn.status = expected
+            turn.started_at = now if expected == SelectionTurnStatus.ACTIVE else None
+            session.add(turn)
+            AssignmentController.record_audit_event(
+                session,
+                process_id=process_id,
+                current_user=current_user,
+                event_type=AuditEventType.SELECTION_TURN_RECOMPUTED,
+                entity_type="selection_turn",
+                entity_id=turn.id,
+                before=before,
+                after=turn,
+                reason=reason,
+            )
+
+    @staticmethod
+    def _reset_turn_to_pending(turn: SelectionTurn) -> None:
+        """Clear terminal metadata before a completed turn re-enters the queue."""
+
+        turn.status = SelectionTurnStatus.PENDING
+        turn.started_at = None
+        turn.completed_at = None
+        turn.skipped_at = None
+        turn.skip_reason = None
+        turn.forced_by_user_id = None
+
+    @staticmethod
+    def _snapshot_turn(turn: SelectionTurn) -> SelectionTurn:
+        """Detach a selection-turn snapshot for audit before mutation."""
+
+        return SelectionTurn.model_validate(turn.model_dump())
 
     @staticmethod
     def _lock_selection_state(
