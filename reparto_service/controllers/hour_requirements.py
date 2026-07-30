@@ -15,16 +15,17 @@ slot is then classified by the §20.8 identity model:
 
 * **unchanged** (same value fingerprint) → preserved: keeps its id and any
   assignment, only its ``last_validated_generation`` advances;
-* **new** logical position → created with a fresh id at the new generation;
+* **new** logical position → created with a deterministic id at the new generation;
 * **removed / value-changed but unassigned** → retired (``retired_generation``
   set, status ``STALE``); a value change also creates a replacement slot;
 * **removed / value-changed but assigned** → a *conflict*: it must go through the
   reconciliation flow (plan §7.5, §9) — ``generate`` refuses (409) rather than
   ever silently overwriting or deleting an assignment.
 
-``generation-preview`` is a pure dry-run; ``generate`` re-runs the identical plan
-and applies it, so the two can never diverge (the same pattern the group-subject
-bulk flow uses).
+``generation-preview`` never mutates requirement rows; it also evaluates and
+persists feasibility for the exact intended generation. ``generate`` re-runs
+that identical diff and requires the same deterministic witness before apply, so
+the solver input and created row identities cannot diverge.
 
 The ``reconciliation-preview`` / ``reconcile`` flow (plan §7.5, §9) resolves the
 conflicts ``generate`` refuses. Reconciliation runs the same deterministic diff
@@ -75,6 +76,8 @@ from reparto_service.enums import (
     TeachingPlanStatus,
 )
 from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
+from reparto_service.services.feasibility_witnesses import prospective_requirement_id
+from reparto_service.services.lifecycle_gates import PlanReadinessGate
 
 # Plan statuses from which a generation may run (plan §20.8, §20.14): the plan is
 # LOCKED (first generation of the just-locked plan) or STALE (regeneration of an
@@ -129,7 +132,9 @@ class _GenerationPlan:
     """Pure, executable diff produced by :meth:`_plan_generation`."""
 
     next_generation_number: int
-    to_create: list[tuple[uuid.UUID, int, float]] = field(default_factory=list)
+    to_create: list[tuple[uuid.UUID, uuid.UUID, int, float]] = field(
+        default_factory=list
+    )
     to_preserve: list[HourRequirement] = field(default_factory=list)
     to_retire: list[HourRequirement] = field(default_factory=list)
     conflicts: list[_Conflict] = field(default_factory=list)
@@ -185,6 +190,9 @@ class HourRequirementController(DomainController):
         DomainController.get_process_or_404(session, process_id)
         plan = HourRequirementController._require_generatable_plan(session, process_id)
         generation = HourRequirementController._plan_generation(session, plan)
+        FeasibilityWitnessService.require_intended_feasible(
+            session, process_id, operation="preview requirement generation"
+        )
         return HourRequirementController._to_preview(generation)
 
     @staticmethod
@@ -218,6 +226,9 @@ class HourRequirementController(DomainController):
                 ),
             )
 
+        FeasibilityWitnessService.require_intended_feasible(
+            session, process_id, operation="generate definitive requirements"
+        )
         number = generation.next_generation_number
         for requirement in generation.to_preserve:
             requirement.last_validated_generation = number
@@ -234,9 +245,15 @@ class HourRequirementController(DomainController):
 
         created: list[HourRequirement] = [
             HourRequirementController._insert_slot(
-                session, process_id, activity_id, position_index, hours, number
+                session,
+                process_id,
+                requirement_id,
+                activity_id,
+                position_index,
+                hours,
+                number,
             )
-            for activity_id, position_index, hours in generation.to_create
+            for requirement_id, activity_id, position_index, hours in generation.to_create
         ]
 
         plan.current_generation_number = number
@@ -245,6 +262,10 @@ class HourRequirementController(DomainController):
             plan, TeachingPlanStatus.REQUIREMENTS_GENERATED
         )
         session.add(plan)
+        session.flush()
+        PlanReadinessGate.ensure_current_feasible(
+            session, process_id, operation="activate generated requirements"
+        )
         HourRequirementController.record_audit_event(
             session,
             process_id=process_id,
@@ -255,7 +276,6 @@ class HourRequirementController(DomainController):
             before=None,
             after=plan,
         )
-        FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
 
         for requirement in created:
@@ -299,6 +319,9 @@ class HourRequirementController(DomainController):
         DomainController.get_process_or_404(session, process_id)
         plan = HourRequirementController._require_reconcilable_plan(session, process_id)
         generation = HourRequirementController._plan_generation(session, plan)
+        FeasibilityWitnessService.require_intended_feasible(
+            session, process_id, operation="preview requirement reconciliation"
+        )
         return HourRequirementController._to_reconciliation_preview(generation)
 
     @staticmethod
@@ -335,6 +358,18 @@ class HourRequirementController(DomainController):
                 ),
             )
 
+        FeasibilityWitnessService.require_intended_feasible(
+            session, process_id, operation="reconcile definitive requirements"
+        )
+        generation = HourRequirementController._plan_generation(session, plan)
+        if request.expected_conflict_count != len(generation.conflicts):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "The reconciliation changed during feasibility evaluation; "
+                    "re-run reconciliation-preview and confirm the current count."
+                ),
+            )
         number = generation.next_generation_number
         for requirement in generation.to_preserve:
             requirement.last_validated_generation = number
@@ -378,9 +413,15 @@ class HourRequirementController(DomainController):
 
         created: list[HourRequirement] = [
             HourRequirementController._insert_slot(
-                session, process_id, activity_id, position_index, hours, number
+                session,
+                process_id,
+                requirement_id,
+                activity_id,
+                position_index,
+                hours,
+                number,
             )
-            for activity_id, position_index, hours in generation.to_create
+            for requirement_id, activity_id, position_index, hours in generation.to_create
         ]
 
         resolved: list[RequirementConflictDetail] = []
@@ -391,6 +432,12 @@ class HourRequirementController(DomainController):
                 replacement = HourRequirementController._insert_slot(
                     session,
                     process_id,
+                    prospective_requirement_id(
+                        plan.id,
+                        number,
+                        conflict.requirement.teaching_activity_id,
+                        conflict.requirement.position_index,
+                    ),
                     conflict.requirement.teaching_activity_id,
                     conflict.requirement.position_index,
                     conflict.new_hours,
@@ -410,6 +457,10 @@ class HourRequirementController(DomainController):
             plan, TeachingPlanStatus.REQUIREMENTS_GENERATED
         )
         session.add(plan)
+        session.flush()
+        PlanReadinessGate.ensure_current_feasible(
+            session, process_id, operation="activate reconciled requirements"
+        )
         HourRequirementController.record_audit_event(
             session,
             process_id=process_id,
@@ -421,7 +472,6 @@ class HourRequirementController(DomainController):
             after=plan,
             reason=request.reason,
         )
-        FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
 
         for requirement in created:
@@ -500,7 +550,19 @@ class HourRequirementController(DomainController):
             hours = target[slot]
             requirement = live_by_slot.get(slot)
             if requirement is None:
-                result.to_create.append((slot[0], slot[1], hours))
+                result.to_create.append(
+                    (
+                        prospective_requirement_id(
+                            plan.id,
+                            result.next_generation_number,
+                            slot[0],
+                            slot[1],
+                        ),
+                        slot[0],
+                        slot[1],
+                        hours,
+                    )
+                )
             elif _hours_equal(requirement.required_teacher_hours, hours):
                 result.to_preserve.append(requirement)
             elif requirement.id in assignments:
@@ -513,7 +575,19 @@ class HourRequirementController(DomainController):
                 # Value change on an unassigned slot: retire the old row and
                 # generate a fresh one for the same logical position (plan §20.8).
                 result.to_retire.append(requirement)
-                result.to_create.append((slot[0], slot[1], hours))
+                result.to_create.append(
+                    (
+                        prospective_requirement_id(
+                            plan.id,
+                            result.next_generation_number,
+                            slot[0],
+                            slot[1],
+                        ),
+                        slot[0],
+                        slot[1],
+                        hours,
+                    )
+                )
 
         for slot in sorted(live_by_slot, key=lambda s: (str(s[0]), s[1])):
             if slot in target:
@@ -541,7 +615,7 @@ class HourRequirementController(DomainController):
                     position_index=position_index,
                     required_teacher_hours=hours,
                 )
-                for activity_id, position_index, hours in generation.to_create
+                for _, activity_id, position_index, hours in generation.to_create
             ],
             create_count=len(generation.to_create),
             preserve_ids=[r.id for r in generation.to_preserve],
@@ -594,6 +668,7 @@ class HourRequirementController(DomainController):
     def _insert_slot(
         session: Session,
         process_id: uuid.UUID,
+        requirement_id: uuid.UUID,
         activity_id: uuid.UUID,
         position_index: int,
         hours: float,
@@ -601,6 +676,7 @@ class HourRequirementController(DomainController):
     ) -> HourRequirement:
         """Add one fresh AVAILABLE slot for a logical position (plan §20.8)."""
         requirement = HourRequirement(
+            id=requirement_id,
             assignment_process_id=process_id,
             teaching_activity_id=activity_id,
             position_index=position_index,

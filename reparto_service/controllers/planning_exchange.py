@@ -56,6 +56,7 @@ from reparto_service.schemas.exchange import (
     PlanningImportResult,
 )
 from reparto_service.services.calculations import PlanningCalculationService
+from reparto_service.services.lifecycle_gates import PlanReadinessGate
 from reparto_service.services.validations import PlanValidationService
 
 
@@ -89,6 +90,10 @@ class PlanningExchangeController(DomainController):
                     f"{validations.blocking_count} blocking validation(s); "
                     "resolve them or export as draft/provisional (plan §7.8)."
                 ),
+            )
+        if mode == PlanningExportMode.FINAL:
+            PlanReadinessGate.ensure_current_feasible(
+                session, process_id, operation="export the final planning artifact"
             )
 
         return PlanningExportArtifact(

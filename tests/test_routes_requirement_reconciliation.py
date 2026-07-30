@@ -13,20 +13,24 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, col, select
 
 from reparto_service.db_models.assignments import Assignment
 from reparto_service.db_models.audit_events import AuditEvent
 from reparto_service.db_models.hour_requirements import HourRequirement
+from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
     AssignmentProcessStatus,
     AssignmentStatus,
     HourRequirementStatus,
+    ProcessTeacherStatus,
     SubjectAllocationCategory,
     TeachingPlanStatus,
 )
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 from tests import factories
 
 _PREVIEW = "/reparto/assignment-processes/{}/requirements/reconciliation-preview"
@@ -68,6 +72,11 @@ def _setup(
         teacher_weekly_hours_per_position=teacher_hours,
         required_teacher_count=required_teacher_count,
     )
+    for _ in range(required_teacher_count):
+        profile = factories.make_teacher_profile(session)
+        factories.make_process_teacher(
+            session, process, profile, base_weekly_hours=teacher_hours
+        )
     return process, plan, subject, activity
 
 
@@ -95,8 +104,13 @@ def _slot_at(session: Session, process, position: int) -> HourRequirement:
 
 
 def _assign(session: Session, process, slot: HourRequirement) -> Assignment:
-    profile = factories.make_teacher_profile(session)
-    teacher = factories.make_process_teacher(session, process, profile)
+    teacher = session.exec(
+        select(ProcessTeacher)
+        .where(ProcessTeacher.assignment_process_id == process.id)
+        .order_by(col(ProcessTeacher.id))
+        .offset(slot.position_index)
+    ).first()
+    assert teacher is not None
     return factories.make_assignment(session, process, slot, teacher)
 
 
@@ -123,6 +137,10 @@ def _stage_value_conflict(
     slot = _slot_at(session, process, 0)
     assignment = _assign(session, process, slot)
     activity.teacher_weekly_hours_per_position = new_hours
+    teacher = session.get(ProcessTeacher, assignment.process_teacher_id)
+    assert teacher is not None
+    teacher.base_weekly_hours = new_hours
+    session.add(teacher)
     session.add(activity)
     session.commit()
     _set_plan_status(session, plan, plan_status)
@@ -138,6 +156,13 @@ def _stage_removed_conflict(client: TestClient, session: Session):
     slot1 = _slot_at(session, process, 1)
     assignment = _assign(session, process, slot1)
     activity.required_teacher_count = 1
+    participants = session.exec(
+        select(ProcessTeacher).where(ProcessTeacher.assignment_process_id == process.id)
+    ).all()
+    for participant in participants:
+        if participant.id != assignment.process_teacher_id:
+            participant.status = ProcessTeacherStatus.INACTIVE
+            session.add(participant)
     session.add(activity)
     session.commit()
     _set_plan_status(session, plan, TeachingPlanStatus.STALE)
@@ -304,6 +329,55 @@ def test_reconcile_conflict_count_mismatch_409(
 # ── reconcile: resolution paths ────────────────────────────────────────────────
 
 
+def test_reconcile_fails_closed_when_intended_state_is_infeasible(
+    client: TestClient, session: Session
+) -> None:
+    process, plan, _activity, slot, assignment = _stage_value_conflict(client, session)
+    participant = session.get(ProcessTeacher, assignment.process_teacher_id)
+    assert participant is not None
+    participant.base_weekly_hours += 1.0
+    session.add(participant)
+    session.commit()
+
+    resp = client.post(_reconcile_url(process.id), json=_body(1))
+
+    assert resp.status_code == 409
+    assert "infeasible" in resp.json()["detail"]
+    session.refresh(plan)
+    session.refresh(slot)
+    session.refresh(assignment)
+    assert plan.status == TeachingPlanStatus.STALE
+    assert slot.retired_generation is None
+    assert assignment.status == AssignmentStatus.ACTIVE
+
+
+def test_reconcile_rechecks_conflicts_after_feasibility_evaluation(
+    client: TestClient,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process, _plan, activity, slot, assignment = _stage_value_conflict(client, session)
+
+    def change_activity_during_evaluation(*_args, **_kwargs) -> None:
+        activity.teacher_weekly_hours_per_position = slot.required_teacher_hours
+        session.add(activity)
+        session.commit()
+
+    monkeypatch.setattr(
+        FeasibilityWitnessService,
+        "require_intended_feasible",
+        change_activity_during_evaluation,
+    )
+    resp = client.post(_reconcile_url(process.id), json=_body(1))
+
+    assert resp.status_code == 409
+    assert "changed during feasibility evaluation" in resp.json()["detail"]
+    session.refresh(slot)
+    session.refresh(assignment)
+    assert slot.retired_generation is None
+    assert assignment.status == AssignmentStatus.ACTIVE
+
+
 def test_reconcile_value_change_supersedes_and_releases(
     client: TestClient, session: Session
 ) -> None:
@@ -426,6 +500,14 @@ def test_reconcile_mixed_conflict_retire_and_create(
         teacher_weekly_hours_per_position=4.0,
         required_teacher_count=1,
     )
+    participants = session.exec(
+        select(ProcessTeacher).where(ProcessTeacher.assignment_process_id == process.id)
+    ).all()
+    for participant in participants:
+        participant.base_weekly_hours = 3.0
+        session.add(participant)
+    profile = factories.make_teacher_profile(session)
+    factories.make_process_teacher(session, process, profile, base_weekly_hours=4.0)
     session.commit()
     _set_plan_status(session, plan, TeachingPlanStatus.STALE)
 

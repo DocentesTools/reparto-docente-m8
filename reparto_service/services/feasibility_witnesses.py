@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -25,11 +26,19 @@ from reparto_service.db_models.feasibility_witnesses import (
     FeasibilityWitnessPublic,
 )
 from reparto_service.db_models.hour_requirements import HourRequirement
+from reparto_service.db_models.process_teachers import ProcessTeacher
+from reparto_service.db_models.teaching_activities import TeachingActivity
 from reparto_service.db_models.teaching_plans import TeachingPlan
-from reparto_service.enums import AssignmentStatus, FeasibilityStatus
+from reparto_service.enums import (
+    AssignmentStatus,
+    FeasibilityStatus,
+    ProcessTeacherStatus,
+)
 from reparto_service.services.feasibility import (
     SOLVER_VERSION,
+    FeasibilityParticipant,
     FeasibilityResult,
+    FeasibilitySlot,
     FeasibilityState,
     FeasibilityWitnessEntry,
     evaluate_assignment_feasibility,
@@ -37,7 +46,6 @@ from reparto_service.services.feasibility import (
 )
 from reparto_service.services.selection_guards import (
     WitnessRepairResult,
-    build_remaining_assignment_state,
     validate_feasibility_witness,
     validate_proposed_assignment_against_witness,
 )
@@ -57,7 +65,6 @@ def build_feasibility_snapshot(
 ) -> FeasibilitySnapshot:
     """Build the remaining state and hash every input that affects a solution."""
 
-    state = build_remaining_assignment_state(session, process_id)
     requirements = list(
         session.exec(
             select(HourRequirement)
@@ -78,12 +85,143 @@ def build_feasibility_snapshot(
             .order_by(col(Assignment.hour_requirement_id))
         ).all()
     )
-    fixed = tuple(
-        FeasibilityWitnessEntry(
-            str(item.hour_requirement_id), str(item.process_teacher_id)
+    slots = tuple(
+        FeasibilitySlot(
+            str(item.id),
+            str(item.teaching_activity_id),
+            item.position_index,
+            hours_to_units(str(item.required_teacher_hours)),
         )
-        for item in assignments
+        for item in requirements
     )
+    fixed = {
+        str(item.hour_requirement_id): str(item.process_teacher_id)
+        for item in assignments
+    }
+    return _snapshot_from_slots(session, process_id, slots, fixed)
+
+
+def build_intended_feasibility_snapshot(
+    session: Session, process_id: uuid.UUID
+) -> FeasibilitySnapshot:
+    """Build the exact post-generation/reconciliation solver state."""
+
+    plan = FeasibilityWitnessService._plan_or_404(session, process_id)
+    requirements = {
+        (item.teaching_activity_id, item.position_index): item
+        for item in session.exec(
+            select(HourRequirement)
+            .where(HourRequirement.assignment_process_id == process_id)
+            .where(col(HourRequirement.retired_generation).is_(None))
+        ).all()
+    }
+    assignments = {
+        item.hour_requirement_id: item
+        for item in session.exec(
+            select(Assignment)
+            .where(Assignment.assignment_process_id == process_id)
+            .where(Assignment.status == AssignmentStatus.ACTIVE)
+        ).all()
+    }
+    slots, fixed = _intended_slots(session, plan, requirements, assignments)
+    return _snapshot_from_slots(session, process_id, slots, fixed)
+
+
+def prospective_requirement_id(
+    plan_id: uuid.UUID,
+    generation: int,
+    activity_id: uuid.UUID,
+    position_index: int,
+) -> uuid.UUID:
+    """Return the stable row id used by preview, solver and generation apply."""
+
+    return uuid.uuid5(
+        plan_id,
+        f"requirement:{generation}:{activity_id}:{position_index}",
+    )
+
+
+def _intended_slots(
+    session: Session,
+    plan: TeachingPlan,
+    requirements: dict[tuple[uuid.UUID, int], HourRequirement],
+    assignments: dict[uuid.UUID, Assignment],
+) -> tuple[tuple[FeasibilitySlot, ...], dict[str, str]]:
+    slots: list[FeasibilitySlot] = []
+    fixed: dict[str, str] = {}
+    generation = plan.current_generation_number + 1
+    activities = session.exec(
+        select(TeachingActivity)
+        .where(TeachingActivity.teaching_plan_id == plan.id)
+        .where(col(TeachingActivity.retired_at).is_(None))
+        .order_by(col(TeachingActivity.id))
+    ).all()
+    for activity in activities:
+        units = hours_to_units(str(activity.teacher_weekly_hours_per_position))
+        for position in range(activity.required_teacher_count):
+            current = requirements.get((activity.id, position))
+            current_matches = (
+                current is not None
+                and hours_to_units(str(current.required_teacher_hours)) == units
+            )
+            if current_matches and current is not None:
+                slot_id = current.id
+            else:
+                slot_id = prospective_requirement_id(
+                    plan.id, generation, activity.id, position
+                )
+            slots.append(
+                FeasibilitySlot(str(slot_id), str(activity.id), position, units)
+            )
+            if current_matches and current is not None and current.id in assignments:
+                fixed[str(slot_id)] = str(assignments[current.id].process_teacher_id)
+    return tuple(slots), fixed
+
+
+def _snapshot_from_slots(
+    session: Session,
+    process_id: uuid.UUID,
+    slots: tuple[FeasibilitySlot, ...],
+    fixed_by_slot: dict[str, str],
+) -> FeasibilitySnapshot:
+    participants = list(
+        session.exec(
+            select(ProcessTeacher)
+            .where(ProcessTeacher.assignment_process_id == process_id)
+            .where(ProcessTeacher.status == ProcessTeacherStatus.ACTIVE)
+        ).all()
+    )
+    slot_by_id = {item.slot_id: item for item in slots}
+    assigned_units: dict[str, int] = defaultdict(int)
+    occupied: dict[str, set[str]] = defaultdict(set)
+    for slot_id, participant_id in fixed_by_slot.items():
+        slot = slot_by_id[slot_id]
+        assigned_units[participant_id] += slot.hours_units
+        occupied[participant_id].add(slot.activity_id)
+    state = FeasibilityState(
+        participants=tuple(
+            FeasibilityParticipant(
+                str(item.id),
+                hours_to_units(str(item.target_weekly_hours))
+                - assigned_units[str(item.id)],
+                frozenset(occupied[str(item.id)]),
+            )
+            for item in participants
+        ),
+        slots=tuple(item for item in slots if item.slot_id not in fixed_by_slot),
+    )
+    fixed = tuple(
+        FeasibilityWitnessEntry(slot_id, participant_id)
+        for slot_id, participant_id in sorted(fixed_by_slot.items())
+    )
+    return FeasibilitySnapshot(state, _fingerprint(state, slots, fixed), fixed)
+
+
+def _fingerprint(
+    state: FeasibilityState,
+    slots: tuple[FeasibilitySlot, ...],
+    fixed: tuple[FeasibilityWitnessEntry, ...],
+) -> str:
     payload = {
         "solver_version": SOLVER_VERSION,
         "participants": [
@@ -96,12 +234,12 @@ def build_feasibility_snapshot(
         ],
         "slots": [
             {
-                "id": str(item.id),
-                "activity_id": str(item.teaching_activity_id),
+                "id": item.slot_id,
+                "activity_id": item.activity_id,
                 "position_index": item.position_index,
-                "hours_units": hours_to_units(str(item.required_teacher_hours)),
+                "hours_units": item.hours_units,
             }
-            for item in requirements
+            for item in slots
         ],
         "assignments": [
             {
@@ -112,8 +250,7 @@ def build_feasibility_snapshot(
         ],
     }
     serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    fingerprint = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-    return FeasibilitySnapshot(state, fingerprint, fixed)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 class FeasibilityWitnessService:
@@ -127,13 +264,65 @@ class FeasibilityWitnessService:
 
         plan = FeasibilityWitnessService._plan_or_404(session, process_id)
         snapshot = build_feasibility_snapshot(session, process_id)
-        cached = FeasibilityWitnessService._cached_result(session, plan, snapshot)
+        return FeasibilityWitnessService._evaluate_snapshot(
+            session,
+            plan,
+            snapshot,
+            generation=plan.current_generation_number,
+        )
+
+    @staticmethod
+    def evaluate_intended(
+        session: Session, process_id: uuid.UUID
+    ) -> FeasibilityEvaluationPublic:
+        """Evaluate the exact state produced by the next generation/reconciliation."""
+
+        plan = FeasibilityWitnessService._plan_or_404(session, process_id)
+        snapshot = build_intended_feasibility_snapshot(session, process_id)
+        return FeasibilityWitnessService._evaluate_snapshot(
+            session,
+            plan,
+            snapshot,
+            generation=plan.current_generation_number + 1,
+        )
+
+    @staticmethod
+    def require_intended_feasible(
+        session: Session, process_id: uuid.UUID, *, operation: str
+    ) -> FeasibilityEvaluationPublic:
+        """Run/reuse the intended-state solve and fail closed unless FEASIBLE."""
+
+        evaluation = FeasibilityWitnessService.evaluate_intended(session, process_id)
+        if (
+            evaluation.status != FeasibilityStatus.FEASIBLE
+            or not evaluation.witness_available
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Cannot {operation}: assignment feasibility is "
+                    f"{evaluation.status.value}; a current FEASIBLE result is required."
+                ),
+            )
+        return evaluation
+
+    @staticmethod
+    def _evaluate_snapshot(
+        session: Session,
+        plan: TeachingPlan,
+        snapshot: FeasibilitySnapshot,
+        *,
+        generation: int,
+    ) -> FeasibilityEvaluationPublic:
+        cached = FeasibilityWitnessService._cached_result(
+            session, plan, snapshot, generation=generation
+        )
         if cached is not None:
             return cached
         result = evaluate_assignment_feasibility(snapshot.state)
         checked_at = datetime.now(tz=timezone.utc)
         FeasibilityWitnessService._persist_result(
-            session, plan, snapshot, result, checked_at
+            session, plan, snapshot, result, checked_at, generation=generation
         )
         session.commit()
         session.refresh(plan)
@@ -153,7 +342,11 @@ class FeasibilityWitnessService:
         plan = FeasibilityWitnessService._plan_or_404(session, process_id)
         snapshot = build_feasibility_snapshot(session, process_id)
         row = FeasibilityWitnessService._current_row(session, plan, snapshot)
-        if row is None or plan.feasibility_status != FeasibilityStatus.FEASIBLE:
+        if (
+            row is None
+            or plan.feasibility_status != FeasibilityStatus.FEASIBLE
+            or plan.feasibility_generation != plan.current_generation_number
+        ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
@@ -189,7 +382,11 @@ class FeasibilityWitnessService:
         plan = FeasibilityWitnessService._plan_or_404(session, process_id)
         snapshot = build_feasibility_snapshot(session, process_id)
         row = FeasibilityWitnessService._current_row(session, plan, snapshot)
-        if row is None:
+        if (
+            row is None
+            or plan.feasibility_status != FeasibilityStatus.FEASIBLE
+            or plan.feasibility_generation != plan.current_generation_number
+        ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
@@ -275,9 +472,12 @@ class FeasibilityWitnessService:
         session: Session,
         plan: TeachingPlan,
         snapshot: FeasibilitySnapshot,
+        *,
+        generation: int,
     ) -> FeasibilityEvaluationPublic | None:
         if (
             plan.feasibility_status == FeasibilityStatus.NOT_EVALUATED
+            or plan.feasibility_generation != generation
             or plan.feasibility_input_fingerprint != snapshot.fingerprint
             or plan.feasibility_solver_version != SOLVER_VERSION
             or plan.feasibility_checked_at is None
@@ -307,9 +507,11 @@ class FeasibilityWitnessService:
         snapshot: FeasibilitySnapshot,
         result: FeasibilityResult,
         checked_at: datetime,
+        *,
+        generation: int,
     ) -> None:
         plan.feasibility_status = result.status
-        plan.feasibility_generation = plan.current_generation_number
+        plan.feasibility_generation = generation
         plan.feasibility_checked_at = checked_at
         plan.feasibility_input_fingerprint = snapshot.fingerprint
         plan.feasibility_solver_version = result.solver_version
@@ -423,4 +625,6 @@ __all__ = [
     "FeasibilitySnapshot",
     "FeasibilityWitnessService",
     "build_feasibility_snapshot",
+    "build_intended_feasibility_snapshot",
+    "prospective_requirement_id",
 ]

@@ -18,9 +18,36 @@ from reparto_service.enums import (
     FeasibilityStatus,
     TeachingPlanStatus,
 )
+from reparto_service.services import feasibility_witnesses
+from reparto_service.services.feasibility import FeasibilityResult
 from tests import factories
 
 _BASE = "/reparto/assignment-processes"
+
+
+def _lockable_plan(
+    session: Session,
+    *,
+    participant_hours: float = 2.0,
+    slot_hours: float = 2.0,
+):
+    process = factories.make_assignment_process(session)
+    plan = factories.make_teaching_plan(
+        session, process, status=TeachingPlanStatus.BALANCED
+    )
+    subject = factories.make_subject(session, process)
+    factories.make_teaching_activity(
+        session,
+        plan,
+        subject,
+        required_teacher_count=1,
+        teacher_weekly_hours_per_position=slot_hours,
+    )
+    profile = factories.make_teacher_profile(session)
+    factories.make_process_teacher(
+        session, process, profile, base_weekly_hours=participant_hours
+    )
+    return process, plan
 
 
 # ── Create ────────────────────────────────────────────────────────────────────
@@ -91,6 +118,154 @@ def test_create_plan_forbidden_for_reader(
     process = factories.make_assignment_process(session)
     resp = reader_client.post(f"{_BASE}/{process.id}/teaching-plan")
     assert resp.status_code == 403
+
+
+# ── Feasibility-gated lock / unlock ──────────────────────────────────────────
+
+
+def test_lock_plan_runs_intended_solve_and_records_lifecycle(
+    client: TestClient, session: Session, current_user: UserModel
+) -> None:
+    process, plan = _lockable_plan(session)
+
+    response = client.post(f"{_BASE}/{process.id}/teaching-plan/lock")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == TeachingPlanStatus.LOCKED.value
+    assert body["feasibility_status"] == FeasibilityStatus.FEASIBLE.value
+    assert body["feasibility_generation"] == 1
+    assert body["locked_at"] is not None
+    assert body["locked_by_user_id"] == str(current_user.id)
+    session.refresh(plan)
+    events = session.exec(
+        select(AuditEvent).where(AuditEvent.event_type == "teaching_plan.locked")
+    ).all()
+    assert len(events) == 1
+
+
+def test_lock_plan_fails_closed_on_infeasible(
+    client: TestClient, session: Session
+) -> None:
+    process, plan = _lockable_plan(session, participant_hours=3.0, slot_hours=2.0)
+
+    response = client.post(f"{_BASE}/{process.id}/teaching-plan/lock")
+
+    assert response.status_code == 409
+    assert "infeasible" in response.json()["detail"]
+    session.refresh(plan)
+    assert plan.status == TeachingPlanStatus.BALANCED
+    assert plan.feasibility_status == FeasibilityStatus.INFEASIBLE
+
+
+def test_lock_plan_fails_closed_on_unknown(
+    client: TestClient,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process, plan = _lockable_plan(session)
+    monkeypatch.setattr(
+        feasibility_witnesses,
+        "evaluate_assignment_feasibility",
+        lambda _state: FeasibilityResult(
+            FeasibilityStatus.UNKNOWN,
+            None,
+            (),
+            states_explored=1,
+            memoization_hits=0,
+        ),
+    )
+
+    response = client.post(f"{_BASE}/{process.id}/teaching-plan/lock")
+
+    assert response.status_code == 409
+    assert "unknown" in response.json()["detail"]
+    session.refresh(plan)
+    assert plan.status == TeachingPlanStatus.BALANCED
+    assert plan.feasibility_status == FeasibilityStatus.UNKNOWN
+
+
+def test_lock_plan_rejects_missing_or_non_balanced_plan(
+    client: TestClient, session: Session
+) -> None:
+    missing = factories.make_assignment_process(session)
+    assert client.post(f"{_BASE}/{missing.id}/teaching-plan/lock").status_code == 404
+    process = factories.make_assignment_process(session)
+    factories.make_teaching_plan(session, process, status=TeachingPlanStatus.UNBALANCED)
+    response = client.post(f"{_BASE}/{process.id}/teaching-plan/lock")
+    assert response.status_code == 409
+    assert "unbalanced" in response.json()["detail"]
+
+
+def test_lock_plan_respects_mutability_and_writer_gate(
+    reader_client: TestClient,
+    session: Session,
+    current_user: UserModel,
+) -> None:
+    process, _plan = _lockable_plan(session)
+    assert (
+        reader_client.post(f"{_BASE}/{process.id}/teaching-plan/lock").status_code
+        == 403
+    )
+    process.status = AssignmentProcessStatus.FINAL
+    session.add(process)
+    session.commit()
+    with pytest.raises(HTTPException) as error:
+        TeachingPlanController.lock_plan(session, process.id, current_user)
+    assert error.value.status_code == 400
+
+
+def test_unlock_plan_clears_lock_metadata_and_audits(
+    client: TestClient, session: Session
+) -> None:
+    process, plan = _lockable_plan(session)
+    assert client.post(f"{_BASE}/{process.id}/teaching-plan/lock").status_code == 200
+
+    response = client.post(f"{_BASE}/{process.id}/teaching-plan/unlock")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == TeachingPlanStatus.BALANCED.value
+    assert response.json()["locked_at"] is None
+    assert response.json()["locked_by_user_id"] is None
+    session.refresh(plan)
+    events = session.exec(
+        select(AuditEvent).where(AuditEvent.event_type == "teaching_plan.unlocked")
+    ).all()
+    assert len(events) == 1
+
+
+def test_unlock_plan_rejects_invalid_targets_and_reader(
+    client: TestClient,
+    reader_client: TestClient,
+    session: Session,
+    current_user: UserModel,
+) -> None:
+    missing = factories.make_assignment_process(session)
+    with pytest.raises(HTTPException) as error:
+        TeachingPlanController.unlock_plan(session, missing.id, current_user)
+    assert error.value.status_code == 404
+    process, _plan = _lockable_plan(session)
+    with pytest.raises(HTTPException) as error:
+        TeachingPlanController.unlock_plan(session, process.id, current_user)
+    assert error.value.status_code == 409
+    assert (
+        reader_client.post(f"{_BASE}/{process.id}/teaching-plan/unlock").status_code
+        == 403
+    )
+
+
+def test_unlock_plan_respects_process_mutability(
+    session: Session, current_user: UserModel
+) -> None:
+    process, plan = _lockable_plan(session)
+    plan.status = TeachingPlanStatus.LOCKED
+    process.status = AssignmentProcessStatus.FINAL
+    session.add(plan)
+    session.add(process)
+    session.commit()
+    with pytest.raises(HTTPException) as error:
+        TeachingPlanController.unlock_plan(session, process.id, current_user)
+    assert error.value.status_code == 400
 
 
 # ── Get ───────────────────────────────────────────────────────────────────────

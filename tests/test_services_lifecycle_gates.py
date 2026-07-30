@@ -15,6 +15,7 @@ from fastapi import HTTPException
 from sqlmodel import Session
 
 from reparto_service.enums import TeachingPlanStatus
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 from reparto_service.services.lifecycle_gates import PlanReadinessGate
 from tests import factories
 
@@ -31,6 +32,7 @@ def test_ready_gate_passes_when_requirements_generated(session: Session) -> None
     plan = factories.make_teaching_plan(
         session, process, status=TeachingPlanStatus.REQUIREMENTS_GENERATED
     )
+    FeasibilityWitnessService.evaluate(session, process.id)
     returned = PlanReadinessGate.ensure_ready_for_assignment_stage(
         session, process.id, operation="open a meeting"
     )
@@ -46,6 +48,52 @@ def test_ready_gate_rejects_missing_plan(session: Session) -> None:
     assert exc.value.status_code == 409
     assert "no teaching plan" in exc.value.detail
     assert "open a meeting" in exc.value.detail
+
+
+def test_current_feasibility_gate_rejects_missing_plan(session: Session) -> None:
+    process = _process(session)
+    with pytest.raises(HTTPException) as exc:
+        PlanReadinessGate.ensure_current_feasible(
+            session, process.id, operation="close the process"
+        )
+    assert exc.value.status_code == 409
+    assert "no teaching plan" in exc.value.detail
+
+
+def test_current_feasibility_gate_rejects_missing_witness(
+    session: Session,
+) -> None:
+    process = _process(session)
+    factories.make_teaching_plan(
+        session, process, status=TeachingPlanStatus.REQUIREMENTS_GENERATED
+    )
+    with pytest.raises(HTTPException) as exc:
+        PlanReadinessGate.ensure_current_feasible(
+            session, process.id, operation="close the process"
+        )
+    assert exc.value.status_code == 409
+    assert "FEASIBLE" in exc.value.detail
+    assert "close the process" in exc.value.detail
+
+
+def test_current_feasibility_gate_preserves_non_conflict_errors(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    process = _process(session)
+    factories.make_teaching_plan(
+        session, process, status=TeachingPlanStatus.REQUIREMENTS_GENERATED
+    )
+
+    def reject(*_args, **_kwargs):
+        raise HTTPException(status_code=404, detail="unexpected lookup failure")
+
+    monkeypatch.setattr(FeasibilityWitnessService, "get_witness", reject)
+    with pytest.raises(HTTPException) as exc:
+        PlanReadinessGate.ensure_current_feasible(
+            session, process.id, operation="close the process"
+        )
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "unexpected lookup failure"
 
 
 @pytest.mark.parametrize(

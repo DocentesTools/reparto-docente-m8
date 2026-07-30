@@ -3,7 +3,7 @@
 This slice exposes the plan's ownership surface, the read-only planning
 ``summary`` and ``validations`` endpoints, the ``materialize-main`` action, and
 the administrator-only feasibility evaluation/witness operations (plan §7.3,
-§20.20). The ``lock``/``unlock`` endpoints remain in their later lifecycle task.
+§20.20), plus feasibility-gated lock/unlock lifecycle actions.
 """
 
 from __future__ import annotations
@@ -86,6 +86,26 @@ def create_teaching_plan(
 ) -> TeachingPlanPublic:
     TeachingPlanController.require_process_writer(session, current_user, process_id)
     return TeachingPlanController.create_plan(session, process_id, current_user)
+
+
+@router.post("/lock", response_model=TeachingPlanPublic)
+def lock_teaching_plan(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+) -> TeachingPlanPublic:
+    TeachingPlanController.require_process_writer(session, current_user, process_id)
+    return TeachingPlanController.lock_plan(session, process_id, current_user)
+
+
+@router.post("/unlock", response_model=TeachingPlanPublic)
+def unlock_teaching_plan(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+) -> TeachingPlanPublic:
+    TeachingPlanController.require_process_writer(session, current_user, process_id)
+    return TeachingPlanController.unlock_plan(session, process_id, current_user)
 
 
 @router.post("/materialize-main", response_model=MainMaterializationResult)

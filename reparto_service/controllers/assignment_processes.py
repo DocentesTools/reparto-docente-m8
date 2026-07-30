@@ -58,6 +58,7 @@ from reparto_service.enums import (
     TeachingActivitySource,
     TeachingPlanStatus,
 )
+from reparto_service.services.lifecycle_gates import PlanReadinessGate
 from reparto_service.services.process_lifecycle import (
     IllegalTransitionError,
     assert_allowed_transition,
@@ -194,6 +195,10 @@ class AssignmentProcessController(DomainController):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(exc),
             ) from exc
+        if is_closing_transition(current, target):
+            PlanReadinessGate.ensure_current_feasible(
+                session, process_id, operation="final close the assignment process"
+            )
         process.status = target
         if is_closing_transition(current, target):
             process.closed_at = datetime.now(tz=timezone.utc)

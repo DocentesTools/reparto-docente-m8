@@ -18,10 +18,12 @@ from sqlmodel import Session, col, select
 from reparto_service.db_models.assignments import Assignment
 from reparto_service.db_models.audit_events import AuditEvent
 from reparto_service.db_models.hour_requirements import HourRequirement
+from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
     AssignmentProcessStatus,
     HourRequirementStatus,
+    ProcessTeacherStatus,
     SubjectAllocationCategory,
     TeachingPlanStatus,
 )
@@ -60,6 +62,11 @@ def _setup(
         teacher_weekly_hours_per_position=teacher_hours,
         required_teacher_count=required_teacher_count,
     )
+    for _ in range(required_teacher_count):
+        profile = factories.make_teacher_profile(session)
+        factories.make_process_teacher(
+            session, process, profile, base_weekly_hours=teacher_hours
+        )
     return process, plan, subject, activity
 
 
@@ -156,6 +163,28 @@ def test_generate_one_slot_per_position(client: TestClient, session: Session) ->
     assert plan.requirements_generated_at is not None
 
 
+def test_generate_fails_closed_when_intended_state_is_infeasible(
+    client: TestClient, session: Session
+) -> None:
+    process, plan, _subject, _activity = _setup(
+        session, required_teacher_count=1, teacher_hours=2.0
+    )
+    participant = session.exec(
+        select(ProcessTeacher).where(ProcessTeacher.assignment_process_id == process.id)
+    ).one()
+    participant.base_weekly_hours = 3.0
+    session.add(participant)
+    session.commit()
+
+    resp = client.post(_generate_url(process.id))
+
+    assert resp.status_code == 409
+    assert "infeasible" in resp.json()["detail"]
+    session.refresh(plan)
+    assert plan.status == TeachingPlanStatus.LOCKED
+    assert _live_requirements(session, process) == []
+
+
 def test_generate_tutoring_slot_hours(client: TestClient, session: Session) -> None:
     # One tutoring position: 1 group hour, 2 teacher hours -> one 2.00h slot.
     process, _plan, _subject, _activity = _setup(
@@ -179,6 +208,9 @@ def test_generate_multiple_activities_deterministic(
         teacher_weekly_hours_per_position=4.0,
         required_teacher_count=2,
     )
+    for _ in range(2):
+        profile = factories.make_teacher_profile(session)
+        factories.make_process_teacher(session, process, profile, base_weekly_hours=4.0)
     body = client.post(_generate_url(process.id)).json()
     assert body["created_count"] == 3
     by_activity: dict[str, list[int]] = {}
@@ -238,8 +270,9 @@ def test_generate_preserves_unchanged_slot_and_assignment(
     slot = _live_requirements(session, process)[0]
     slot_id = slot.id
 
-    profile = factories.make_teacher_profile(session)
-    teacher = factories.make_process_teacher(session, process, profile)
+    teacher = session.exec(
+        select(ProcessTeacher).where(ProcessTeacher.assignment_process_id == process.id)
+    ).one()
     factories.make_assignment(session, process, slot, teacher)
 
     _mark_stale(session, plan)
@@ -288,6 +321,13 @@ def test_generate_retires_removed_unassigned_slot(
     client.post(_generate_url(process.id))
     # Reduce the activity to a single position.
     activity.required_teacher_count = 1
+    participants = session.exec(
+        select(ProcessTeacher)
+        .where(ProcessTeacher.assignment_process_id == process.id)
+        .order_by(col(ProcessTeacher.id))
+    ).all()
+    participants[-1].status = ProcessTeacherStatus.INACTIVE
+    session.add(participants[-1])
     session.add(activity)
     session.commit()
     _mark_stale(session, plan)
@@ -320,6 +360,11 @@ def test_generate_value_change_unassigned_retire_and_recreate(
     old_id = old.id
 
     activity.teacher_weekly_hours_per_position = 3.0
+    participant = session.exec(
+        select(ProcessTeacher).where(ProcessTeacher.assignment_process_id == process.id)
+    ).one()
+    participant.base_weekly_hours = 3.0
+    session.add(participant)
     session.add(activity)
     session.commit()
     _mark_stale(session, plan)
@@ -345,8 +390,13 @@ def _generate_and_assign(client: TestClient, session: Session, process, position
         .where(HourRequirement.position_index == position)
     ).first()
     assert slot is not None
-    profile = factories.make_teacher_profile(session)
-    teacher = factories.make_process_teacher(session, process, profile)
+    teacher = session.exec(
+        select(ProcessTeacher)
+        .where(ProcessTeacher.assignment_process_id == process.id)
+        .order_by(col(ProcessTeacher.id))
+        .offset(position)
+    ).first()
+    assert teacher is not None
     factories.make_assignment(session, process, slot, teacher)
     return slot
 
@@ -360,6 +410,11 @@ def test_generate_conflict_value_changed_assigned_409(
     slot = _generate_and_assign(client, session, process)
 
     activity.teacher_weekly_hours_per_position = 5.0
+    teacher = session.exec(
+        select(ProcessTeacher).where(ProcessTeacher.assignment_process_id == process.id)
+    ).one()
+    teacher.base_weekly_hours = 5.0
+    session.add(teacher)
     session.add(activity)
     session.commit()
     _mark_stale(session, plan)
@@ -389,6 +444,13 @@ def test_generate_conflict_removed_assigned_409(
     _generate_and_assign(client, session, process, position=1)
 
     activity.required_teacher_count = 1
+    participants = session.exec(
+        select(ProcessTeacher)
+        .where(ProcessTeacher.assignment_process_id == process.id)
+        .order_by(col(ProcessTeacher.id))
+    ).all()
+    participants[0].status = ProcessTeacherStatus.INACTIVE
+    session.add(participants[0])
     session.add(activity)
     session.commit()
     _mark_stale(session, plan)
@@ -403,6 +465,11 @@ def test_preview_reports_conflict(client: TestClient, session: Session) -> None:
     )
     slot = _generate_and_assign(client, session, process)
     activity.teacher_weekly_hours_per_position = 5.0
+    teacher = session.exec(
+        select(ProcessTeacher).where(ProcessTeacher.assignment_process_id == process.id)
+    ).one()
+    teacher.base_weekly_hours = 5.0
+    session.add(teacher)
     session.add(activity)
     session.commit()
     _mark_stale(session, plan)
@@ -422,6 +489,11 @@ def test_preview_reports_retire_and_create(
     client.post(_generate_url(process.id))
     old = _live_requirements(session, process)[0]
     activity.teacher_weekly_hours_per_position = 3.0
+    participant = session.exec(
+        select(ProcessTeacher).where(ProcessTeacher.assignment_process_id == process.id)
+    ).one()
+    participant.base_weekly_hours = 3.0
+    session.add(participant)
     session.add(activity)
     session.commit()
     _mark_stale(session, plan)

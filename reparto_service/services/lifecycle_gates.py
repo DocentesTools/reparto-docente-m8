@@ -24,10 +24,9 @@ Two complementary gates are exposed:
   guards the meeting-time hot path without re-imposing the full stage-entry
   contract that opening the meeting already enforced.
 
-Feasibility (the third invariant, plan §20.1) is intentionally *not* consulted
-here: wiring ``feasibility_status != FEASIBLE`` into these same gates is the
-separate plan §20.20 "Wire feasibility into lifecycle gates" task. This module
-gates on plan **status** only.
+Feasibility is the independent third invariant (plan §20.1). Stage entry and
+final operations verify a current persisted ``FEASIBLE`` result and matching
+witness here; they never run the full solver on an operational/LAN path.
 """
 
 from __future__ import annotations
@@ -39,6 +38,7 @@ from sqlmodel import Session, select
 
 from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import TeachingPlanStatus
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 
 # The only plan status in which generated indivisible slots exist and may be
 # assigned (plan §5.2, §5.9): a balanced, locked and generated plan.
@@ -79,6 +79,30 @@ class PlanReadinessGate:
             raise PlanReadinessGate._conflict(
                 operation, PlanReadinessGate._not_ready_reason(plan.status)
             )
+        PlanReadinessGate.ensure_current_feasible(
+            session, process_id, operation=operation
+        )
+        return plan
+
+    @staticmethod
+    def ensure_current_feasible(
+        session: Session, process_id: uuid.UUID, *, operation: str
+    ) -> TeachingPlan:
+        """Verify current FEASIBLE provenance and witness without running a solve."""
+
+        plan = PlanReadinessGate._plan_row(session, process_id)
+        if plan is None:
+            raise PlanReadinessGate._conflict(operation, "no teaching plan exists yet")
+        try:
+            FeasibilityWitnessService.get_witness(session, process_id)
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_409_CONFLICT:
+                raise
+            raise PlanReadinessGate._conflict(
+                operation,
+                "assignment feasibility is not currently confirmed as FEASIBLE "
+                "with a matching deterministic witness",
+            ) from exc
         return plan
 
     @staticmethod

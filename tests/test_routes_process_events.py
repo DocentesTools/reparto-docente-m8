@@ -268,7 +268,15 @@ def test_generating_requirements_publishes_the_generation_counts(
 ) -> None:
     process = make_assignment_process(session)
     plan = make_teaching_plan(session, process, status=TeachingPlanStatus.LOCKED)
-    _live_activity(session, process, plan, positions=2)
+    activity = _live_activity(session, process, plan, positions=2)
+    for _ in range(2):
+        profile = make_teacher_profile(session)
+        make_process_teacher(
+            session,
+            process,
+            profile,
+            base_weekly_hours=activity.teacher_weekly_hours_per_position,
+        )
     subscription = subscribe(process.id)
 
     resp = client.post(f"{PREFIX}/{process.id}/requirements/generate")
@@ -296,7 +304,7 @@ def test_a_conflicted_generation_publishes_nothing(
         current_generation_number=1,
     )
     profile = make_teacher_profile(session)
-    participant = make_process_teacher(session, process, profile)
+    participant = make_process_teacher(session, process, profile, base_weekly_hours=9.0)
     activity = _live_activity(session, process, plan)
     requirement = make_hour_requirement(
         session,
@@ -328,7 +336,7 @@ def test_reconciling_publishes_the_released_assignments(
         current_generation_number=1,
     )
     profile = make_teacher_profile(session)
-    participant = make_process_teacher(session, process, profile)
+    participant = make_process_teacher(session, process, profile, base_weekly_hours=9.0)
     activity = _live_activity(session, process, plan)
     requirement = make_hour_requirement(
         session,

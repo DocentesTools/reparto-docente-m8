@@ -13,10 +13,10 @@ guard for the intermediate teaching plan (plan §5.2, §9, §20.14):
 
 ``get_summary`` and ``get_validations`` are the plan's read surface (plan §7.3):
 both delegate to the services that own the numbers and the findings, and both
-are solver-free. The remaining lock/lifecycle behaviour lives in its dedicated
-later task (plan §13.1 "Build plan lock…"). This controller also exposes the
-administrator-only feasibility evaluation and witness retrieval operations from
-§20.20.
+are solver-free. Locking evaluates the exact intended requirement generation,
+fails closed unless it is feasible, and persists the witness that generation
+must match. This controller also exposes the administrator-only feasibility
+evaluation and witness retrieval operations from §20.20.
 ``mark_stale`` is the concrete allocation-change side effect (plan §3.11, §9)
 exposed for that wiring.
 """
@@ -24,6 +24,7 @@ exposed for that wiring.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
@@ -159,6 +160,105 @@ class TeachingPlanController(DomainController):
             entity_type="teaching_plan",
             entity_id=plan.id,
             before=None,
+            after=plan,
+        )
+        session.commit()
+        session.refresh(plan)
+        TeachingPlanController._publish_plan_event(
+            session, plan, SseEventType.TEACHING_PLAN_UPDATED
+        )
+        return TeachingPlanPublic.model_validate(plan)
+
+    @staticmethod
+    def lock_plan(
+        session: Session,
+        process_id: uuid.UUID,
+        current_user: UserModel,
+    ) -> TeachingPlanPublic:
+        """Lock an exact plan only after its intended reparto is FEASIBLE."""
+
+        DomainController.ensure_process_mutable(
+            DomainController.get_process_or_404(session, process_id)
+        )
+        plan = TeachingPlanController._plan_row(session, process_id)
+        if plan is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No teaching plan for process {process_id}.",
+            )
+        if plan.status != TeachingPlanStatus.BALANCED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Cannot lock the teaching plan while it is {plan.status.value}; "
+                    "both planning balances must be exact first."
+                ),
+            )
+        FeasibilityWitnessService.require_intended_feasible(
+            session, process_id, operation="lock the teaching plan"
+        )
+        before = TeachingPlan.model_validate(plan.model_dump())
+        TeachingPlanController.apply_status_transition(plan, TeachingPlanStatus.LOCKED)
+        plan.locked_at = datetime.now(tz=timezone.utc)
+        plan.locked_by_user_id = uuid.UUID(str(current_user.id))
+        session.add(plan)
+        TeachingPlanController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type=AuditEventType.TEACHING_PLAN_LOCKED,
+            entity_type="teaching_plan",
+            entity_id=plan.id,
+            before=before,
+            after=plan,
+        )
+        session.commit()
+        session.refresh(plan)
+        TeachingPlanController._publish_plan_event(
+            session, plan, SseEventType.TEACHING_PLAN_LOCKED
+        )
+        return TeachingPlanPublic.model_validate(plan)
+
+    @staticmethod
+    def unlock_plan(
+        session: Session,
+        process_id: uuid.UUID,
+        current_user: UserModel,
+    ) -> TeachingPlanPublic:
+        """Return a locked pre-generation plan to balanced editing."""
+
+        DomainController.ensure_process_mutable(
+            DomainController.get_process_or_404(session, process_id)
+        )
+        plan = TeachingPlanController._plan_row(session, process_id)
+        if plan is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No teaching plan for process {process_id}.",
+            )
+        if plan.status != TeachingPlanStatus.LOCKED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Cannot unlock the teaching plan while it is {plan.status.value}; "
+                    "only a locked pre-generation plan can be unlocked."
+                ),
+            )
+        before = TeachingPlan.model_validate(plan.model_dump())
+        TeachingPlanController.apply_status_transition(
+            plan, TeachingPlanStatus.BALANCED
+        )
+        plan.locked_at = None
+        plan.locked_by_user_id = None
+        session.add(plan)
+        TeachingPlanController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type=AuditEventType.TEACHING_PLAN_UNLOCKED,
+            entity_type="teaching_plan",
+            entity_id=plan.id,
+            before=before,
             after=plan,
         )
         session.commit()

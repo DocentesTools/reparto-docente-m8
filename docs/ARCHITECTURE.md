@@ -417,6 +417,10 @@ strictly bounded, balance-improving local repair; it never calls the full solver
 `services/feasibility_witnesses.py` owns persistence and orchestration. It hashes
 the solver version plus every active participant target, live slot identity/hour
 and active slot-to-participant assignment with stable JSON ordering and SHA-256.
+Lock, generation and reconciliation evaluate the exact intended next generation;
+new slot ids are derived deterministically so the persisted witness is the same
+witness the applied generation exposes. Meeting open, final export and final
+process close only verify a current matching witness and never invoke the solver.
 `POST /assignment-processes/{process_id}/teaching-plan/feasibility/evaluate`
 runs or reuses the bounded evaluation for that exact fingerprint; the full
 witness is available only through the administrator-gated
@@ -447,7 +451,7 @@ Endpoint groups, by stage:
 | Reference data | `/academic-years`, `/schools`, `/classroom-stages`, `/departments`, `/teacher-profiles` |
 | Process | `/assignment-processes` + `/transition`, `/reopen`, `/copy-from/{source_id}` |
 | Configuration | `…/teachers` (+ `/extra-hours`), `/subjects`, `/groups`, `/group-subjects` (+ `/bulk-preview`, `/bulk-apply`) |
-| Planning | `…/allocation-revisions` (+ `/current`), `/teaching-plan` (+ `/summary`, `/validations`, `/materialize-main`), `/teaching-activities` |
+| Planning | `…/allocation-revisions` (+ `/current`), `/teaching-plan` (+ `/lock`, `/unlock`, `/summary`, `/validations`, `/materialize-main`), `/teaching-activities` |
 | Requirements | `…/requirements` (read) + `/generation-preview`, `/generate`, `/reconciliation-preview`, `/reconcile` |
 | Assignment | `…/assignments` (+ `/direct-choice`, `/validations`), `/meeting-sessions` (+ `/close`), `…/turns` (+ `/initialize`, `/start`, `/complete`, `/skip`, `/override`) |
 | Read models | `…/summary`, `/dashboard`, `/lan/me`, `/events` |
@@ -460,9 +464,15 @@ Two guards, both derived from the same status sets the read models report, so a
 viewer can never be shown a readiness that disagrees with what the write path
 allows:
 
+* **Plan lock, requirement generation and reconciliation** run or reuse the
+  bounded solve for the exact intended generation and fail closed on
+  `INFEASIBLE` or `UNKNOWN`.
 * **Stage entry** (opening a meeting) requires a balanced, locked and generated
-  plan (`REQUIREMENTS_GENERATED`); an inexact, unlocked, un-generated or missing
-  plan is refused with `409`.
+  plan (`REQUIREMENTS_GENERATED`) plus a current `FEASIBLE` result and matching
+  deterministic witness; an inexact, unlocked, un-generated, infeasible,
+  unknown or missing plan is refused with `409`.
+* **Final export and final process close** verify that same current feasibility
+  provenance without running a solve.
 * **New assignment operations** (manual, direct selection, meeting-turn choices)
   are refused while an allocation change leaves the plan `STALE` or
   `RECONCILIATION_REQUIRED`, so no assignment is taken against a plan pending
@@ -584,13 +594,10 @@ silently missing a change.
 These are tracked adaptation tasks, not oversights. Each has its schema or
 extension point already in place.
 
-* **Feasibility lifecycle gates and solve serialization** — the persisted
-  witness and explicit administrator evaluation route are implemented.
-  Per-process in-flight solve serialization and mandatory lock/generation/
-  meeting-open/final-close gates remain the separate lifecycle bullet.
-* **Plan lock/unlock endpoints** — `BALANCED → LOCKED` is a legal edge in the
-  lifecycle table but no route drives it, so `LOCKED` is currently reached only
-  via restore. Locking is the operation that will require all three invariants.
+* **Feasibility solve serialization and DoS controls** — the persisted witness,
+  explicit administrator evaluation route and mandatory lifecycle gates are
+  implemented. Per-process in-flight solve serialization, operational budgets
+  and feasibility telemetry remain in the guarded-retirement/DoS task.
 * **Decimal hour columns** — `HoursNumeric` exists but no model uses it yet; hour
   columns remain `float` and are lifted to `Decimal` in the services (§8.2).
 * **Undo and reassignment** — head/admin-only undo with reason, audit and

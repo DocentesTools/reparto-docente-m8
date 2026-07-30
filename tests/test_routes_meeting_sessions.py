@@ -14,6 +14,7 @@ from reparto_service.enums import (
     SelectionOrderMode,
     TeachingPlanStatus,
 )
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 from tests import factories
 
 
@@ -26,6 +27,7 @@ def _ready_plan(session: Session, process: AssignmentProcess) -> None:
     factories.make_teaching_plan(
         session, process, status=TeachingPlanStatus.REQUIREMENTS_GENERATED
     )
+    FeasibilityWitnessService.evaluate(session, process.id)
 
 
 def _session_payload(
@@ -76,6 +78,23 @@ def test_create_open_session_sets_start_metadata_and_process_flags(
     assert process.status == AssignmentProcessStatus.MEETING_OPEN
     assert process.lan_access_enabled is True
     assert process.selection_order_mode == SelectionOrderMode.INFORMATIVE
+
+
+def test_create_open_session_fails_closed_without_current_feasibility(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    factories.make_teaching_plan(
+        session, process, status=TeachingPlanStatus.REQUIREMENTS_GENERATED
+    )
+
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/meeting-sessions/",
+        json=_session_payload(process, status="open"),
+    )
+
+    assert resp.status_code == 409
+    assert "feasibility" in resp.json()["detail"]
 
 
 def test_create_session_rejects_payload_process_mismatch(

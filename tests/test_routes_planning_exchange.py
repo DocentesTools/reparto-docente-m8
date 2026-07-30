@@ -25,10 +25,12 @@ from reparto_service.db_models.teaching_activities import (
 )
 from reparto_service.enums import (
     AssignmentProcessStatus,
+    FeasibilityStatus,
     SubjectAllocationCategory,
     TeachingActivitySource,
     TeachingPlanStatus,
 )
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 from tests import factories
 
 _DRAFT = "/reparto/assignment-processes/{}/exports/planning-draft"
@@ -94,6 +96,7 @@ def _balanced_plan(session: Session):
         status=HourRequirementStatus.ASSIGNED,
     )
     factories.make_assignment(session, process, requirement, teacher)
+    FeasibilityWitnessService.evaluate(session, process.id)
     return process, plan
 
 
@@ -223,6 +226,35 @@ def test_export_final_allowed_when_ready(client: TestClient, session: Session) -
     assert body["is_final_exportable"] is True
     assert body["is_exact"] is True
     assert body["validations"]["blocking_count"] == 0
+
+
+def test_export_final_fails_closed_without_current_feasibility(
+    client: TestClient, session: Session
+) -> None:
+    process, plan = _balanced_plan(session)
+    plan.feasibility_input_fingerprint = "stale-provenance"
+    session.add(plan)
+    session.commit()
+
+    resp = client.post(_FINAL.format(process.id))
+
+    assert resp.status_code == 409
+    assert "feasibility" in resp.json()["detail"]
+
+
+def test_draft_and_provisional_exports_ignore_unknown_feasibility(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    factories.make_teaching_plan(
+        session,
+        process,
+        status=TeachingPlanStatus.STALE,
+        feasibility_status=FeasibilityStatus.UNKNOWN,
+    )
+
+    assert client.post(_DRAFT.format(process.id)).status_code == 200
+    assert client.post(_PROVISIONAL.format(process.id)).status_code == 200
 
 
 def test_export_draft_served_even_when_final_would_block(

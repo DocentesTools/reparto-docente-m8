@@ -31,7 +31,9 @@ from reparto_service.enums import (
     AssignmentProcessStatus,
     SubjectAllocationCategory,
     TeachingActivitySource,
+    TeachingPlanStatus,
 )
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 from tests import factories
 
 
@@ -59,6 +61,10 @@ def test_transition_to_final_records_close_metadata(
     process = factories.make_assignment_process(
         session, status=AssignmentProcessStatus.INTERNAL_REVISION
     )
+    factories.make_teaching_plan(
+        session, process, status=TeachingPlanStatus.REQUIREMENTS_GENERATED
+    )
+    FeasibilityWitnessService.evaluate(session, process.id)
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/transition",
         json={"target_status": "final", "reason": "approved by leadership"},
@@ -68,6 +74,28 @@ def test_transition_to_final_records_close_metadata(
     assert body["status"] == "final"
     assert body["closed_at"] is not None
     assert body["closed_by_user_id"] == str(current_user.id)
+
+
+def test_transition_to_final_fails_closed_without_current_feasibility(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(
+        session, status=AssignmentProcessStatus.INTERNAL_REVISION
+    )
+    factories.make_teaching_plan(
+        session, process, status=TeachingPlanStatus.REQUIREMENTS_GENERATED
+    )
+
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/transition",
+        json={"target_status": "final"},
+    )
+
+    assert resp.status_code == 409
+    assert "feasibility" in resp.json()["detail"]
+    session.refresh(process)
+    assert process.status == AssignmentProcessStatus.INTERNAL_REVISION
+    assert process.closed_at is None
 
 
 def test_transition_draft_to_final_is_rejected(
