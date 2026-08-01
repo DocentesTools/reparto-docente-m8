@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from reparto_service.db_models.audit_events import AuditEvent
@@ -246,6 +248,37 @@ def test_materialize_regenerates_after_retirement(
     assert body["created_count"] == 1
     (activity,) = body["created"]
     assert activity["source_group_subject_id"] == str(cell.id)
+
+
+def test_db_blocks_duplicate_live_main_activity_per_source(session: Session) -> None:
+    """The partial unique is the final barrier for concurrent materializers."""
+
+    process = factories.make_assignment_process(session)
+    plan = factories.make_teaching_plan(session, process)
+    subject = factories.make_subject(
+        session, process, allocation_category=SubjectAllocationCategory.MAIN
+    )
+    group = factories.make_teaching_group(session, process)
+    cell = factories.make_group_subject(session, process, group, subject)
+    factories.make_teaching_activity(
+        session,
+        plan,
+        subject,
+        allocation_category=SubjectAllocationCategory.MAIN,
+        source=TeachingActivitySource.MAIN_GENERATED,
+        source_group_subject_id=cell.id,
+    )
+
+    with pytest.raises(IntegrityError):
+        factories.make_teaching_activity(
+            session,
+            plan,
+            subject,
+            allocation_category=SubjectAllocationCategory.MAIN,
+            source=TeachingActivitySource.MAIN_GENERATED,
+            source_group_subject_id=cell.id,
+        )
+    session.rollback()
 
 
 def test_materialize_no_main_cells(client: TestClient, session: Session) -> None:

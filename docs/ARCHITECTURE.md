@@ -453,7 +453,7 @@ Endpoint groups, by stage:
 | --- | --- |
 | Reference data | `/academic-years`, `/schools`, `/classroom-stages`, `/departments`, `/teacher-profiles` |
 | Process | `/assignment-processes` + `/transition`, `/reopen`, `/copy-from/{source_id}` |
-| Configuration | `…/teachers` (+ `/extra-hours`), `/subjects`, `/groups`, `/group-subjects` (+ `/bulk-preview`, `/bulk-apply`) |
+| Configuration | `…/teachers` (+ `/extra-hours`), `/subjects`, `/groups`, `/group-subjects` (+ `/bulk-preview`, `/bulk-apply`, `/{id}/sync-preview`, `/{id}/sync-apply`) |
 | Planning | `…/allocation-revisions` (+ `/current`), `/teaching-plan` (+ `/lock`, `/unlock`, `/summary`, `/validations`, `/materialize-main`), `/teaching-activities` |
 | Requirements | `…/requirements` (read) + `/generation-preview`, `/generate`, `/reconciliation-preview`, `/reconcile` |
 | Assignment | `…/assignments` (+ `/{id}/undo`, `/{id}/reassign`, `/direct-choice`, `/validations`), `/meeting-sessions` (+ `/close`), `…/turns` (+ `/initialize`, `/start`, `/complete`, `/skip`, `/override`) |
@@ -493,8 +493,21 @@ Matrix-scale edits follow one pattern: a pure planner function is dry-run by a
 the two can never diverge. The apply call carries the count the operator
 confirmed and returns `409` when the recomputed count no longer matches
 (staleness guard), executes in one transaction, and records one audit event with
-row-level detail. This covers group-subject bulk create/update/upsert, requirement
-generation and reconciliation.
+row-level detail. This covers group-subject bulk create/update/upsert, explicit
+main-activity source sync, requirement generation and reconciliation. A source
+sync echoes a SHA-256 preview fingerprint because source values, activity values,
+plan generation and assigned-slot impact must all stay unchanged.
+
+Editing a materialized main `GroupSubject` never overwrites its activity. The
+activity becomes `OUT_OF_SYNC`, plan feasibility is invalidated, and assignment
+readiness is blocked. `sync-preview` returns resolved source values, current
+activity values, their deterministic diff, and affected assigned requirement
+IDs. `sync-apply` updates only after the fingerprint is confirmed; affected
+assigned slots become `RECONCILIATION_REQUIRED`, while an inactive source is
+sent to the separate guarded-retirement action. Main materialization locks its
+source rows before checking existing activities on PostgreSQL, and the partial
+unique `(teaching_plan_id, source_group_subject_id)` index remains the final
+concurrency barrier.
 
 ### 9.4 Error model
 
@@ -603,9 +616,6 @@ extension point already in place.
   and feasibility telemetry remain in the guarded-retirement/DoS task.
 * **Decimal hour columns** — `HoursNumeric` exists but no model uses it yet; hour
   columns remain `float` and are lifted to `Decimal` in the services (§8.2).
-* **`GroupSubject → activity` sync flow** — editing a materialized source cell
-  should mark the generated activity `OUT_OF_SYNC` and route through an explicit
-  sync preview/apply.
 * **Authorization hardening** — a minimum-role (`>= READER`) floor on every
   read/list/export route, `WRITER` restricted to its own records,
   department-head authorization narrowed to `ADMIN`/`SUPERADMIN` with

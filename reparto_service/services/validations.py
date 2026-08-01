@@ -43,6 +43,7 @@ from reparto_service.enums import (
     ProcessTeacherStatus,
     SubjectAllocationCategory,
     TeachingActivitySource,
+    TeachingActivitySyncState,
     TeachingPlanStatus,
     ValidationSeverity,
 )
@@ -72,6 +73,8 @@ CODE_ACTIVITY_MISSING_GROUPS = "activity.missing_groups"
 CODE_ACTIVITY_MULTIPLE_GROUPS_NOT_ALLOWED = "activity.multiple_groups_not_allowed"
 #: A live activity links a cell of a different subject (plan §5.7, §6.3).
 CODE_ACTIVITY_LINKED_SUBJECT_MISMATCH = "activity.linked_subject_mismatch"
+#: A main activity differs from its source cell and needs explicit sync (plan §20.10).
+CODE_ACTIVITY_OUT_OF_SYNC = "activity.out_of_sync"
 #: The plan has no live requirement slots yet (plan §6.3).
 CODE_REQUIREMENTS_NOT_GENERATED = "plan.requirements_not_generated"
 #: A live requirement slot is STALE / RECONCILIATION_REQUIRED (plan §6.3).
@@ -239,6 +242,18 @@ class PlanValidationService:
             subject = session.get(Subject, activity.subject_id)
             allows_zero = subject is not None and subject.allows_zero_groups
             allows_multiple = subject is not None and subject.allows_multiple_groups
+
+            if activity.sync_state == TeachingActivitySyncState.OUT_OF_SYNC:
+                out.append(
+                    _activity_msg(
+                        activity,
+                        CODE_ACTIVITY_OUT_OF_SYNC,
+                        (
+                            "Main activity differs from its source GroupSubject; "
+                            "run sync-preview and explicitly apply the change."
+                        ),
+                    )
+                )
 
             if not cells and not allows_zero:
                 out.append(
@@ -636,6 +651,7 @@ __all__ = [
     "CODE_ACTIVITY_LINKED_SUBJECT_MISMATCH",
     "CODE_ACTIVITY_MISSING_GROUPS",
     "CODE_ACTIVITY_MULTIPLE_GROUPS_NOT_ALLOWED",
+    "CODE_ACTIVITY_OUT_OF_SYNC",
     "CODE_FEASIBILITY_NOT_CONFIRMED",
     "CODE_GROUP_HOURS_IMBALANCED",
     "CODE_MAIN_SUBJECT_NOT_MATERIALIZED",

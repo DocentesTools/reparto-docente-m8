@@ -25,6 +25,7 @@ from alembic.migration import MigrationContext
 from sqlalchemy.schema import CreateTable
 from sqlmodel import Session, SQLModel
 
+from reparto_service.core.db_models import prefixed_tables
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.enums import ProcessTeacherStatus
 from tests.factories import (
@@ -173,3 +174,31 @@ def test_partial_unique_indexes_declare_both_dialect_predicates() -> None:
         "uq_reparto_hour_requirement_active_slot",
         "uq_reparto_teaching_activity_main_source",
     ]
+
+
+def test_assignment_activity_denormalization_has_its_composite_fk_target() -> None:
+    """Plan §20.9 is a DB guarantee, not a controller-only convention."""
+
+    assignment = METADATA.tables[prefixed_tables("assignment")]
+    requirement = METADATA.tables[prefixed_tables("hour_requirement")]
+    foreign_key = next(
+        constraint
+        for constraint in assignment.constraints
+        if isinstance(constraint, sa.ForeignKeyConstraint)
+        and constraint.name == "fk_reparto_assignment_requirement_activity"
+    )
+    assert [element.parent.name for element in foreign_key.elements] == [
+        "hour_requirement_id",
+        "teaching_activity_id",
+    ]
+    assert [element.column.name for element in foreign_key.elements] == [
+        "id",
+        "teaching_activity_id",
+    ]
+    assert any(
+        isinstance(constraint, sa.UniqueConstraint)
+        and constraint.name == "uq_reparto_hour_requirement_id_activity"
+        and [column.name for column in constraint.columns]
+        == ["id", "teaching_activity_id"]
+        for constraint in requirement.constraints
+    )

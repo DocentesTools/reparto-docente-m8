@@ -30,10 +30,9 @@ from __future__ import annotations
 
 import uuid
 
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi import HTTPException, status
 from sqlmodel import Session, col, select
-
-from auth_sdk_m8.schemas.user import UserModel
 
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.group_subjects import GroupSubject
@@ -288,15 +287,17 @@ class TeachingActivityController(DomainController):
             DomainController.get_process_or_404(session, process_id)
         )
         plan = TeachingActivityController._require_mutable_plan(session, process_id)
+        # Lock the deterministic source rows before checking existing activities.
+        # Concurrent materializers therefore serialize on PostgreSQL, while the
+        # partial unique index remains the final DB barrier (plan §20.10).
+        main_cells = TeachingActivityController._active_main_cells(session, process_id)
         already = TeachingActivityController._materialized_main_source_ids(
             session, plan
         )
 
         created: list[TeachingActivityPublic] = []
         skipped: list[uuid.UUID] = []
-        for cell, subject in TeachingActivityController._active_main_cells(
-            session, process_id
-        ):
+        for cell, subject in main_cells:
             if cell.id in already:
                 skipped.append(cell.id)
                 continue
@@ -414,16 +415,15 @@ class TeachingActivityController(DomainController):
         ``allocation_category`` is ``MAIN`` (plan §5.5); the ``id`` ordering makes
         materialisation deterministic (plan §19).
         """
-        return list(
-            session.exec(
-                select(GroupSubject, Subject)
-                .where(GroupSubject.assignment_process_id == process_id)
-                .where(col(GroupSubject.active).is_(True))
-                .where(GroupSubject.subject_id == Subject.id)
-                .where(Subject.allocation_category == SubjectAllocationCategory.MAIN)
-                .order_by(col(GroupSubject.id))
-            ).all()
+        statement = (
+            select(GroupSubject, Subject)
+            .where(GroupSubject.assignment_process_id == process_id)
+            .where(col(GroupSubject.active).is_(True))
+            .where(GroupSubject.subject_id == Subject.id)
+            .where(Subject.allocation_category == SubjectAllocationCategory.MAIN)
+            .order_by(col(GroupSubject.id))
         )
+        return list(session.exec(statement.with_for_update()).all())
 
     @staticmethod
     def _get_subject_or_404(

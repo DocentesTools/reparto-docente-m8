@@ -6,21 +6,23 @@ the URL process, enforces the per-process
 ``(assignment_process_id, teaching_group_id, subject_id)`` uniqueness and honours
 the final/archived-process immutability guard (plan §8.4).
 
-Guarded retirement against downstream materialised activities (plan §20.12) is a
-no-op today because ``TeachingActivity`` does not exist yet; it is wired in when
-that model lands. Bulk preview/apply (plan §7.2) is its own dedicated later task.
+Editing a materialized source cell never overwrites its ``MAIN_GENERATED``
+activity.  It marks the activity ``OUT_OF_SYNC`` and invalidates the plan until
+the explicit sync-preview/apply flow is confirmed (plan §20.10). Guarded
+retirement remains the separate plan §20.12 task.
 """
 
 from __future__ import annotations
 
 import uuid
 
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi import HTTPException, status
 from sqlmodel import Session, SQLModel, col, select
 
-from auth_sdk_m8.schemas.user import UserModel
-
 from reparto_service.controllers.base import DomainController
+from reparto_service.controllers.teaching_activities import TeachingActivityController
+from reparto_service.controllers.teaching_plans import TeachingPlanController
 from reparto_service.db_models.classroom_stages import ClassroomStage
 from reparto_service.db_models.group_subjects import (
     GroupSubject,
@@ -36,9 +38,24 @@ from reparto_service.db_models.group_subjects import (
     GroupSubjectUpdate,
 )
 from reparto_service.db_models.subjects import Subject
+from reparto_service.db_models.teaching_activities import (
+    MainActivityAssignmentImpact,
+    MainActivitySyncApplyRequest,
+    MainActivitySyncPreview,
+    MainActivitySyncResult,
+    TeachingActivity,
+)
 from reparto_service.db_models.teaching_groups import TeachingGroup
-from reparto_service.enums import AuditEventType, GroupSubjectBulkMode
+from reparto_service.db_models.teaching_plans import TeachingPlan
+from reparto_service.enums import (
+    AuditEventType,
+    GroupSubjectBulkMode,
+    TeachingActivitySyncState,
+    TeachingPlanStatus,
+)
+from reparto_service.services.calculations import PlanningCalculationService
 from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
+from reparto_service.services.group_subject_sync import GroupSubjectSyncService
 
 # Planning-value fields a bulk operation may set on a cell.
 _BULK_VALUE_FIELDS = (
@@ -153,6 +170,15 @@ class GroupSubjectController(DomainController):
         before = GroupSubject.model_validate(group_subject.model_dump())
         group_subject.sqlmodel_update(group_subject_in.model_dump(exclude_unset=True))
         session.add(group_subject)
+        impact = GroupSubjectController._mark_source_activity_out_of_sync(
+            session, process_id, group_subject, current_user
+        )
+        if impact is not None:
+            GroupSubjectController._invalidate_plan_for_out_of_sync(
+                session,
+                process_id,
+                requires_reconciliation=impact.requires_reconciliation,
+            )
         GroupSubjectController.record_audit_event(
             session,
             process_id=process_id,
@@ -270,6 +296,15 @@ class GroupSubjectController(DomainController):
             before = {field: getattr(row, field) for field in _BULK_VALUE_FIELDS}
             row.sqlmodel_update(patch)
             session.add(row)
+            impact = GroupSubjectController._mark_source_activity_out_of_sync(
+                session, process_id, row, current_user
+            )
+            if impact is not None:
+                GroupSubjectController._invalidate_plan_for_out_of_sync(
+                    session,
+                    process_id,
+                    requires_reconciliation=impact.requires_reconciliation,
+                )
             affected.append(row)
             rows_detail.append(
                 {
@@ -307,14 +342,140 @@ class GroupSubjectController(DomainController):
             count=len(affected),
         )
 
+    # ── MAIN_GENERATED source sync (plan §20.10) ───────────────────────────
+
+    @staticmethod
+    def sync_preview(
+        session: Session,
+        process_id: uuid.UUID,
+        group_subject_id: uuid.UUID,
+    ) -> MainActivitySyncPreview:
+        """Preview source/current differences and assigned-slot impact."""
+
+        cell = GroupSubjectController._get_or_404(session, process_id, group_subject_id)
+        subject = GroupSubjectController._get_subject_or_404(
+            session, process_id, cell.subject_id
+        )
+        activity = GroupSubjectSyncService.live_main_activity(session, cell.id)
+        if activity is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "This GroupSubject has no live MAIN_GENERATED activity to sync."
+                ),
+            )
+        plan = GroupSubjectController._plan_for_activity(session, process_id, activity)
+        return GroupSubjectSyncService.preview(session, plan, cell, subject, activity)
+
+    @staticmethod
+    def sync_apply(
+        session: Session,
+        process_id: uuid.UUID,
+        group_subject_id: uuid.UUID,
+        request: MainActivitySyncApplyRequest,
+        current_user: UserModel,
+    ) -> MainActivitySyncResult:
+        """Explicitly apply a fresh source preview to its main activity."""
+
+        DomainController.ensure_process_mutable(
+            DomainController.get_process_or_404(session, process_id)
+        )
+        cell = GroupSubjectController._get_or_404(
+            session, process_id, group_subject_id, lock=True
+        )
+        subject = GroupSubjectController._get_subject_or_404(
+            session, process_id, cell.subject_id
+        )
+        activity = GroupSubjectSyncService.live_main_activity(
+            session, cell.id, lock=True
+        )
+        if activity is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "This GroupSubject has no live MAIN_GENERATED activity to sync."
+                ),
+            )
+        plan = GroupSubjectController._plan_for_activity(
+            session, process_id, activity, lock=True
+        )
+        preview = GroupSubjectSyncService.preview(
+            session, plan, cell, subject, activity
+        )
+        if preview.preview_fingerprint != request.expected_preview_fingerprint:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The sync inputs changed since preview; re-run sync-preview.",
+            )
+        if preview.retirement_required:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "The source GroupSubject is inactive; use the explicit guarded "
+                    "activity-retirement flow instead of sync-apply."
+                ),
+            )
+
+        before = TeachingActivity.model_validate(activity.model_dump())
+        was_noop = (
+            preview.is_noop and activity.sync_state == TeachingActivitySyncState.IN_SYNC
+        )
+        activity.group_weekly_hours_per_group = (
+            preview.source_values.group_weekly_hours_per_group
+        )
+        activity.teacher_weekly_hours_per_position = (
+            preview.source_values.teacher_weekly_hours_per_position
+        )
+        activity.required_teacher_count = preview.source_values.required_teacher_count
+        activity.sync_state = TeachingActivitySyncState.IN_SYNC
+        session.add(activity)
+        GroupSubjectSyncService.mark_requirements_for_reconciliation(
+            session, preview.assignment_impact.affected_requirement_ids
+        )
+
+        if not was_noop:
+            GroupSubjectController.record_audit_event(
+                session,
+                process_id=process_id,
+                current_user=current_user,
+                event_type=AuditEventType.TEACHING_ACTIVITY_SYNC_APPLIED,
+                entity_type="teaching_activity",
+                entity_id=activity.id,
+                before=before,
+                after=activity,
+            )
+            FeasibilityWitnessService.invalidate(session, process_id)
+
+        if not was_noop:
+            session.flush()
+            GroupSubjectController._advance_plan_after_sync(
+                session, plan, preview.assignment_impact
+            )
+        session.commit()
+        session.refresh(activity)
+        session.refresh(plan)
+        return MainActivitySyncResult(
+            activity=TeachingActivityController._to_public(session, activity),
+            applied_differences=preview.differences,
+            assignment_impact=preview.assignment_impact,
+            teaching_plan_status=plan.status,
+            was_noop=was_noop,
+        )
+
     # ── Internal helpers ─────────────────────────────────────────────────────
 
     @staticmethod
     def _get_or_404(
-        session: Session, process_id: uuid.UUID, group_subject_id: uuid.UUID
+        session: Session,
+        process_id: uuid.UUID,
+        group_subject_id: uuid.UUID,
+        *,
+        lock: bool = False,
     ) -> GroupSubject:
         DomainController.get_process_or_404(session, process_id)
         statement = select(GroupSubject).where(GroupSubject.id == group_subject_id)
+        if lock:
+            statement = statement.with_for_update()
         group_subject = session.exec(statement).first()
         if group_subject is None or group_subject.assignment_process_id != process_id:
             raise HTTPException(
@@ -325,6 +486,140 @@ class GroupSubjectController(DomainController):
                 ),
             )
         return group_subject
+
+    @staticmethod
+    def _mark_source_activity_out_of_sync(
+        session: Session,
+        process_id: uuid.UUID,
+        cell: GroupSubject,
+        current_user: UserModel,
+    ) -> MainActivityAssignmentImpact | None:
+        """Mark a materialized source OUT_OF_SYNC and audit the transition."""
+
+        subject = GroupSubjectController._get_subject_or_404(
+            session, process_id, cell.subject_id
+        )
+        transition = GroupSubjectSyncService.mark_out_of_sync(session, cell, subject)
+        if transition is None:
+            return None
+        before, activity = transition
+        plan = GroupSubjectController._plan_for_activity(session, process_id, activity)
+        preview = GroupSubjectSyncService.preview(
+            session, plan, cell, subject, activity
+        )
+        GroupSubjectController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type=AuditEventType.TEACHING_ACTIVITY_OUT_OF_SYNC,
+            entity_type="teaching_activity",
+            entity_id=activity.id,
+            before=before,
+            after=activity,
+        )
+        return preview.assignment_impact
+
+    @staticmethod
+    def _invalidate_plan_for_out_of_sync(
+        session: Session,
+        process_id: uuid.UUID,
+        *,
+        requires_reconciliation: bool,
+    ) -> None:
+        """Reflect an OUT_OF_SYNC source in the operational plan lifecycle."""
+
+        plan = session.exec(
+            select(TeachingPlan).where(TeachingPlan.assignment_process_id == process_id)
+        ).first()
+        if plan is None:
+            return
+        reason = "A MAIN_GENERATED activity is out of sync with its source."
+        if plan.status == TeachingPlanStatus.BALANCED:
+            TeachingPlanController.apply_status_transition(
+                plan, TeachingPlanStatus.UNBALANCED
+            )
+        elif plan.status == TeachingPlanStatus.LOCKED:
+            TeachingPlanController.apply_status_transition(
+                plan, TeachingPlanStatus.STALE, stale_reason=reason
+            )
+        elif plan.status == TeachingPlanStatus.REQUIREMENTS_GENERATED:
+            target = (
+                TeachingPlanStatus.RECONCILIATION_REQUIRED
+                if requires_reconciliation
+                else TeachingPlanStatus.STALE
+            )
+            TeachingPlanController.apply_status_transition(
+                plan,
+                target,
+                stale_reason=reason if target == TeachingPlanStatus.STALE else None,
+            )
+            if target == TeachingPlanStatus.RECONCILIATION_REQUIRED:
+                plan.stale_reason = reason
+        session.add(plan)
+
+    @staticmethod
+    def _advance_plan_after_sync(
+        session: Session,
+        plan: TeachingPlan,
+        impact: MainActivityAssignmentImpact,
+    ) -> None:
+        """Recalculate unlocked plans or route generated changes to regeneration."""
+
+        if plan.status in {
+            TeachingPlanStatus.DRAFT,
+            TeachingPlanStatus.UNBALANCED,
+            TeachingPlanStatus.BALANCED,
+        }:
+            exact = PlanningCalculationService.compute_plan_balance(
+                session, plan
+            ).is_exact
+            target = (
+                TeachingPlanStatus.BALANCED if exact else TeachingPlanStatus.UNBALANCED
+            )
+            if plan.status != target:
+                TeachingPlanController.apply_status_transition(plan, target)
+            return
+        reason = "MAIN_GENERATED activity values changed during source sync."
+        if plan.status == TeachingPlanStatus.LOCKED:
+            TeachingPlanController.apply_status_transition(
+                plan, TeachingPlanStatus.STALE, stale_reason=reason
+            )
+        elif plan.status == TeachingPlanStatus.REQUIREMENTS_GENERATED:
+            target = (
+                TeachingPlanStatus.RECONCILIATION_REQUIRED
+                if impact.requires_reconciliation
+                else TeachingPlanStatus.STALE
+            )
+            TeachingPlanController.apply_status_transition(
+                plan,
+                target,
+                stale_reason=reason if target == TeachingPlanStatus.STALE else None,
+            )
+            if target == TeachingPlanStatus.RECONCILIATION_REQUIRED:
+                plan.stale_reason = reason
+        session.add(plan)
+
+    @staticmethod
+    def _plan_for_activity(
+        session: Session,
+        process_id: uuid.UUID,
+        activity: TeachingActivity,
+        *,
+        lock: bool = False,
+    ) -> TeachingPlan:
+        statement = select(TeachingPlan).where(
+            TeachingPlan.assignment_process_id == process_id,
+            TeachingPlan.id == activity.teaching_plan_id,
+        )
+        if lock:
+            statement = statement.with_for_update()
+        plan = session.exec(statement).first()
+        if plan is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The materialized activity has no owning teaching plan.",
+            )
+        return plan
 
     @staticmethod
     def _get_group_or_404(

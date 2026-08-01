@@ -395,6 +395,8 @@ class AuditEventType(str, Enum):
     TEACHING_ACTIVITY_UPDATED = "teaching_activity.updated"
     TEACHING_ACTIVITY_DELETED = "teaching_activity.deleted"
     TEACHING_ACTIVITY_MATERIALIZED = "teaching_activity.materialized"
+    TEACHING_ACTIVITY_OUT_OF_SYNC = "teaching_activity.out_of_sync"
+    TEACHING_ACTIVITY_SYNC_APPLIED = "teaching_activity.sync_applied"
     TEACHING_ACTIVITY_IMPORTED = "teaching_activity.imported"
     REQUIREMENTS_GENERATED = "requirements.generated"
     REQUIREMENTS_RECONCILED = "requirements.reconciled"

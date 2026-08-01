@@ -128,7 +128,7 @@ To check the schema the bootstrap will generate — without generating it — ru
 | Reference administration | `/reparto/academic-years`, `/schools`, `/classroom-stages`, `/departments`, `/teacher-profiles` |
 | Assignment process | `/reparto/assignment-processes` |
 | Per-process resources | `/reparto/assignment-processes/{process_id}/teachers`, `/subjects`, `/groups`, `/requirements`, `/assignments` |
-| Teaching-load planning | `/reparto/assignment-processes/{process_id}/allocation-revisions`, `/teaching-plan`, `/teaching-plan/summary`, `/teaching-plan/validations`, `/teaching-plan/materialize-main`, `/group-subjects`, `/teaching-activities` |
+| Teaching-load planning | `/reparto/assignment-processes/{process_id}/allocation-revisions`, `/teaching-plan`, `/teaching-plan/summary`, `/teaching-plan/validations`, `/teaching-plan/materialize-main`, `/group-subjects` (+ `/{id}/sync-preview`, `/{id}/sync-apply`), `/teaching-activities` |
 | Planning exchange | `/reparto/assignment-processes/{process_id}/exports/planning-draft`, `/exports/planning-provisional`, `/exports/planning-final`, `/imports/planning` |
 | Lifecycle and read models | `/transition`, `/reopen`, `/copy-previous-year`, `/summary`, `/dashboard`, `/lan/me`, `/events` under an assignment process |
 | Audit and history | `/audit-events`, `/versions`, `/compare-previous-year`, `/exports`, `/restore-draft` under an assignment process |
@@ -182,6 +182,13 @@ main-subject activities: one single-group `MAIN_GENERATED` activity per active
 main group-subject cell (hours inherited from the cell, then the subject
 default). It is idempotent — cells already materialised are skipped, never
 duplicated — and requires an unlocked plan.
+Editing a materialized main group-subject cell marks its activity `OUT_OF_SYNC`
+without overwriting it. `POST /group-subjects/{id}/sync-preview` returns the
+resolved source values, current activity values, deterministic differences and
+assigned-slot impact. `POST /group-subjects/{id}/sync-apply` requires the preview
+fingerprint; assigned value/count changes move their slots onto the explicit
+requirement-reconciliation path. Inactive sources are refused here and remain
+owned by the guarded-retirement flow.
 `GET /teaching-plan/summary` returns the plan's two independent balances — group
 teaching hours against the current leadership allocation, and teacher workload
 against the participant target total. They are reported on separate axes and are

@@ -37,13 +37,14 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
-
-from pydantic import Field
-from sqlalchemy import DateTime, Index, UniqueConstraint, text
-from sqlmodel import Column, Field as SQLField, SQLModel
+from typing import Literal, Optional
 
 from auth_sdk_m8.models.shared import TimestampMixin
+from pydantic import Field
+from sqlalchemy import DateTime, Index, UniqueConstraint, text
+from sqlmodel import Column, SQLModel
+from sqlmodel import Field as SQLField
+
 from reparto_service.core.db_models import (
     UUIDString,
     enum_column_type,
@@ -54,8 +55,8 @@ from reparto_service.enums import (
     SubjectAllocationCategory,
     TeachingActivitySource,
     TeachingActivitySyncState,
+    TeachingPlanStatus,
 )
-
 
 # ── Base, Create, Update schemas ──────────────────────────────────────────────
 
@@ -319,7 +320,87 @@ class MainMaterializationResult(SQLModel):
     skipped_count: int = Field(description="Number of cells skipped as already live.")
 
 
+class MainActivitySyncValues(SQLModel):
+    """Planning values compared by the GroupSubject sync flow (plan §20.10)."""
+
+    group_weekly_hours_per_group: float = Field(ge=0)
+    teacher_weekly_hours_per_position: float = Field(ge=0)
+    required_teacher_count: int = Field(ge=1)
+
+
+class MainActivitySyncDifference(SQLModel):
+    """One source-to-activity value difference in a sync preview."""
+
+    field: Literal[
+        "group_weekly_hours_per_group",
+        "teacher_weekly_hours_per_position",
+        "required_teacher_count",
+    ]
+    current_value: float = Field(description="Current materialized activity value.")
+    source_value: float = Field(description="Resolved source GroupSubject value.")
+
+
+class MainActivityAssignmentImpact(SQLModel):
+    """Active assignments a proposed source sync would disturb."""
+
+    active_assignment_count: int = Field(ge=0)
+    affected_assignment_count: int = Field(ge=0)
+    affected_requirement_ids: list[uuid.UUID] = Field(
+        description="Assigned requirement slots that must be reconciled."
+    )
+    requires_reconciliation: bool = Field(
+        description="Whether applying the preview affects an assigned slot."
+    )
+
+
+class MainActivitySyncPreview(SQLModel):
+    """Source/current/diff/assignment-impact preview for a main activity."""
+
+    group_subject_id: uuid.UUID
+    teaching_activity_id: uuid.UUID
+    sync_state: TeachingActivitySyncState
+    source_active: bool
+    source_values: MainActivitySyncValues
+    current_values: MainActivitySyncValues
+    differences: list[MainActivitySyncDifference]
+    assignment_impact: MainActivityAssignmentImpact
+    retirement_required: bool = Field(
+        description=(
+            "True when the source cell is inactive and the separate guarded "
+            "retirement flow must be used instead of sync-apply."
+        )
+    )
+    is_noop: bool
+    preview_fingerprint: str = Field(
+        min_length=64,
+        max_length=64,
+        description="Staleness token that sync-apply must echo unchanged.",
+    )
+
+
+class MainActivitySyncApplyRequest(SQLModel):
+    """Confirmation token for an explicit GroupSubject sync apply."""
+
+    expected_preview_fingerprint: str = Field(min_length=64, max_length=64)
+
+
+class MainActivitySyncResult(SQLModel):
+    """Committed result of applying or acknowledging a main-activity sync."""
+
+    activity: TeachingActivityPublic
+    applied_differences: list[MainActivitySyncDifference]
+    assignment_impact: MainActivityAssignmentImpact
+    teaching_plan_status: TeachingPlanStatus
+    was_noop: bool
+
+
 __all__ = [
+    "MainActivityAssignmentImpact",
+    "MainActivitySyncApplyRequest",
+    "MainActivitySyncDifference",
+    "MainActivitySyncPreview",
+    "MainActivitySyncResult",
+    "MainActivitySyncValues",
     "MainMaterializationResult",
     "TeachingActivitiesPublic",
     "TeachingActivity",

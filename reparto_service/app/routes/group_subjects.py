@@ -22,6 +22,11 @@ from reparto_service.db_models.group_subjects import (
     GroupSubjectsPublic,
     GroupSubjectUpdate,
 )
+from reparto_service.db_models.teaching_activities import (
+    MainActivitySyncApplyRequest,
+    MainActivitySyncPreview,
+    MainActivitySyncResult,
+)
 
 router = APIRouter(
     prefix="/assignment-processes/{process_id}/group-subjects",
@@ -69,6 +74,31 @@ def bulk_apply_group_subjects(
 ) -> GroupSubjectBulkResult:
     GroupSubjectController.require_process_writer(session, current_user, process_id)
     return GroupSubjectController.bulk_apply(session, process_id, request, current_user)
+
+
+@router.post("/{group_subject_id}/sync-preview", response_model=MainActivitySyncPreview)
+def preview_group_subject_sync(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+    group_subject_id: uuid.UUID,
+) -> MainActivitySyncPreview:
+    GroupSubjectController.require_process_writer(session, current_user, process_id)
+    return GroupSubjectController.sync_preview(session, process_id, group_subject_id)
+
+
+@router.post("/{group_subject_id}/sync-apply", response_model=MainActivitySyncResult)
+def apply_group_subject_sync(
+    session: SessionDep,
+    current_user: CurrentUser,
+    process_id: uuid.UUID,
+    group_subject_id: uuid.UUID,
+    request: MainActivitySyncApplyRequest,
+) -> MainActivitySyncResult:
+    GroupSubjectController.require_process_writer(session, current_user, process_id)
+    return GroupSubjectController.sync_apply(
+        session, process_id, group_subject_id, request, current_user
+    )
 
 
 @router.get("/{group_subject_id}", response_model=GroupSubjectPublic)

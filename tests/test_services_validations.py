@@ -13,14 +13,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
+from reparto_service.db_models.teaching_activities import TeachingActivity
 from reparto_service.enums import (
     FeasibilityStatus,
     HourRequirementStatus,
     ProcessTeacherStatus,
     SubjectAllocationCategory,
     TeachingActivitySource,
+    TeachingActivitySyncState,
     TeachingPlanStatus,
     ValidationSeverity,
 )
@@ -29,6 +31,7 @@ from reparto_service.services.validations import (
     CODE_ACTIVITY_LINKED_SUBJECT_MISMATCH,
     CODE_ACTIVITY_MISSING_GROUPS,
     CODE_ACTIVITY_MULTIPLE_GROUPS_NOT_ALLOWED,
+    CODE_ACTIVITY_OUT_OF_SYNC,
     CODE_FEASIBILITY_NOT_CONFIRMED,
     CODE_GROUP_HOURS_IMBALANCED,
     CODE_MAIN_SUBJECT_NOT_MATERIALIZED,
@@ -165,6 +168,24 @@ def test_ready_plan_has_no_blocking_and_no_warning(session: Session):
     assert report.messages == []
     assert report.teaching_plan_id == plan.id
     assert report.assignment_process_id == plan.assignment_process_id
+
+
+def test_out_of_sync_main_activity_is_blocking(session: Session) -> None:
+    _, plan = _ready_plan(session)
+    activity = session.exec(select(TeachingActivity)).one()
+    activity.sync_state = TeachingActivitySyncState.OUT_OF_SYNC
+    session.add(activity)
+    session.commit()
+
+    report = SERVICE.compute_plan_validations(session, plan)
+    message = next(
+        message
+        for message in report.messages
+        if message.code == CODE_ACTIVITY_OUT_OF_SYNC
+    )
+    assert message.entity_type == "teaching_activity"
+    assert message.entity_id == activity.id
+    assert report.is_assignment_ready is False
 
 
 # ── Balances (plan §6.3) ────────────────────────────────────────────────────────
