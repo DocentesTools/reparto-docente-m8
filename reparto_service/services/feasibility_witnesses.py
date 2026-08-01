@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import time
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
@@ -35,6 +37,7 @@ from reparto_service.enums import (
     ProcessTeacherStatus,
 )
 from reparto_service.services.feasibility import (
+    DEFAULT_SOLVER_LIMITS,
     SOLVER_VERSION,
     FeasibilityParticipant,
     FeasibilityResult,
@@ -44,11 +47,14 @@ from reparto_service.services.feasibility import (
     evaluate_assignment_feasibility,
     hours_to_units,
 )
+from reparto_service.services.feasibility_controls import serialize_feasibility_solve
 from reparto_service.services.selection_guards import (
     WitnessRepairResult,
     validate_feasibility_witness,
     validate_proposed_assignment_against_witness,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -314,23 +320,80 @@ class FeasibilityWitnessService:
         *,
         generation: int,
     ) -> FeasibilityEvaluationPublic:
-        cached = FeasibilityWitnessService._cached_result(
-            session, plan, snapshot, generation=generation
-        )
-        if cached is not None:
-            return cached
-        result = evaluate_assignment_feasibility(snapshot.state)
-        checked_at = datetime.now(tz=timezone.utc)
-        FeasibilityWitnessService._persist_result(
-            session, plan, snapshot, result, checked_at, generation=generation
-        )
-        session.commit()
-        session.refresh(plan)
-        return FeasibilityWitnessService._evaluation_public(
-            plan,
-            result=result,
-            cache_reused=False,
-            witness_available=result.witness is not None,
+        started_at = time.monotonic()
+        with serialize_feasibility_solve(session, plan.assignment_process_id):
+            cached = FeasibilityWitnessService._cached_result(
+                session, plan, snapshot, generation=generation
+            )
+            if cached is not None:
+                FeasibilityWitnessService._log_evaluation(
+                    snapshot,
+                    status_value=cached.status.value,
+                    cache_reused=True,
+                    states_explored=0,
+                    memoization_hits=0,
+                    budget_outcome="not_run",
+                    started_at=started_at,
+                )
+                return cached
+            result = evaluate_assignment_feasibility(snapshot.state)
+            checked_at = datetime.now(tz=timezone.utc)
+            FeasibilityWitnessService._persist_result(
+                session, plan, snapshot, result, checked_at, generation=generation
+            )
+            session.commit()
+            session.refresh(plan)
+            FeasibilityWitnessService._log_evaluation(
+                snapshot,
+                status_value=result.status.value,
+                cache_reused=False,
+                states_explored=result.states_explored,
+                memoization_hits=result.memoization_hits,
+                budget_outcome=(
+                    result.diagnostics[0].code.value
+                    if result.status == FeasibilityStatus.UNKNOWN and result.diagnostics
+                    else "completed"
+                ),
+                started_at=started_at,
+            )
+            return FeasibilityWitnessService._evaluation_public(
+                plan,
+                result=result,
+                cache_reused=False,
+                witness_available=result.witness is not None,
+            )
+
+    @staticmethod
+    def _log_evaluation(
+        snapshot: FeasibilitySnapshot,
+        *,
+        status_value: str,
+        cache_reused: bool,
+        states_explored: int,
+        memoization_hits: int,
+        budget_outcome: str,
+        started_at: float,
+    ) -> None:
+        """Emit bounded solver telemetry without IDs, names or fingerprints."""
+
+        elapsed_ms = max(0, round((time.monotonic() - started_at) * 1000))
+        logger.info(
+            "feasibility_evaluation status=%s cache_reused=%s "
+            "participant_count=%d slot_count=%d states_explored=%d "
+            "memoization_hits=%d budget_outcome=%s max_participants=%d "
+            "max_slots=%d max_steps=%d max_seconds=%s elapsed_ms=%d",
+            status_value,
+            cache_reused,
+            len(snapshot.state.participants),
+            len(snapshot.state.slots),
+            states_explored,
+            memoization_hits,
+            budget_outcome,
+            DEFAULT_SOLVER_LIMITS.max_participants,
+            DEFAULT_SOLVER_LIMITS.max_slots,
+            DEFAULT_SOLVER_LIMITS.max_steps,
+            DEFAULT_SOLVER_LIMITS.max_seconds,
+            elapsed_ms,
         )
 
     @staticmethod

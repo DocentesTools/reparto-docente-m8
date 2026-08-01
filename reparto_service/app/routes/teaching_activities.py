@@ -1,6 +1,6 @@
 """Teaching-activity routes (nested under an assignment process).
 
-Exposes the plan §7.4 CRUD surface for department teaching-plan activities.
+Exposes the plan §7.4 create/read/update plus guarded-retirement surface.
 Every mutation is writer-gated; the owning teaching plan is resolved from the
 process by the controller.
 """
@@ -69,14 +69,14 @@ def update_teaching_activity(
     )
 
 
-@router.delete("/{activity_id}", response_model=TeachingActivityPublic)
-def delete_teaching_activity(
+@router.post("/{activity_id}/retire", response_model=TeachingActivityPublic)
+def retire_teaching_activity(
     session: SessionDep,
     current_user: CurrentUser,
     process_id: uuid.UUID,
     activity_id: uuid.UUID,
 ) -> TeachingActivityPublic:
     TeachingActivityController.require_process_writer(session, current_user, process_id)
-    return TeachingActivityController.delete_teaching_activity(
+    return TeachingActivityController.retire_teaching_activity(
         session, process_id, activity_id, current_user
     )

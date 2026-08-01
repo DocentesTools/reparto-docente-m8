@@ -18,24 +18,25 @@ server-side, and every mutation enforces the structural invariants §5/§20 fix:
   (plan §5.6, §5.3); a multi-group activity uses one uniform
   ``group_weekly_hours_per_group`` for every group (plan §20.11).
 
-Balance recomputation and the balanced→unbalanced status transition that an
-activity change triggers (plan §20.14) belong to the dedicated balance-recompute
-task and are deferred here, matching every prior model task. Guarded retirement
-against generated requirements / assignments (plan §20.12) is a no-op today
-because the redesigned ``HourRequirement.teaching_activity_id`` link does not
-exist yet; it is wired in with that redesign.
+Guarded retirement (plan §20.12) preserves the activity and its links, routes
+unassigned generated slots to regeneration and assigned slots to explicit
+reconciliation, and invalidates the deterministic feasibility witness.
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from auth_sdk_m8.schemas.user import UserModel
 from fastapi import HTTPException, status
 from sqlmodel import Session, col, select
 
 from reparto_service.controllers.base import DomainController
+from reparto_service.controllers.teaching_plans import TeachingPlanController
+from reparto_service.db_models.assignments import Assignment
 from reparto_service.db_models.group_subjects import GroupSubject
+from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.subjects import Subject
 from reparto_service.db_models.teaching_activities import (
     MainMaterializationResult,
@@ -48,11 +49,14 @@ from reparto_service.db_models.teaching_activities import (
 )
 from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
+    AssignmentStatus,
     AuditEventType,
+    HourRequirementStatus,
     SubjectAllocationCategory,
     TeachingActivitySource,
     TeachingPlanStatus,
 )
+from reparto_service.services.calculations import PlanningCalculationService
 from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 
 # Plan statuses in which normal activity mutation is allowed (plan §5.6, §20.14):
@@ -228,37 +232,78 @@ class TeachingActivityController(DomainController):
         return TeachingActivityController._to_public(session, activity)
 
     @staticmethod
-    def delete_teaching_activity(
+    def retire_teaching_activity(
         session: Session,
         process_id: uuid.UUID,
         activity_id: uuid.UUID,
         current_user: UserModel,
     ) -> TeachingActivityPublic:
+        """Retire an activity and route its live slots through regeneration.
+
+        No row is hard-deleted.  Unassigned live requirements force a stale
+        regeneration; assigned live requirements force explicit reconciliation.
+        Links and historical requirements remain intact for audit/version reads.
+        """
+
         activity = TeachingActivityController._get_or_404(
-            session, process_id, activity_id
+            session, process_id, activity_id, lock=True
         )
         DomainController.ensure_process_mutable(
             DomainController.get_process_or_404(session, process_id)
         )
-        TeachingActivityController._require_mutable_plan(session, process_id)
+        plan = TeachingActivityController._plan_row(session, process_id, lock=True)
+        if plan is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The activity has no owning teaching plan.",
+            )
+        if activity.retired_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The teaching activity is already retired.",
+            )
 
-        public = TeachingActivityController._to_public(session, activity)
         before = TeachingActivity.model_validate(activity.model_dump())
-        TeachingActivityController._replace_links(session, activity.id, [])
-        session.delete(activity)
+        requirements = TeachingActivityController._live_requirements(
+            session, activity.id
+        )
+        if not requirements and plan.status not in _MUTABLE_PLAN_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "An activity without generated requirements can be retired "
+                    "only while its teaching plan is unlocked."
+                ),
+            )
+        assigned_ids = TeachingActivityController._assigned_requirement_ids(
+            session, process_id, requirements
+        )
+        activity.retired_at = datetime.now(tz=timezone.utc)
+        session.add(activity)
+        for requirement in requirements:
+            if requirement.id in assigned_ids:
+                requirement.status = HourRequirementStatus.RECONCILIATION_REQUIRED
+                session.add(requirement)
+        TeachingActivityController._advance_plan_after_retirement(
+            session,
+            plan,
+            has_requirements=bool(requirements),
+            has_assignments=bool(assigned_ids),
+        )
         TeachingActivityController.record_audit_event(
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type=AuditEventType.TEACHING_ACTIVITY_DELETED,
+            event_type=AuditEventType.TEACHING_ACTIVITY_RETIRED,
             entity_type="teaching_activity",
             entity_id=activity.id,
             before=before,
-            after=None,
+            after=activity,
         )
         FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
-        return public
+        session.refresh(activity)
+        return TeachingActivityController._to_public(session, activity)
 
     # ── Main-activity materialization (plan §7.3, §20.10) ────────────────────
 
@@ -348,10 +393,15 @@ class TeachingActivityController(DomainController):
     # ── Internal helpers ─────────────────────────────────────────────────────
 
     @staticmethod
-    def _plan_row(session: Session, process_id: uuid.UUID) -> TeachingPlan | None:
-        return session.exec(
-            select(TeachingPlan).where(TeachingPlan.assignment_process_id == process_id)
-        ).first()
+    def _plan_row(
+        session: Session, process_id: uuid.UUID, *, lock: bool = False
+    ) -> TeachingPlan | None:
+        statement = select(TeachingPlan).where(
+            TeachingPlan.assignment_process_id == process_id
+        )
+        if lock:
+            statement = statement.with_for_update()
+        return session.exec(statement).first()
 
     @staticmethod
     def _require_mutable_plan(session: Session, process_id: uuid.UUID) -> TeachingPlan:
@@ -377,11 +427,18 @@ class TeachingActivityController(DomainController):
 
     @staticmethod
     def _get_or_404(
-        session: Session, process_id: uuid.UUID, activity_id: uuid.UUID
+        session: Session,
+        process_id: uuid.UUID,
+        activity_id: uuid.UUID,
+        *,
+        lock: bool = False,
     ) -> TeachingActivity:
         DomainController.get_process_or_404(session, process_id)
         plan = TeachingActivityController._plan_row(session, process_id)
-        activity = session.get(TeachingActivity, activity_id)
+        statement = select(TeachingActivity).where(TeachingActivity.id == activity_id)
+        if lock:
+            statement = statement.with_for_update()
+        activity = session.exec(statement).first()
         if activity is None or plan is None or activity.teaching_plan_id != plan.id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -390,6 +447,78 @@ class TeachingActivityController(DomainController):
                 ),
             )
         return activity
+
+    @staticmethod
+    def _live_requirements(
+        session: Session, activity_id: uuid.UUID
+    ) -> list[HourRequirement]:
+        return list(
+            session.exec(
+                select(HourRequirement)
+                .where(HourRequirement.teaching_activity_id == activity_id)
+                .where(col(HourRequirement.retired_generation).is_(None))
+                .order_by(col(HourRequirement.position_index), col(HourRequirement.id))
+                .with_for_update()
+            ).all()
+        )
+
+    @staticmethod
+    def _assigned_requirement_ids(
+        session: Session,
+        process_id: uuid.UUID,
+        requirements: list[HourRequirement],
+    ) -> set[uuid.UUID]:
+        requirement_ids = [requirement.id for requirement in requirements]
+        if not requirement_ids:
+            return set()
+        return set(
+            session.exec(
+                select(Assignment.hour_requirement_id)
+                .where(Assignment.assignment_process_id == process_id)
+                .where(Assignment.status == AssignmentStatus.ACTIVE)
+                .where(col(Assignment.hour_requirement_id).in_(requirement_ids))
+                .with_for_update()
+            ).all()
+        )
+
+    @staticmethod
+    def _advance_plan_after_retirement(
+        session: Session,
+        plan: TeachingPlan,
+        *,
+        has_requirements: bool,
+        has_assignments: bool,
+    ) -> None:
+        reason = "A teaching activity was retired."
+        if plan.status in _MUTABLE_PLAN_STATUSES:
+            exact = PlanningCalculationService.compute_plan_balance(
+                session, plan
+            ).is_exact
+            target = (
+                TeachingPlanStatus.BALANCED if exact else TeachingPlanStatus.UNBALANCED
+            )
+            if plan.status != target:
+                TeachingPlanController.apply_status_transition(plan, target)
+        elif plan.status == TeachingPlanStatus.LOCKED:
+            TeachingPlanController.apply_status_transition(
+                plan, TeachingPlanStatus.STALE, stale_reason=reason
+            )
+        elif plan.status == TeachingPlanStatus.REQUIREMENTS_GENERATED:
+            target = (
+                TeachingPlanStatus.RECONCILIATION_REQUIRED
+                if has_assignments
+                else TeachingPlanStatus.STALE
+            )
+            TeachingPlanController.apply_status_transition(
+                plan,
+                target,
+                stale_reason=reason if target == TeachingPlanStatus.STALE else None,
+            )
+            if target == TeachingPlanStatus.RECONCILIATION_REQUIRED:
+                plan.stale_reason = reason
+        elif has_requirements and plan.stale_reason is None:
+            plan.stale_reason = reason
+        session.add(plan)
 
     @staticmethod
     def _materialized_main_source_ids(

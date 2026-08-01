@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from enum import Enum
 
-
 # ── AssignmentProcess lifecycle (plan 8.4) ────────────────────────────────────
 
 
@@ -382,6 +381,8 @@ class AuditEventType(str, Enum):
     ALLOCATION_REVISED = "allocation.revised"
     GROUP_SUBJECT_CREATED = "group_subject.created"
     GROUP_SUBJECT_UPDATED = "group_subject.updated"
+    GROUP_SUBJECT_RETIRED = "group_subject.retired"
+    # Historical vocabulary retained for already-persisted audit rows only.
     GROUP_SUBJECT_DELETED = "group_subject.deleted"
     GROUP_SUBJECT_BULK_APPLIED = "group_subject.bulk_applied"
     TEACHING_PLAN_CREATED = "teaching_plan.created"
@@ -393,6 +394,8 @@ class AuditEventType(str, Enum):
     TEACHING_PLAN_UNLOCKED = "teaching_plan.unlocked"
     TEACHING_ACTIVITY_CREATED = "teaching_activity.created"
     TEACHING_ACTIVITY_UPDATED = "teaching_activity.updated"
+    TEACHING_ACTIVITY_RETIRED = "teaching_activity.retired"
+    # Historical vocabulary retained for already-persisted audit rows only.
     TEACHING_ACTIVITY_DELETED = "teaching_activity.deleted"
     TEACHING_ACTIVITY_MATERIALIZED = "teaching_activity.materialized"
     TEACHING_ACTIVITY_OUT_OF_SYNC = "teaching_activity.out_of_sync"

@@ -7,7 +7,7 @@ import uuid
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
-from reparto_service.enums import AssignmentProcessStatus
+from reparto_service.enums import AssignmentProcessStatus, TeachingPlanStatus
 from tests import factories
 
 
@@ -205,12 +205,26 @@ def test_update_group_subject(client: TestClient, session: Session) -> None:
     gs = factories.make_group_subject(session, process, group, subject)
     resp = client.patch(
         f"/reparto/assignment-processes/{process.id}/group-subjects/{gs.id}",
-        json={"group_weekly_hours": 4.5, "active": False},
+        json={"group_weekly_hours": 4.5},
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["group_weekly_hours"] == 4.5
-    assert body["active"] is False
+    assert body["active"] is True
+
+
+def test_update_cannot_bypass_guarded_retirement(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    group = factories.make_teaching_group(session, process)
+    subject = factories.make_subject(session, process)
+    cell = factories.make_group_subject(session, process, group, subject)
+    response = client.patch(
+        f"/reparto/assignment-processes/{process.id}/group-subjects/{cell.id}",
+        json={"active": False},
+    )
+    assert response.status_code == 409
 
 
 def test_update_group_subject_rejects_zero_teacher_count(
@@ -227,20 +241,81 @@ def test_update_group_subject_rejects_zero_teacher_count(
     assert resp.status_code == 422
 
 
-def test_delete_group_subject(client: TestClient, session: Session) -> None:
+def test_retire_group_subject_preserves_row_and_removes_delete_path(
+    client: TestClient, session: Session
+) -> None:
     process = factories.make_assignment_process(session)
     group = factories.make_teaching_group(session, process)
     subject = factories.make_subject(session, process)
     gs = factories.make_group_subject(session, process, group, subject)
-    resp = client.delete(
-        f"/reparto/assignment-processes/{process.id}/group-subjects/{gs.id}"
-    )
+    path = f"/reparto/assignment-processes/{process.id}/group-subjects/{gs.id}"
+    resp = client.post(f"{path}/retire")
     assert resp.status_code == 200
-    # Gone afterwards.
-    follow = client.get(
-        f"/reparto/assignment-processes/{process.id}/group-subjects/{gs.id}"
+    assert resp.json()["active"] is False
+    assert client.get(path).status_code == 200
+    assert client.delete(path).status_code == 405
+    assert client.post(f"{path}/retire").status_code == 409
+
+
+def test_retire_group_subject_blocks_live_downstream_activity(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    plan = factories.make_teaching_plan(session, process)
+    group = factories.make_teaching_group(session, process)
+    subject = factories.make_subject(session, process)
+    cell = factories.make_group_subject(session, process, group, subject)
+    activity = factories.make_teaching_activity(
+        session, plan, subject, group_subjects=[cell]
     )
-    assert follow.status_code == 404
+    path = f"/reparto/assignment-processes/{process.id}/group-subjects/{cell.id}/retire"
+    assert client.post(path).status_code == 409
+
+    activity.retired_at = activity.created_at
+    session.add(activity)
+    session.commit()
+    assert client.post(path).status_code == 200
+
+
+def test_retire_group_subject_keeps_an_already_unbalanced_plan(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    plan = factories.make_teaching_plan(
+        session, process, status=TeachingPlanStatus.UNBALANCED
+    )
+    group = factories.make_teaching_group(session, process)
+    subject = factories.make_subject(session, process)
+    cell = factories.make_group_subject(session, process, group, subject)
+    path = f"/reparto/assignment-processes/{process.id}/group-subjects/{cell.id}/retire"
+
+    assert client.post(path).status_code == 200
+    session.refresh(plan)
+    assert plan.status == TeachingPlanStatus.UNBALANCED
+
+
+def test_retire_group_subject_requires_draft_process(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(
+        session, status=AssignmentProcessStatus.READY_FOR_MEETING
+    )
+    group = factories.make_teaching_group(session, process)
+    subject = factories.make_subject(session, process)
+    cell = factories.make_group_subject(session, process, group, subject)
+    path = f"/reparto/assignment-processes/{process.id}/group-subjects/{cell.id}/retire"
+    assert client.post(path).status_code == 409
+
+
+def test_retire_group_subject_requires_writer(
+    reader_client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    group = factories.make_teaching_group(session, process)
+    subject = factories.make_subject(session, process)
+    cell = factories.make_group_subject(session, process, group, subject)
+    path = f"/reparto/assignment-processes/{process.id}/group-subjects/{cell.id}/retire"
+    assert reader_client.post(path).status_code == 403
 
 
 def test_create_group_subject_forbidden_for_reader(

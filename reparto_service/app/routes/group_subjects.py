@@ -1,6 +1,6 @@
 """Group-subject routes (nested under an assignment process).
 
-Exposes the plan §7.2 CRUD surface plus the ``bulk-preview``/``bulk-apply``
+Exposes the plan §7.2 create/read/update/retire surface plus ``bulk-preview``/``bulk-apply``
 operations for the intermediate group-subject matrix.
 """
 
@@ -124,14 +124,14 @@ def update_group_subject(
     )
 
 
-@router.delete("/{group_subject_id}", response_model=GroupSubjectPublic)
-def delete_group_subject(
+@router.post("/{group_subject_id}/retire", response_model=GroupSubjectPublic)
+def retire_group_subject(
     session: SessionDep,
     current_user: CurrentUser,
     process_id: uuid.UUID,
     group_subject_id: uuid.UUID,
 ) -> GroupSubjectPublic:
     GroupSubjectController.require_process_writer(session, current_user, process_id)
-    return GroupSubjectController.delete_group_subject(
+    return GroupSubjectController.retire_group_subject(
         session, process_id, group_subject_id, current_user
     )

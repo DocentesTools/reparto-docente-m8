@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 import pytest
@@ -92,6 +93,38 @@ def test_admin_evaluation_persists_reuses_and_exposes_stable_witness(
 
     session.refresh(plan)
     assert plan.feasibility_input_fingerprint == first.json()["input_fingerprint"]
+
+
+def test_evaluation_telemetry_is_bounded_and_contains_no_pii(
+    admin_client: TestClient,
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    process, _plan, _slots, teachers = _feasible_setup(session)
+    caplog.set_level(
+        logging.INFO,
+        logger="reparto_service.services.feasibility_witnesses",
+    )
+
+    response = admin_client.post(_path(process.id, "evaluate"))
+    assert response.status_code == 200
+    records = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "reparto_service.services.feasibility_witnesses"
+    ]
+    assert len(records) == 1
+    telemetry = records[0]
+    assert "status=feasible" in telemetry
+    assert "participant_count=2" in telemetry
+    assert "slot_count=2" in telemetry
+    assert "max_steps=1000000" in telemetry
+    assert str(process.id) not in telemetry
+    assert response.json()["input_fingerprint"] not in telemetry
+    for teacher in teachers:
+        assert str(teacher.id) not in telemetry
+    assert "Teacher 0" not in telemetry
+    assert "Teacher 1" not in telemetry
 
 
 def test_regular_writer_cannot_evaluate_or_read_witness(

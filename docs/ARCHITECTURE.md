@@ -336,9 +336,15 @@ without an explicit, audited decision.
 
 ### 7.2 Guarded retirement
 
-Unsafe `DELETE` is replaced by guarded retirement: a `GroupSubject` with a
-downstream activity, or an activity with generated requirements or assignments,
-cannot simply be deleted — it must be synchronized, regenerated or reconciled.
+Unsafe `DELETE` is replaced by explicit `POST .../{id}/retire` actions.
+`GroupSubject` retirement is draft-process-only, sets `active=false`, preserves
+the source row, and refuses while any live activity is sourced from or linked to
+the cell. A general `PATCH active=false` cannot bypass this guard. Teaching
+activity retirement sets `retired_at` and preserves its links and history. An
+unlocked activity without requirements retires directly; live unassigned slots
+move the plan to `STALE` for regeneration, while live assigned slots move to
+`RECONCILIATION_REQUIRED` and are marked accordingly. `HourRequirement` has no
+manual delete or retire route and remains owned by generation/reconciliation.
 Versioned and final entities are never hard-deleted.
 
 ## 8. Calculations, validations and feasibility
@@ -409,6 +415,14 @@ time limits. It returns `FEASIBLE` with a complete deterministic witness,
 `INFEASIBLE` with an internal diagnostic, or fail-closed `UNKNOWN` when a bound
 is reached.
 
+`services/feasibility_controls.py` admits at most one full solve per assignment
+process. PostgreSQL uses a non-blocking transaction advisory lock so the guarantee
+spans API workers; standalone/test engines use the same fail-fast contract with
+a process-local lock. A concurrent request receives `429` plus `Retry-After`
+instead of joining an unbounded queue. The solver continues to enforce the
+server-owned 30-participant, 100-slot, 1,000,000-step and 2-second budgets, and
+no assignment/planning row lock is held during the search.
+
 `services/selection_guards.py` owns the solver-free assignment hot path. It
 builds the current remaining state and applies one proposal using only residual
 total equality, exact slot fit, oversized-slot detection and per-activity Hall
@@ -433,6 +447,14 @@ the full solver. Reassignment first validates the current witness, builds the
 hypothetical post-undo remaining state, and runs that same cheap-guard plus
 bounded-repair path before atomically cancelling the old row and occupying the
 same slot with the replacement. Pure undo never runs the solver.
+
+Every full-solve attempt emits operational telemetry containing only status,
+cache use, participant/slot counts, search/memo counts, budget outcome, configured
+bounds and elapsed milliseconds. It deliberately excludes process/plan/user/
+teacher/slot identifiers, names, fingerprints, witnesses and diagnostic related
+IDs. The explicit evaluate/witness routes remain `ADMIN`/`SUPERADMIN`-only;
+lifecycle solver triggers remain behind the process department-head mutation
+gate and cannot be teacher-triggered.
 
 ## 9. API design
 
@@ -610,10 +632,6 @@ silently missing a change.
 These are tracked adaptation tasks, not oversights. Each has its schema or
 extension point already in place.
 
-* **Feasibility solve serialization and DoS controls** — the persisted witness,
-  explicit administrator evaluation route and mandatory lifecycle gates are
-  implemented. Per-process in-flight solve serialization, operational budgets
-  and feasibility telemetry remain in the guarded-retirement/DoS task.
 * **Decimal hour columns** — `HoursNumeric` exists but no model uses it yet; hour
   columns remain `float` and are lifted to `Decimal` in the services (§8.2).
 * **Authorization hardening** — a minimum-role (`>= READER`) floor on every

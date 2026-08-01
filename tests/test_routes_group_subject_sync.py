@@ -264,9 +264,40 @@ def test_apply_rejects_stale_preview(client: TestClient, session: Session) -> No
 def test_inactive_source_requires_guarded_retirement(
     client: TestClient, session: Session
 ) -> None:
+    process, plan, _subject, cell, activity = _setup(
+        session, plan_status=TeachingPlanStatus.REQUIREMENTS_GENERATED
+    )
+    requirement = _assign_first_slot(session, process, activity)
+    assert (
+        client.patch(_cell_url(process.id, cell.id), json={"active": False}).status_code
+        == 409
+    )
+
+    activity_path = (
+        f"/reparto/assignment-processes/{process.id}/teaching-activities/"
+        f"{activity.id}/retire"
+    )
+    assert client.post(activity_path).status_code == 200
+    session.refresh(activity)
+    session.refresh(requirement)
+    session.refresh(plan)
+    assert activity.retired_at is not None
+    assert requirement.status == HourRequirementStatus.RECONCILIATION_REQUIRED
+    assert plan.status == TeachingPlanStatus.RECONCILIATION_REQUIRED
+
+    assert client.post(f"{_cell_url(process.id, cell.id)}/retire").status_code == 200
+    session.refresh(cell)
+    assert cell.active is False
+
+
+def test_sync_apply_rejects_legacy_inactive_source(
+    client: TestClient, session: Session
+) -> None:
     process, _plan, _subject, cell, activity = _setup(session)
     requirement = _assign_first_slot(session, process, activity)
-    client.patch(_cell_url(process.id, cell.id), json={"active": False})
+    cell.active = False
+    session.add(cell)
+    session.commit()
 
     preview = client.post(_preview_url(process.id, cell.id)).json()
     assert preview["retirement_required"] is True
@@ -279,8 +310,6 @@ def test_inactive_source_requires_guarded_retirement(
     )
     assert response.status_code == 409
     assert "guarded activity-retirement" in response.json()["detail"]
-    session.refresh(activity)
-    assert activity.sync_state == TeachingActivitySyncState.OUT_OF_SYNC
 
 
 def test_noop_apply_is_idempotent_and_keeps_plan_state(

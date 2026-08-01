@@ -9,7 +9,7 @@ the final/archived-process immutability guard (plan §8.4).
 Editing a materialized source cell never overwrites its ``MAIN_GENERATED``
 activity.  It marks the activity ``OUT_OF_SYNC`` and invalidates the plan until
 the explicit sync-preview/apply flow is confirmed (plan §20.10). Guarded
-retirement remains the separate plan §20.12 task.
+retirement is an explicit guarded action under plan §20.12.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import uuid
 
 from auth_sdk_m8.schemas.user import UserModel
 from fastapi import HTTPException, status
+from sqlalchemy import or_
 from sqlmodel import Session, SQLModel, col, select
 
 from reparto_service.controllers.base import DomainController
@@ -44,10 +45,12 @@ from reparto_service.db_models.teaching_activities import (
     MainActivitySyncPreview,
     MainActivitySyncResult,
     TeachingActivity,
+    TeachingActivityGroup,
 )
 from reparto_service.db_models.teaching_groups import TeachingGroup
 from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
+    AssignmentProcessStatus,
     AuditEventType,
     GroupSubjectBulkMode,
     TeachingActivitySyncState,
@@ -167,8 +170,17 @@ class GroupSubjectController(DomainController):
         DomainController.ensure_process_mutable(
             DomainController.get_process_or_404(session, process_id)
         )
+        patch = group_subject_in.model_dump(exclude_unset=True)
+        if patch.get("active") is False:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Use the explicit guarded retirement action to deactivate a "
+                    "GroupSubject."
+                ),
+            )
         before = GroupSubject.model_validate(group_subject.model_dump())
-        group_subject.sqlmodel_update(group_subject_in.model_dump(exclude_unset=True))
+        group_subject.sqlmodel_update(patch)
         session.add(group_subject)
         impact = GroupSubjectController._mark_source_activity_out_of_sync(
             session, process_id, group_subject, current_user
@@ -195,32 +207,58 @@ class GroupSubjectController(DomainController):
         return GroupSubjectPublic.model_validate(group_subject)
 
     @staticmethod
-    def delete_group_subject(
+    def retire_group_subject(
         session: Session,
         process_id: uuid.UUID,
         group_subject_id: uuid.UUID,
         current_user: UserModel,
     ) -> GroupSubjectPublic:
+        """Retire a draft source cell only after all downstream activity retires."""
+
         group_subject = GroupSubjectController._get_or_404(
-            session, process_id, group_subject_id
+            session, process_id, group_subject_id, lock=True
         )
-        DomainController.ensure_process_mutable(
+        process = DomainController.ensure_process_mutable(
             DomainController.get_process_or_404(session, process_id)
         )
+        if process.status != AssignmentProcessStatus.DRAFT:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="GroupSubject retirement is allowed only in a draft process.",
+            )
+        if not group_subject.active:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The GroupSubject is already retired.",
+            )
+        live_activity = GroupSubjectController._live_downstream_activity(
+            session, group_subject.id
+        )
+        if live_activity is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Retire the downstream teaching activity through its guarded "
+                    "retirement and regeneration/reconciliation flow first."
+                ),
+            )
         before = GroupSubject.model_validate(group_subject.model_dump())
-        session.delete(group_subject)
+        group_subject.active = False
+        session.add(group_subject)
+        GroupSubjectController._advance_plan_after_retirement(session, process_id)
         GroupSubjectController.record_audit_event(
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type=AuditEventType.GROUP_SUBJECT_DELETED,
+            event_type=AuditEventType.GROUP_SUBJECT_RETIRED,
             entity_type="group_subject",
             entity_id=group_subject.id,
             before=before,
-            after=None,
+            after=group_subject,
         )
         FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
+        session.refresh(group_subject)
         return GroupSubjectPublic.model_validate(group_subject)
 
     # ── Bulk preview / apply (plan §7.2, §8.4) ───────────────────────────────
@@ -518,6 +556,49 @@ class GroupSubjectController(DomainController):
             after=activity,
         )
         return preview.assignment_impact
+
+    @staticmethod
+    def _live_downstream_activity(
+        session: Session, group_subject_id: uuid.UUID
+    ) -> TeachingActivity | None:
+        """Return any live activity sourced from or linked to this cell."""
+
+        return session.exec(
+            select(TeachingActivity)
+            .outerjoin(
+                TeachingActivityGroup,
+                col(TeachingActivityGroup.teaching_activity_id)
+                == col(TeachingActivity.id),
+            )
+            .where(
+                or_(
+                    col(TeachingActivity.source_group_subject_id) == group_subject_id,
+                    col(TeachingActivityGroup.group_subject_id) == group_subject_id,
+                )
+            )
+            .where(col(TeachingActivity.retired_at).is_(None))
+            .order_by(col(TeachingActivity.id))
+            .with_for_update()
+        ).first()
+
+    @staticmethod
+    def _advance_plan_after_retirement(session: Session, process_id: uuid.UUID) -> None:
+        plan = session.exec(
+            select(TeachingPlan)
+            .where(TeachingPlan.assignment_process_id == process_id)
+            .with_for_update()
+        ).first()
+        if plan is None or plan.status not in {
+            TeachingPlanStatus.DRAFT,
+            TeachingPlanStatus.UNBALANCED,
+            TeachingPlanStatus.BALANCED,
+        }:
+            return
+        exact = PlanningCalculationService.compute_plan_balance(session, plan).is_exact
+        target = TeachingPlanStatus.BALANCED if exact else TeachingPlanStatus.UNBALANCED
+        if plan.status != target:
+            TeachingPlanController.apply_status_transition(plan, target)
+        session.add(plan)
 
     @staticmethod
     def _invalidate_plan_for_out_of_sync(
