@@ -660,6 +660,25 @@ record a teacher may *edit* is always a record they may *read*.
 rather than a hand-kept path list, so a route added tomorrow is swept the day it
 is added; `tests/test_read_scope.py` pins the scoping decision.
 
+The sweep runs the full §21.1 matrix: every operation against `READER`,
+`WRITER`, `ADMIN` and `SUPERADMIN`, plus the unauthenticated and `USER` passes.
+It asserts "403 or not 403" rather than an exact status, because what is under
+test is the boundary — a caller who clears it may still be answered `404` or
+`422` by the domain, and demanding `200` would mean building valid state for a
+hundred-odd operations and failing for reasons that have nothing to do with
+authorization. The expected floor per operation comes from three explicit sets
+(own-data, read-only POSTs, admin-only reads) that are themselves asserted to
+name operations that still exist, so a renamed route cannot quietly fall through
+to the default. The SSE stream is the one exclusion — an authorized caller gets
+an open stream that never completes — and its authorization is covered by the
+read-floor, read-scope and audience tests instead.
+
+Ownership is proven with a *second* account of the same role: a `WRITER` who is
+a legitimate participant in the same process still gets `403` on another
+teacher's turn and another teacher's profile. Direct choice is proven
+structurally as well — the request schema has no participant field, so there is
+no payload that binds a slot to somebody else.
+
 ### 9.6 Role-projected read models and SSE
 
 The same process state is exposed at three confidentiality tiers, projected

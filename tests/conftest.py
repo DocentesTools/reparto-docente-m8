@@ -369,3 +369,13 @@ def cached_path_only_client(
         yield c
     app.dependency_overrides.clear()
     _TEST_IDENTITIES.clear()
+
+
+def identity_client(session: Session, user: UserModel) -> TestClient:
+    """Build an extra client for an ad-hoc identity inside a test.
+
+    The fixtures cover the five canonical roles; this exists for the cases that
+    need a *second* account of a role already in play — proving that "writer"
+    and "this writer's own record" are different claims.
+    """
+    return _make_client(session, user)
