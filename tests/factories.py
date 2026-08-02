@@ -11,6 +11,7 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import Optional
 
+from auth_sdk_m8.schemas.user import UserModel
 from sqlmodel import Session, select
 
 from reparto_service.db_models.academic_years import AcademicYear
@@ -516,3 +517,23 @@ def make_selection_turn(
     session.commit()
     session.refresh(turn)
     return turn
+
+
+def enrol(
+    session: Session,
+    process: AssignmentProcess,
+    user: UserModel,
+    *,
+    display_name: str = "Scoped Teacher",
+) -> ProcessTeacher:
+    """Give *user* read scope on *process* by making them a participant.
+
+    Read scope is derived from participation (plan §21.4), so a `READER` or
+    `WRITER` sees nothing at all until they belong somewhere. Tests that mean
+    to assert "the right role is refused" call this first, so the refusal they
+    observe is the role gate and not the scope gate — the stronger claim.
+    """
+    profile = make_teacher_profile(
+        session, display_name=display_name, user_id=uuid.UUID(str(user.id))
+    )
+    return make_process_teacher(session, process, profile)

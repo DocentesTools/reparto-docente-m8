@@ -8,6 +8,7 @@ from reparto_service.core.deps import (
     get_current_user,
     get_db,
     require_reader,
+    require_visible_process,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "get_current_user",
     "get_db",
     "require_reader",
+    "require_visible_process",
 ]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
@@ -232,9 +233,10 @@ def test_create_activity_rejects_zero_teacher_count(
 
 
 def test_create_activity_forbidden_for_reader(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process, _plan, subject, _group, cell = _setup(session)
+    factories.enrol(session, process, reader)
     resp = reader_client.post(
         f"/reparto/assignment-processes/{process.id}/teaching-activities/",
         json=_payload(subject.id, [cell.id]),
@@ -397,9 +399,10 @@ def test_update_activity_locked_plan_400(client: TestClient, session: Session) -
 
 
 def test_update_activity_forbidden_for_reader(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process, plan, subject, _group, cell = _setup(session)
+    factories.enrol(session, process, reader)
     activity = factories.make_teaching_activity(
         session, plan, subject, group_subjects=[cell]
     )
@@ -612,9 +615,10 @@ def test_replace_links_can_add_first_link(session: Session) -> None:
 
 
 def test_retire_activity_forbidden_for_reader(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process, plan, subject, _group, cell = _setup(session)
+    factories.enrol(session, process, reader)
     activity = factories.make_teaching_activity(
         session, plan, subject, group_subjects=[cell]
     )

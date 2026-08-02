@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
@@ -240,9 +241,10 @@ def test_update_extra_hours_ignores_cancelled_assignment(
 
 
 def test_update_extra_hours_reader_forbidden(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
     profile = factories.make_teacher_profile(session)
     pt = factories.make_process_teacher(session, process, profile)
     resp = reader_client.post(

@@ -7,7 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter
 
-from reparto_service.app.deps import CurrentUser, SessionDep
+from reparto_service.app.deps import CurrentReader, CurrentUser, SessionDep
 from reparto_service.controllers.teacher_profiles import TeacherProfileController
 from reparto_service.db_models.teacher_profiles import (
     TeacherProfileCreate,
@@ -23,12 +23,13 @@ router = APIRouter(prefix="/teacher-profiles", tags=["teacher-profiles"])
 @router.get("/", response_model=TeacherProfilesPublic)
 def list_profiles(
     session: SessionDep,
+    current_user: CurrentReader,
     active: Optional[bool] = None,
     skip: int = 0,
     limit: int = 100,
 ) -> TeacherProfilesPublic:
     return TeacherProfileController.list_profiles(
-        session, active=active, skip=skip, limit=limit
+        session, current_user, active=active, skip=skip, limit=limit
     )
 
 
@@ -43,8 +44,10 @@ def create_profile(
 
 
 @router.get("/{profile_id}", response_model=TeacherProfilePublic)
-def get_profile(session: SessionDep, profile_id: uuid.UUID) -> TeacherProfilePublic:
-    return TeacherProfileController.get_profile(session, profile_id)
+def get_profile(
+    session: SessionDep, current_user: CurrentReader, profile_id: uuid.UUID
+) -> TeacherProfilePublic:
+    return TeacherProfileController.get_profile(session, current_user, profile_id)
 
 
 @router.patch("/{profile_id}", response_model=TeacherProfilePublic)

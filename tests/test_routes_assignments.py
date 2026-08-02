@@ -13,6 +13,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
@@ -448,9 +449,10 @@ def test_legacy_delete_requires_reason_and_delegates_to_undo(
 
 
 def test_undo_requires_reason_and_rejects_reader(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process, _activity, slot0, _slot1 = _plan_setup(session)
+    factories.enrol(session, process, reader)
     teacher = _make_teacher(session, process)
     assignment = factories.make_assignment(session, process, slot0, teacher)
     path = _undo_path(process.id, assignment.id)
@@ -463,9 +465,10 @@ def test_undo_requires_reason_and_rejects_reader(
 
 
 def test_undo_and_reassign_reject_writer(
-    writer_client: TestClient, session: Session
+    writer_client: TestClient, session: Session, writer_user: UserModel
 ) -> None:
     process, _activity, slot0, _slot1 = _plan_setup(session)
+    factories.enrol(session, process, writer_user)
     first = _make_teacher(session, process)
     replacement = _make_teacher(session, process)
     assignment = factories.make_assignment(session, process, slot0, first)
@@ -624,9 +627,10 @@ def test_undo_ignores_nonmatching_live_meeting(
 
 
 def test_reassign_requires_reason_and_rejects_reader(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process, _activity, slot0, _slot1 = _plan_setup(session)
+    factories.enrol(session, process, reader)
     first = _make_teacher(session, process)
     replacement = _make_teacher(session, process)
     assignment = factories.make_assignment(session, process, slot0, first)
@@ -1252,9 +1256,10 @@ def test_get_assignment_validations_process_not_found(client: TestClient) -> Non
 
 
 def test_get_assignment_validations_reader_allowed(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
     factories.make_teaching_plan(session, process)
     resp = reader_client.get(f"{_assignments_path(process.id)}/validations")
     assert resp.status_code == 200

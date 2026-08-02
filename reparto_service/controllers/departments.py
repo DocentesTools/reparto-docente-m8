@@ -6,8 +6,9 @@ import uuid
 
 from auth_sdk_m8.authorization import has_minimum_role
 from auth_sdk_m8.schemas.base import RoleType
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi import HTTPException, status
-from sqlmodel import Session, func, select
+from sqlmodel import Session, col, func, select
 
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.departments import (
@@ -18,6 +19,7 @@ from reparto_service.db_models.departments import (
     DepartmentUpdate,
 )
 from reparto_service.db_models.schools import School
+from reparto_service.services.read_scope import UNRESTRICTED, visible_department_ids
 from reparto_service.services.user_directory import (
     UserDirectoryUnavailable,
     UserRoleLookup,
@@ -77,12 +79,17 @@ class DepartmentController(DomainController):
     @staticmethod
     def list_departments(
         session: Session,
+        current_user: UserModel,
         school_id: uuid.UUID | None = None,
         skip: int = 0,
         limit: int = 100,
     ) -> DepartmentsPublic:
         count_stmt = select(func.count()).select_from(Department)
         list_stmt = select(Department)
+        departments = visible_department_ids(session, current_user)
+        if departments is not UNRESTRICTED:
+            count_stmt = count_stmt.where(col(Department.id).in_(departments))
+            list_stmt = list_stmt.where(col(Department.id).in_(departments))
         if school_id is not None:
             count_stmt = count_stmt.where(Department.school_id == school_id)
             list_stmt = list_stmt.where(Department.school_id == school_id)
@@ -94,8 +101,17 @@ class DepartmentController(DomainController):
         )
 
     @staticmethod
-    def get_department(session: Session, department_id: uuid.UUID) -> DepartmentPublic:
+    def get_department(
+        session: Session, current_user: UserModel, department_id: uuid.UUID
+    ) -> DepartmentPublic:
         department = DomainController.get_or_404(session, Department, department_id)
+        departments = visible_department_ids(session, current_user)
+        if departments is not UNRESTRICTED and department.id not in departments:
+            # 404, not 403: confirming the row exists is itself out of scope.
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Department {department_id} not found.",
+            )
         return DepartmentPublic.model_validate(department)
 
     @staticmethod

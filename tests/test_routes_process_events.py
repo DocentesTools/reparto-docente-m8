@@ -35,6 +35,7 @@ from reparto_service.enums import (
 from reparto_service.schemas.events import DomainEvent
 from reparto_service.services import sse
 from tests.factories import (
+    enrol,
     make_assignment,
     make_assignment_process,
     make_group_subject,
@@ -536,9 +537,10 @@ def test_stream_404s_on_a_missing_process(client: TestClient) -> None:
 
 
 def test_stream_refuses_an_audience_upgrade(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = make_assignment_process(session)
+    enrol(session, process, reader)
     resp = reader_client.get(f"{PREFIX}/{process.id}/events?audience=department_head")
     assert resp.status_code == 403
 

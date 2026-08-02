@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlmodel import Session, col, select
 
@@ -193,9 +194,10 @@ def test_preview_plan_not_reconcilable_400(
 
 
 def test_preview_forbidden_for_reader(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process, plan, _subject, _activity = _setup(session)
+    factories.enrol(session, process, reader)
     _set_plan_status(session, plan, TeachingPlanStatus.STALE)
     resp = reader_client.post(_preview_url(process.id))
     assert resp.status_code == 403
@@ -295,9 +297,10 @@ def test_reconcile_final_process_400(client: TestClient, session: Session) -> No
 
 
 def test_reconcile_forbidden_for_reader(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process, plan, _subject, _activity = _setup(session)
+    factories.enrol(session, process, reader)
     _set_plan_status(session, plan, TeachingPlanStatus.STALE)
     resp = reader_client.post(_reconcile_url(process.id), json=_body(0))
     assert resp.status_code == 403

@@ -133,6 +133,13 @@ the same, and a `WRITER` may mutate only records that identify them as the owner
 — their own profile, their own direct choice, their own turn. Only the
 framework's `/health`, `/meta` and `/ping` endpoints sit outside the floor.
 
+Reads are scoped to the caller's own departments: a `READER` or `WRITER` sees
+the schools, departments, processes and colleagues of the departments they
+participate in, and nothing else — an out-of-scope row answers `404`, never
+`403`. `ADMIN` and `SUPERADMIN` see the whole deployment. Membership is derived
+from participation rather than stored, so it follows a teacher automatically;
+academic years and classroom stages stay deployment-wide.
+
 `Department.department_head_user_id` records who heads a department for
 attribution and UI defaults; it grants no permission. Authorization is always
 the caller's own role. Because the field is read as a statement of fact, it is

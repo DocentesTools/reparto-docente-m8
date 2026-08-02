@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
@@ -183,9 +184,10 @@ def test_list_versions_missing_process_404(
 
 
 def test_reader_cannot_create_version(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
 
     resp = reader_client.post(
         f"/reparto/assignment-processes/{process.id}/versions",

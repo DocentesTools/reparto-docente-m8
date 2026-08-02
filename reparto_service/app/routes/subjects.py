@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep
+from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
 from reparto_service.controllers.subjects import SubjectController
 from reparto_service.db_models.subjects import (
     SubjectCreate,
@@ -18,6 +18,10 @@ from reparto_service.db_models.subjects import (
 router = APIRouter(
     prefix="/assignment-processes/{process_id}/subjects",
     tags=["subjects"],
+    # Read scope (plan §21.4): every route under this process — read and
+    # mutation alike — is refused with 404 when the process lies outside the
+    # caller's departments.
+    dependencies=[Depends(require_visible_process)],
 )
 
 

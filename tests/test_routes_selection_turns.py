@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
@@ -264,8 +265,11 @@ def test_skip_rejects_finished_turn(client: TestClient, session: Session) -> Non
     assert "pending or active" in resp.json()["detail"]
 
 
-def test_override_requires_writer(reader_client: TestClient, session: Session) -> None:
+def test_override_requires_writer(
+    reader_client: TestClient, session: Session, reader: UserModel
+) -> None:
     process, meeting = _open_meeting(session)
+    factories.enrol(session, process, reader)
     teacher = _teacher(session, process, "A", 0)
     turn = factories.make_selection_turn(session, meeting, teacher)
 

@@ -7,7 +7,12 @@ from typing import Optional
 
 from fastapi import APIRouter
 
-from reparto_service.app.deps import CurrentUser, SessionDep, UserRoleLookupDep
+from reparto_service.app.deps import (
+    CurrentReader,
+    CurrentUser,
+    SessionDep,
+    UserRoleLookupDep,
+)
 from reparto_service.controllers.departments import DepartmentController
 from reparto_service.db_models.departments import (
     DepartmentCreate,
@@ -22,12 +27,13 @@ router = APIRouter(prefix="/departments", tags=["departments"])
 @router.get("/", response_model=DepartmentsPublic)
 def list_departments(
     session: SessionDep,
+    current_user: CurrentReader,
     school_id: Optional[uuid.UUID] = None,
     skip: int = 0,
     limit: int = 100,
 ) -> DepartmentsPublic:
     return DepartmentController.list_departments(
-        session, school_id=school_id, skip=skip, limit=limit
+        session, current_user, school_id=school_id, skip=skip, limit=limit
     )
 
 
@@ -43,8 +49,10 @@ def create_department(
 
 
 @router.get("/{department_id}", response_model=DepartmentPublic)
-def get_department(session: SessionDep, department_id: uuid.UUID) -> DepartmentPublic:
-    return DepartmentController.get_department(session, department_id)
+def get_department(
+    session: SessionDep, current_user: CurrentReader, department_id: uuid.UUID
+) -> DepartmentPublic:
+    return DepartmentController.get_department(session, current_user, department_id)
 
 
 @router.patch("/{department_id}", response_model=DepartmentPublic)

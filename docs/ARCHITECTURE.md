@@ -606,9 +606,43 @@ that endpoint on superuser, so naming *somebody else* as head is in practice a
 field is always allowed — a department whose head has left must not be stranded
 by the check.
 
+### 9.5.1 Read scoping
+
+`READER` and `WRITER` see only the departments they belong to; `ADMIN` and
+`SUPERADMIN` see the whole deployment (`services/read_scope.py`).
+
+The open question was what a *tenant* is here. This service has no tenant column
+of its own and the token's `tenant_id` is not populated in this deployment, so
+either would have meant inventing data. What the domain already knows is
+**participation**: a `TeacherProfile` linked to an auth user, joined to the
+`ProcessTeacher` rows placing that teacher in a process, which belongs to
+exactly one department of one school. Membership is therefore derived, never
+stored — it widens the moment a teacher is added to a process in a second
+department and narrows when that participation is removed, with no second place
+to keep in sync.
+
+Membership is by **department**, not by process, so last year's process of the
+same department stays readable — which is what the previous-year comparison
+needs. Three consequences are deliberate:
+
+* a `READER`/`WRITER` with no linked teacher profile sees nothing: empty lists
+  and `404` under every process. "Authenticated" has never meant "belongs here";
+* an out-of-scope row answers `404`, not `403`. A `403` confirms the row exists,
+  which is exactly what a caller outside the tenant must not learn;
+* academic years and classroom stages stay unscoped — a calendar and a grade
+  vocabulary, deployment-wide reference data every scoped view needs to render.
+
+The gate is mounted as a router dependency on every router nested under
+`/assignment-processes/{process_id}/…`, for the same reason the reader floor is
+mounted on the aggregator: a resource added later is scoped by construction
+rather than by memory. The top-level process, school, department and
+teacher-profile lists filter in their controllers; teacher profiles resolve to
+"colleagues in my departments, plus my own profile", the last clause so that the
+record a teacher may *edit* is always a record they may *read*.
+
 `tests/test_authorization_boundaries.py` sweeps the generated OpenAPI document
 rather than a hand-kept path list, so a route added tomorrow is swept the day it
-is added.
+is added; `tests/test_read_scope.py` pins the scoping decision.
 
 ### 9.6 Role-projected read models and SSE
 
@@ -683,10 +717,10 @@ extension point already in place.
 * **Decimal hour columns** — `HoursNumeric` exists but no model uses it yet; hour
   columns remain `float` and are lifted to `Decimal` in the services (§8.2).
 * **Authorization hardening** — the read floor, the `WRITER`-owns-its-own-records
-  rule, the `ADMIN`/`SUPERADMIN` department head and the issuer-checked
-  `department_head_user_id` are all in place (§9.5). Still open: per-tenant read
-  scoping, and migration of the mutation guards onto the SDK-provided role
-  dependencies.
+  rule, the `ADMIN`/`SUPERADMIN` department head, the issuer-checked
+  `department_head_user_id` and per-department read scoping are all in place
+  (§9.5, §9.5.1). Still open: migration of the mutation guards onto the
+  SDK-provided role dependencies.
 * **Destructive migration generation** — the new schema's migration is produced by
   the Compose bootstrap from these models and verified against a clean database
   (§3.1, §3.2).

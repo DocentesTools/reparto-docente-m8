@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep
+from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
 from reparto_service.controllers.meeting_sessions import MeetingSessionController
 from reparto_service.db_models.meeting_sessions import (
     MeetingSessionCreate,
@@ -18,6 +18,10 @@ from reparto_service.db_models.meeting_sessions import (
 router = APIRouter(
     prefix="/assignment-processes/{process_id}/meeting-sessions",
     tags=["meeting-sessions"],
+    # Read scope (plan §21.4): every route under this process — read and
+    # mutation alike — is refused with 404 when the process lies outside the
+    # caller's departments.
+    dependencies=[Depends(require_visible_process)],
 )
 
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import uuid
 
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlmodel import Session, col, select
 
@@ -127,9 +128,10 @@ def test_preview_does_not_mutate(client: TestClient, session: Session) -> None:
 
 
 def test_preview_forbidden_for_reader(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process, _plan, _subject, _activity = _setup(session)
+    factories.enrol(session, process, reader)
     resp = reader_client.post(_preview_url(process.id))
     assert resp.status_code == 403
 
@@ -537,8 +539,9 @@ def test_generate_final_process_400(client: TestClient, session: Session) -> Non
 
 
 def test_generate_forbidden_for_reader(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process, _plan, _subject, _activity = _setup(session)
+    factories.enrol(session, process, reader)
     resp = reader_client.post(_generate_url(process.id))
     assert resp.status_code == 403

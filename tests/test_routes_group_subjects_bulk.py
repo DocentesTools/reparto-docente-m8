@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
@@ -200,9 +201,10 @@ def test_bulk_preview_subject_not_in_process_404(
 
 
 def test_bulk_preview_forbidden_for_reader(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
     subject = factories.make_subject(session, process)
     resp = reader_client.post(
         _preview_url(process.id),
@@ -390,9 +392,10 @@ def test_bulk_apply_subject_not_in_process_404(
 
 
 def test_bulk_apply_forbidden_for_reader(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
     subject = factories.make_subject(session, process)
     resp = reader_client.post(
         _apply_url(process.id),

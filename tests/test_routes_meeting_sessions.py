@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
@@ -163,9 +164,10 @@ def test_create_paused_session_sets_pause_timestamp(
 
 
 def test_reader_can_list_and_get_sessions(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
     meeting_session = factories.make_meeting_session(session, process)
     resp = reader_client.get(
         f"/reparto/assignment-processes/{process.id}/meeting-sessions/"
@@ -181,9 +183,10 @@ def test_reader_can_list_and_get_sessions(
 
 
 def test_reader_cannot_create_session(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
     resp = reader_client.post(
         f"/reparto/assignment-processes/{process.id}/meeting-sessions/",
         json=_session_payload(process),

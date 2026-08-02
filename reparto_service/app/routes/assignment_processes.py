@@ -17,15 +17,15 @@ from typing import Optional
 
 from fastapi import APIRouter
 
-from reparto_service.app.deps import CurrentUser, SessionDep
+from reparto_service.app.deps import CurrentReader, CurrentUser, SessionDep
 from reparto_service.controllers.assignment_processes import (
     AssignmentProcessController,
 )
 from reparto_service.controllers.dashboard import DashboardController
 from reparto_service.db_models.assignment_processes import (
     AssignmentProcessCreate,
-    AssignmentProcessPublic,
     AssignmentProcessesPublic,
+    AssignmentProcessPublic,
     AssignmentProcessUpdate,
     ProcessCopyRequest,
     ProcessReopenRequest,
@@ -36,6 +36,7 @@ from reparto_service.schemas.dashboard import (
     ProcessSummary,
     TeacherLanSummary,
 )
+from reparto_service.services.read_scope import ensure_process_visible
 
 router = APIRouter(prefix="/assignment-processes", tags=["assignment-processes"])
 
@@ -43,12 +44,13 @@ router = APIRouter(prefix="/assignment-processes", tags=["assignment-processes"]
 @router.get("/", response_model=AssignmentProcessesPublic)
 def list_processes(
     session: SessionDep,
+    current_user: CurrentReader,
     academic_year_id: Optional[uuid.UUID] = None,
     skip: int = 0,
     limit: int = 100,
 ) -> AssignmentProcessesPublic:
     return AssignmentProcessController.list_processes(
-        session, academic_year_id=academic_year_id, skip=skip, limit=limit
+        session, current_user, academic_year_id=academic_year_id, skip=skip, limit=limit
     )
 
 
@@ -63,7 +65,10 @@ def create_process(
 
 
 @router.get("/{process_id}", response_model=AssignmentProcessPublic)
-def get_process(session: SessionDep, process_id: uuid.UUID) -> AssignmentProcessPublic:
+def get_process(
+    session: SessionDep, current_user: CurrentReader, process_id: uuid.UUID
+) -> AssignmentProcessPublic:
+    ensure_process_visible(session, current_user, process_id)
     return AssignmentProcessController.get_process(session, process_id)
 
 
@@ -130,14 +135,18 @@ def copy_from_process(
 
 
 @router.get("/{process_id}/summary", response_model=ProcessSummary)
-def get_process_summary(session: SessionDep, process_id: uuid.UUID) -> ProcessSummary:
+def get_process_summary(
+    session: SessionDep, current_user: CurrentReader, process_id: uuid.UUID
+) -> ProcessSummary:
+    ensure_process_visible(session, current_user, process_id)
     return DashboardController.get_summary(session, process_id)
 
 
 @router.get("/{process_id}/dashboard", response_model=ProcessDashboard)
 def get_process_dashboard(
-    session: SessionDep, process_id: uuid.UUID
+    session: SessionDep, current_user: CurrentReader, process_id: uuid.UUID
 ) -> ProcessDashboard:
+    ensure_process_visible(session, current_user, process_id)
     return DashboardController.get_dashboard(session, process_id)
 
 
@@ -147,6 +156,7 @@ def get_teacher_lan_summary(
     current_user: CurrentUser,
     process_id: uuid.UUID,
 ) -> TeacherLanSummary:
+    ensure_process_visible(session, current_user, process_id)
     return DashboardController.get_teacher_lan_summary(
         session, process_id, current_user
     )

@@ -12,6 +12,7 @@ re-validates on the fresh, no-positive-cache user, which is what makes a
 role-sensitive check observe a revocation committed after the last cache fill.
 """
 
+import uuid
 from functools import partial
 from typing import Annotated
 
@@ -20,6 +21,8 @@ from fastapi import Depends, Request
 from fastapi_m8 import AuthDeps, DbEngine, build_auth_deps, create_db_engine
 from sqlmodel import Session
 
+from reparto_service.db_models.assignment_processes import AssignmentProcess
+from reparto_service.services.read_scope import ensure_process_visible
 from reparto_service.services.user_directory import (
     IssuerUserDirectory,
     UserRoleLookup,
@@ -64,3 +67,15 @@ def get_user_role_lookup(request: Request) -> UserRoleLookup:
 
 
 UserRoleLookupDep = Annotated[UserRoleLookup, Depends(get_user_role_lookup)]
+
+
+def require_visible_process(
+    session: SessionDep, current_user: CurrentReader, process_id: uuid.UUID
+) -> AssignmentProcess:
+    """Read-scope gate for every router nested under a process (plan §21.4).
+
+    Mounted on the router rather than called per handler, for the same reason
+    the reader floor is: a resource added later inherits the scope instead of
+    depending on somebody remembering it.
+    """
+    return ensure_process_visible(session, current_user, process_id)

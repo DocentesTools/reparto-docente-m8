@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import uuid
 
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
@@ -486,9 +487,10 @@ def test_import_final_process_400(client: TestClient, session: Session) -> None:
 
 
 def test_import_forbidden_for_reader(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
     factories.make_teaching_plan(session, process)
     assert (
         reader_client.post(

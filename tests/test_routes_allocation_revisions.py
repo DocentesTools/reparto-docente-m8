@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlmodel import Session, col, select
 
@@ -175,9 +176,10 @@ def test_create_revision_blocked_on_final_process(
 
 
 def test_create_revision_forbidden_for_reader(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
     resp = reader_client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
         json={"allocated_group_weekly_hours": 120, "reason": "Reader"},

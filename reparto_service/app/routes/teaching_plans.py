@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep
+from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
 from reparto_service.controllers.teaching_activities import TeachingActivityController
 from reparto_service.controllers.teaching_plans import TeachingPlanController
 from reparto_service.db_models.teaching_activities import MainMaterializationResult
@@ -26,6 +26,10 @@ from reparto_service.schemas.planning import PlanBalance, PlanValidationReport
 router = APIRouter(
     prefix="/assignment-processes/{process_id}/teaching-plan",
     tags=["teaching-plan"],
+    # Read scope (plan §21.4): every route under this process — read and
+    # mutation alike — is refused with 404 when the process lies outside the
+    # caller's departments.
+    dependencies=[Depends(require_visible_process)],
 )
 
 

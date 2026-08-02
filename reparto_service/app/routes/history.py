@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep
+from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
 from reparto_service.controllers.history import HistoryController
 from reparto_service.controllers.process_versions import ProcessVersionController
 from reparto_service.db_models.assignment_processes import AssignmentProcessPublic
@@ -26,6 +26,10 @@ from reparto_service.db_models.process_versions import (
 router = APIRouter(
     prefix="/assignment-processes/{process_id}",
     tags=["history"],
+    # Read scope (plan §21.4): every route under this process — read and
+    # mutation alike — is refused with 404 when the process lies outside the
+    # caller's departments.
+    dependencies=[Depends(require_visible_process)],
 )
 
 

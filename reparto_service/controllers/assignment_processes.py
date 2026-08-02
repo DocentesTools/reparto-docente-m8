@@ -25,18 +25,17 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, status
-from sqlmodel import Session, func, select
-
 from auth_sdk_m8.schemas.user import UserModel
+from fastapi import HTTPException, status
+from sqlmodel import Session, col, func, select
 
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.academic_years import AcademicYear
 from reparto_service.db_models.assignment_processes import (
     AssignmentProcess,
     AssignmentProcessCreate,
-    AssignmentProcessPublic,
     AssignmentProcessesPublic,
+    AssignmentProcessPublic,
     AssignmentProcessUpdate,
     ProcessCopyRequest,
     ProcessReopenRequest,
@@ -65,6 +64,7 @@ from reparto_service.services.process_lifecycle import (
     is_closing_transition,
     is_reopen_edge,
 )
+from reparto_service.services.read_scope import UNRESTRICTED, visible_department_ids
 
 
 class AssignmentProcessController(DomainController):
@@ -73,12 +73,21 @@ class AssignmentProcessController(DomainController):
     @staticmethod
     def list_processes(
         session: Session,
+        current_user: UserModel,
         academic_year_id: uuid.UUID | None = None,
         skip: int = 0,
         limit: int = 100,
     ) -> AssignmentProcessesPublic:
         count_stmt = select(func.count()).select_from(AssignmentProcess)
         list_stmt = select(AssignmentProcess)
+        departments = visible_department_ids(session, current_user)
+        if departments is not UNRESTRICTED:
+            count_stmt = count_stmt.where(
+                col(AssignmentProcess.department_id).in_(departments)
+            )
+            list_stmt = list_stmt.where(
+                col(AssignmentProcess.department_id).in_(departments)
+            )
         if academic_year_id is not None:
             count_stmt = count_stmt.where(
                 AssignmentProcess.academic_year_id == academic_year_id

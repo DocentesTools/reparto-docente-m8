@@ -6,6 +6,7 @@ import uuid
 
 import pytest
 from fastapi import HTTPException
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
@@ -372,8 +373,11 @@ def test_sync_requires_materialized_activity(
     assert client.post(_preview_url(process.id, cell.id)).status_code == 409
 
 
-def test_sync_requires_writer(reader_client: TestClient, session: Session) -> None:
+def test_sync_requires_writer(
+    reader_client: TestClient, session: Session, reader: UserModel
+) -> None:
     process, _plan, _subject, cell, _activity = _setup(session)
+    factories.enrol(session, process, reader)
     assert reader_client.post(_preview_url(process.id, cell.id)).status_code == 403
 
 

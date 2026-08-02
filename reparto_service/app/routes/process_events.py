@@ -19,10 +19,10 @@ from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 
 from reparto_service.app.deps import CurrentUser, SessionDep
-from reparto_service.controllers.base import DomainController
 from reparto_service.enums import SseAudience, SseEventType
 from reparto_service.schemas.events import DomainEvent
 from reparto_service.services import sse
+from reparto_service.services.read_scope import ensure_process_visible
 
 router = APIRouter(prefix="/assignment-processes", tags=["assignment-processes"])
 
@@ -50,7 +50,7 @@ async def stream_process_events(
     The stream opens with a ``stream.opened`` frame carrying the current plan
     readiness, so a client needs no separate fetch to render its initial state.
     """
-    DomainController.get_process_or_404(session, process_id)
+    ensure_process_visible(session, current_user, process_id)
     resolved = sse.resolve_audience(current_user, audience)
     participant_id = sse.viewer_participant_id(session, process_id, current_user)
     readiness, selection_blocked = sse.current_readiness(session, process_id)

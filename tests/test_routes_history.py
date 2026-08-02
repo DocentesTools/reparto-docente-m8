@@ -14,6 +14,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlmodel import Session, col, select
 
@@ -365,9 +366,10 @@ def test_final_json_export_archives_process(
 
 
 def test_reader_cannot_create_artifact(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
 
     resp = reader_client.post(
         f"/reparto/assignment-processes/{process.id}/exports",
@@ -515,8 +517,11 @@ def test_restore_rejects_invalid_content(client: TestClient, session: Session) -
     assert missing_section.status_code == 400
 
 
-def test_reader_cannot_restore(reader_client: TestClient, session: Session) -> None:
+def test_reader_cannot_restore(
+    reader_client: TestClient, session: Session, reader: UserModel
+) -> None:
     target = factories.make_assignment_process(session)
+    factories.enrol(session, target, reader)
 
     resp = reader_client.post(
         f"/reparto/assignment-processes/{target.id}/restore-draft",

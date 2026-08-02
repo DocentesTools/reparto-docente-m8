@@ -113,9 +113,10 @@ def test_create_plan_blocked_on_final_process(
 
 
 def test_create_plan_forbidden_for_reader(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
     resp = reader_client.post(f"{_BASE}/{process.id}/teaching-plan")
     assert resp.status_code == 403
 
@@ -201,8 +202,10 @@ def test_lock_plan_respects_mutability_and_writer_gate(
     reader_client: TestClient,
     session: Session,
     current_user: UserModel,
+    reader: UserModel,
 ) -> None:
     process, _plan = _lockable_plan(session)
+    factories.enrol(session, process, reader)
     assert (
         reader_client.post(f"{_BASE}/{process.id}/teaching-plan/lock").status_code
         == 403
@@ -239,12 +242,14 @@ def test_unlock_plan_rejects_invalid_targets_and_reader(
     reader_client: TestClient,
     session: Session,
     current_user: UserModel,
+    reader: UserModel,
 ) -> None:
     missing = factories.make_assignment_process(session)
     with pytest.raises(HTTPException) as error:
         TeachingPlanController.unlock_plan(session, missing.id, current_user)
     assert error.value.status_code == 404
     process, _plan = _lockable_plan(session)
+    factories.enrol(session, process, reader)
     with pytest.raises(HTTPException) as error:
         TeachingPlanController.unlock_plan(session, process.id, current_user)
     assert error.value.status_code == 409
@@ -349,9 +354,10 @@ def test_get_summary_process_not_found(client: TestClient) -> None:
 
 
 def test_get_summary_reader_allowed(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
     factories.make_teaching_plan(session, process)
     resp = reader_client.get(f"{_BASE}/{process.id}/teaching-plan/summary")
     assert resp.status_code == 200
@@ -390,9 +396,10 @@ def test_get_validations_process_not_found(client: TestClient) -> None:
 
 
 def test_get_validations_reader_allowed(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
     factories.make_teaching_plan(session, process)
     resp = reader_client.get(f"{_BASE}/{process.id}/teaching-plan/validations")
     assert resp.status_code == 200

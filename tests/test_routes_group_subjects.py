@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
@@ -308,9 +309,10 @@ def test_retire_group_subject_requires_draft_process(
 
 
 def test_retire_group_subject_requires_writer(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
     group = factories.make_teaching_group(session, process)
     subject = factories.make_subject(session, process)
     cell = factories.make_group_subject(session, process, group, subject)
@@ -319,9 +321,10 @@ def test_retire_group_subject_requires_writer(
 
 
 def test_create_group_subject_forbidden_for_reader(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
     group = factories.make_teaching_group(session, process)
     subject = factories.make_subject(session, process)
     resp = reader_client.post(

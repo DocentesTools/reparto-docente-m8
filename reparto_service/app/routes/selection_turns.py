@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep
+from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
 from reparto_service.controllers.selection_turns import SelectionTurnController
 from reparto_service.db_models.selection_turns import (
     SelectionTurnAction,
@@ -20,6 +20,10 @@ router = APIRouter(
         "/assignment-processes/{process_id}/meeting-sessions/{meeting_session_id}/turns"
     ),
     tags=["selection-turns"],
+    # Read scope (plan §21.4): every route under this process — read and
+    # mutation alike — is refused with 404 when the process lies outside the
+    # caller's departments.
+    dependencies=[Depends(require_visible_process)],
 )
 
 
