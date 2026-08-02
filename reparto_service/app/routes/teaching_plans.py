@@ -84,7 +84,7 @@ def create_teaching_plan(
     current_user: CurrentUser,
     process_id: uuid.UUID,
 ) -> TeachingPlanPublic:
-    TeachingPlanController.require_process_writer(session, current_user, process_id)
+    TeachingPlanController.require_department_head(current_user)
     return TeachingPlanController.create_plan(session, process_id, current_user)
 
 
@@ -94,7 +94,7 @@ def lock_teaching_plan(
     current_user: CurrentUser,
     process_id: uuid.UUID,
 ) -> TeachingPlanPublic:
-    TeachingPlanController.require_process_writer(session, current_user, process_id)
+    TeachingPlanController.require_department_head(current_user)
     return TeachingPlanController.lock_plan(session, process_id, current_user)
 
 
@@ -104,7 +104,7 @@ def unlock_teaching_plan(
     current_user: CurrentUser,
     process_id: uuid.UUID,
 ) -> TeachingPlanPublic:
-    TeachingPlanController.require_process_writer(session, current_user, process_id)
+    TeachingPlanController.require_department_head(current_user)
     return TeachingPlanController.unlock_plan(session, process_id, current_user)
 
 
@@ -114,7 +114,7 @@ def materialize_main_activities(
     current_user: CurrentUser,
     process_id: uuid.UUID,
 ) -> MainMaterializationResult:
-    TeachingActivityController.require_process_writer(session, current_user, process_id)
+    TeachingActivityController.require_department_head(current_user)
     return TeachingActivityController.materialize_main(
         session, process_id, current_user
     )

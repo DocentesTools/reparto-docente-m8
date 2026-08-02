@@ -53,9 +53,7 @@ def create_allocation_revision(
     process_id: uuid.UUID,
     revision_in: DepartmentHourAllocationRevisionCreate,
 ) -> DepartmentHourAllocationRevisionPublic:
-    DepartmentHourAllocationRevisionController.require_process_writer(
-        session, current_user, process_id
-    )
+    DepartmentHourAllocationRevisionController.require_department_head(current_user)
     return DepartmentHourAllocationRevisionController.create_revision(
         session, process_id, current_user, revision_in
     )

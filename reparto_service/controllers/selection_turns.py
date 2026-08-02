@@ -34,6 +34,29 @@ class SelectionTurnController(DomainController):
     """State transitions for turn-order meeting sessions."""
 
     @staticmethod
+    def require_turn_actor(
+        session: Session,
+        current_user: UserModel,
+        process_id: uuid.UUID,
+        meeting_session_id: uuid.UUID,
+        turn_id: uuid.UUID,
+    ) -> None:
+        """Authorize a self-service turn action (plan §21.3).
+
+        ``start``/``complete``/``skip`` are the three actions a participant
+        performs on their *own* turn, so a department head may drive any turn
+        (they run the meeting) while anyone else must hold ``WRITER`` and own
+        the turn. Forcing somebody else's turn has its own route —
+        ``override`` — which stays department-head-only precisely so that
+        "acting for another participant" is always an explicit, reasoned and
+        separately audited act rather than a side effect of this one.
+        """
+        turn = SelectionTurnController._get_or_404(session, meeting_session_id, turn_id)
+        SelectionTurnController.require_own_process_teacher(
+            session, current_user, process_id, turn.process_teacher_id
+        )
+
+    @staticmethod
     def list_turns(
         session: Session, process_id: uuid.UUID, meeting_session_id: uuid.UUID
     ) -> SelectionTurnsPublic:

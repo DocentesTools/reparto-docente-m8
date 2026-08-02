@@ -45,7 +45,7 @@ def preview_requirement_generation(
     current_user: CurrentUser,
     process_id: uuid.UUID,
 ) -> RequirementGenerationPreview:
-    HourRequirementController.require_process_writer(session, current_user, process_id)
+    HourRequirementController.require_department_head(current_user)
     return HourRequirementController.generation_preview(session, process_id)
 
 
@@ -55,7 +55,7 @@ def generate_requirements(
     current_user: CurrentUser,
     process_id: uuid.UUID,
 ) -> RequirementGenerationResult:
-    HourRequirementController.require_process_writer(session, current_user, process_id)
+    HourRequirementController.require_department_head(current_user)
     return HourRequirementController.generate(session, process_id, current_user)
 
 
@@ -65,7 +65,7 @@ def preview_requirement_reconciliation(
     current_user: CurrentUser,
     process_id: uuid.UUID,
 ) -> RequirementReconciliationPreview:
-    HourRequirementController.require_process_writer(session, current_user, process_id)
+    HourRequirementController.require_department_head(current_user)
     return HourRequirementController.reconciliation_preview(session, process_id)
 
 
@@ -76,7 +76,7 @@ def reconcile_requirements(
     process_id: uuid.UUID,
     request: RequirementReconcileRequest,
 ) -> RequirementReconciliationResult:
-    HourRequirementController.require_process_writer(session, current_user, process_id)
+    HourRequirementController.require_department_head(current_user)
     return HourRequirementController.reconcile(
         session, process_id, current_user, request
     )

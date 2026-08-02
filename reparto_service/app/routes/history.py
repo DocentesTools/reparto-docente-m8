@@ -41,7 +41,7 @@ def create_version(
     process_id: uuid.UUID,
     payload: ProcessVersionCreate,
 ) -> ProcessVersionPublic:
-    ProcessVersionController.require_process_writer(session, current_user, process_id)
+    ProcessVersionController.require_department_head(current_user)
     return ProcessVersionController.create_version(
         session, process_id, current_user, payload
     )
@@ -81,7 +81,7 @@ def create_artifact(
     process_id: uuid.UUID,
     payload: ExportArtifactCreate,
 ) -> ExportArtifactPublic:
-    HistoryController.require_process_writer(session, current_user, process_id)
+    HistoryController.require_department_head(current_user)
     return HistoryController.create_artifact(session, process_id, current_user, payload)
 
 
@@ -92,7 +92,7 @@ def restore_backup_to_draft(
     process_id: uuid.UUID,
     payload: ExportBackupRestoreRequest,
 ) -> AssignmentProcessPublic:
-    HistoryController.require_process_writer(session, current_user, process_id)
+    HistoryController.require_department_head(current_user)
     return HistoryController.restore_backup_to_draft(
         session, process_id, current_user, payload
     )

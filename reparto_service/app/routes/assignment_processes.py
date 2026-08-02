@@ -58,7 +58,7 @@ def create_process(
     current_user: CurrentUser,
     process_in: AssignmentProcessCreate,
 ) -> AssignmentProcessPublic:
-    AssignmentProcessController.require_writer(current_user)
+    AssignmentProcessController.require_department_head(current_user)
     return AssignmentProcessController.create_process(session, current_user, process_in)
 
 
@@ -74,9 +74,7 @@ def update_process(
     process_id: uuid.UUID,
     process_in: AssignmentProcessUpdate,
 ) -> AssignmentProcessPublic:
-    AssignmentProcessController.require_process_writer(
-        session, current_user, process_id
-    )
+    AssignmentProcessController.require_department_head(current_user)
     return AssignmentProcessController.update_process(
         session, process_id, process_in, current_user
     )
@@ -92,9 +90,7 @@ def transition_process(
     process_id: uuid.UUID,
     request: ProcessTransitionRequest,
 ) -> AssignmentProcessPublic:
-    AssignmentProcessController.require_process_writer(
-        session, current_user, process_id
-    )
+    AssignmentProcessController.require_department_head(current_user)
     return AssignmentProcessController.transition_process(
         session, process_id, current_user, request
     )
@@ -107,9 +103,7 @@ def reopen_process(
     process_id: uuid.UUID,
     request: ProcessReopenRequest,
 ) -> AssignmentProcessPublic:
-    AssignmentProcessController.require_process_writer(
-        session, current_user, process_id
-    )
+    AssignmentProcessController.require_department_head(current_user)
     return AssignmentProcessController.reopen_process(
         session, process_id, current_user, request
     )
@@ -126,9 +120,7 @@ def copy_from_process(
     source_process_id: uuid.UUID,
     request: ProcessCopyRequest,
 ) -> AssignmentProcessPublic:
-    AssignmentProcessController.require_process_writer(
-        session, current_user, process_id
-    )
+    AssignmentProcessController.require_department_head(current_user)
     return AssignmentProcessController.copy_from_process(
         session, process_id, source_process_id, request, current_user
     )

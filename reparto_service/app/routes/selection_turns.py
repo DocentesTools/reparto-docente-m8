@@ -39,7 +39,7 @@ def initialize_turns(
     process_id: uuid.UUID,
     meeting_session_id: uuid.UUID,
 ) -> SelectionTurnsPublic:
-    SelectionTurnController.require_process_writer(session, current_user, process_id)
+    SelectionTurnController.require_department_head(current_user)
     return SelectionTurnController.initialize_turns(
         session, process_id, meeting_session_id
     )
@@ -53,7 +53,9 @@ def start_turn(
     meeting_session_id: uuid.UUID,
     turn_id: uuid.UUID,
 ) -> SelectionTurnPublic:
-    SelectionTurnController.require_process_writer(session, current_user, process_id)
+    SelectionTurnController.require_turn_actor(
+        session, current_user, process_id, meeting_session_id, turn_id
+    )
     return SelectionTurnController.start_turn(
         session, process_id, meeting_session_id, turn_id, current_user
     )
@@ -68,7 +70,9 @@ def complete_turn(
     turn_id: uuid.UUID,
     payload: SelectionTurnComplete,
 ) -> SelectionTurnPublic:
-    SelectionTurnController.require_process_writer(session, current_user, process_id)
+    SelectionTurnController.require_turn_actor(
+        session, current_user, process_id, meeting_session_id, turn_id
+    )
     return SelectionTurnController.complete_turn(
         session, process_id, meeting_session_id, turn_id, current_user, payload
     )
@@ -83,7 +87,9 @@ def skip_turn(
     turn_id: uuid.UUID,
     payload: SelectionTurnAction,
 ) -> SelectionTurnPublic:
-    SelectionTurnController.require_process_writer(session, current_user, process_id)
+    SelectionTurnController.require_turn_actor(
+        session, current_user, process_id, meeting_session_id, turn_id
+    )
     return SelectionTurnController.skip_turn(
         session, process_id, meeting_session_id, turn_id, current_user, payload
     )
@@ -98,7 +104,7 @@ def override_turn(
     turn_id: uuid.UUID,
     payload: SelectionTurnAction,
 ) -> SelectionTurnPublic:
-    SelectionTurnController.require_process_writer(session, current_user, process_id)
+    SelectionTurnController.require_department_head(current_user)
     return SelectionTurnController.override_turn(
         session, process_id, meeting_session_id, turn_id, current_user, payload
     )

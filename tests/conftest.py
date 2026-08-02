@@ -171,7 +171,20 @@ def _make_user(
 
 @pytest.fixture
 def current_user() -> UserModel:
-    """Regular (writer role) authenticated user."""
+    """The acting department head (plan §21.2: ``ADMIN``).
+
+    Most suites drive the API as the person running the reparto, so this is the
+    default identity behind ``client``. It became ``ADMIN`` when §21.2 made
+    department-head authorization a role rather than a
+    ``department_head_user_id`` binding; ``writer_user`` covers the
+    below-the-bar cases.
+    """
+    return make_user("admin")
+
+
+@pytest.fixture
+def writer_user() -> UserModel:
+    """``WRITER``-role identity — own records only (§21.3)."""
     return make_user("writer")
 
 
@@ -224,8 +237,20 @@ def client(
     session: Session,
     current_user: UserModel,
 ) -> Generator[TestClient]:
-    """TestClient authenticated as a regular writer user."""
+    """TestClient authenticated as the acting department head (``ADMIN``)."""
     tc = _make_client(session, current_user)
+    with tc as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def writer_client(
+    session: Session,
+    writer_user: UserModel,
+) -> Generator[TestClient]:
+    """TestClient authenticated as a ``WRITER`` (own records only)."""
+    tc = _make_client(session, writer_user)
     with tc as c:
         yield c
     app.dependency_overrides.clear()

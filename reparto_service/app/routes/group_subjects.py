@@ -48,7 +48,7 @@ def create_group_subject(
     process_id: uuid.UUID,
     group_subject_in: GroupSubjectCreate,
 ) -> GroupSubjectPublic:
-    GroupSubjectController.require_process_writer(session, current_user, process_id)
+    GroupSubjectController.require_department_head(current_user)
     return GroupSubjectController.create_group_subject(
         session, process_id, group_subject_in, current_user
     )
@@ -61,7 +61,7 @@ def bulk_preview_group_subjects(
     process_id: uuid.UUID,
     request: GroupSubjectBulkRequest,
 ) -> GroupSubjectBulkPreview:
-    GroupSubjectController.require_process_writer(session, current_user, process_id)
+    GroupSubjectController.require_department_head(current_user)
     return GroupSubjectController.bulk_preview(session, process_id, request)
 
 
@@ -72,7 +72,7 @@ def bulk_apply_group_subjects(
     process_id: uuid.UUID,
     request: GroupSubjectBulkApplyRequest,
 ) -> GroupSubjectBulkResult:
-    GroupSubjectController.require_process_writer(session, current_user, process_id)
+    GroupSubjectController.require_department_head(current_user)
     return GroupSubjectController.bulk_apply(session, process_id, request, current_user)
 
 
@@ -83,7 +83,7 @@ def preview_group_subject_sync(
     process_id: uuid.UUID,
     group_subject_id: uuid.UUID,
 ) -> MainActivitySyncPreview:
-    GroupSubjectController.require_process_writer(session, current_user, process_id)
+    GroupSubjectController.require_department_head(current_user)
     return GroupSubjectController.sync_preview(session, process_id, group_subject_id)
 
 
@@ -95,7 +95,7 @@ def apply_group_subject_sync(
     group_subject_id: uuid.UUID,
     request: MainActivitySyncApplyRequest,
 ) -> MainActivitySyncResult:
-    GroupSubjectController.require_process_writer(session, current_user, process_id)
+    GroupSubjectController.require_department_head(current_user)
     return GroupSubjectController.sync_apply(
         session, process_id, group_subject_id, request, current_user
     )
@@ -118,7 +118,7 @@ def update_group_subject(
     group_subject_id: uuid.UUID,
     group_subject_in: GroupSubjectUpdate,
 ) -> GroupSubjectPublic:
-    GroupSubjectController.require_process_writer(session, current_user, process_id)
+    GroupSubjectController.require_department_head(current_user)
     return GroupSubjectController.update_group_subject(
         session, process_id, group_subject_id, group_subject_in, current_user
     )
@@ -131,7 +131,7 @@ def retire_group_subject(
     process_id: uuid.UUID,
     group_subject_id: uuid.UUID,
 ) -> GroupSubjectPublic:
-    GroupSubjectController.require_process_writer(session, current_user, process_id)
+    GroupSubjectController.require_department_head(current_user)
     return GroupSubjectController.retire_group_subject(
         session, process_id, group_subject_id, current_user
     )

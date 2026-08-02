@@ -560,26 +560,39 @@ cache fill.
 
 `DomainController` centralises the checks layered on top of that floor:
 
-* `require_writer` — mutations require a writer-class role (`writer`, `admin`,
-  `superadmin`) or superuser;
-* `require_admin` — platform reference data;
-* `require_process_writer` — writer-class role, or the user bound as the
-  department's `department_head_user_id`;
+* `require_writer` — the floor for an **own-data** mutation (§21.3): editing
+  one's own profile, claiming a slot in one's own turn. Never sufficient by
+  itself for process or planning data;
+* `require_department_head` — `ADMIN` or `SUPERADMIN`, required for every
+  process and planning mutation;
+* `require_admin` — platform reference data (schools, academic years, classroom
+  stages, departments, teacher-profile lifecycle);
+* `require_own_process_teacher` / `require_own_teacher_profile` — the ownership
+  resolvers that turn "writer" into "writer, on their own record". A department
+  head passes them unconditionally; anybody else must be acting on the row
+  linked to their own auth id;
 * `ensure_process_mutable` — every child-resource write is refused when the parent
   process is `final` or `archived`, from one place.
 
 `auth_sdk_m8` enforces a canonical role/flag truth table
 (`USER < READER < WRITER < ADMIN < SUPERADMIN`, with `is_superuser` valid only
-alongside `SUPERADMIN`), and this service adds no roles of its own.
+alongside `SUPERADMIN`), and this service adds no roles of its own. Every role
+comparison above goes through the SDK's `has_minimum_role`; nothing inspects
+`is_superuser` separately, since the truth table already makes the flag
+equivalent to `role == SUPERADMIN` and a second check could only ever produce a
+second, divergent answer.
+
+**`Department.department_head_user_id` grants nothing.** It records *who* heads
+a department, for attribution, notifications and UI defaults. Authorization is
+the caller's own role and only that: a binding cannot be revoked by demoting the
+account it names, so it was never a safe credential. This is a deliberate
+behaviour change — an account bound as a department's head that does not hold
+`ADMIN` loses process-mutation rights it previously had, and existing bindings
+must be audited before this ships.
 
 `tests/test_authorization_boundaries.py` sweeps the generated OpenAPI document
 rather than a hand-kept path list, so a route added tomorrow is swept the day it
 is added.
-
-One hardening item remains known-open and is tracked as its own task:
-department-head authorization is still satisfied by the role-independent
-`department_head_user_id` binding rather than by `ADMIN`/`SUPERADMIN` alone
-(§11).
 
 ### 9.6 Role-projected read models and SSE
 
@@ -653,12 +666,11 @@ extension point already in place.
 
 * **Decimal hour columns** — `HoursNumeric` exists but no model uses it yet; hour
   columns remain `float` and are lifted to `Decimal` in the services (§8.2).
-* **Authorization hardening** — the minimum-role (`>= READER`) floor is now in
-  place on every route (§9.5). Still open: `WRITER` restricted to its own
-  records, department-head authorization narrowed to `ADMIN`/`SUPERADMIN` with
-  `department_head_user_id` demoted to attribution metadata, per-tenant read
-  scoping, and migration of the mutation guards onto the SDK-provided role
-  dependencies (§9.5).
+* **Authorization hardening** — the read floor, the `WRITER`-owns-its-own-records
+  rule and the `ADMIN`/`SUPERADMIN` department head are all in place (§9.5).
+  Still open: validating the role of a `department_head_user_id` assignment
+  target, per-tenant read scoping, and migration of the mutation guards onto the
+  SDK-provided role dependencies.
 * **Destructive migration generation** — the new schema's migration is produced by
   the Compose bootstrap from these models and verified against a clean database
   (§3.1, §3.2).

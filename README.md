@@ -127,8 +127,15 @@ Every endpoint in this table requires an authenticated caller holding at least
 the `READER` role — reads, exports and mutations alike. The floor is mounted
 once on the domain router aggregator, so an unauthenticated request is answered
 `401` and a `USER`-role request `403` before any handler runs; mutations then
-add their own writer/department-head check on top. Only the framework's
-`/health`, `/meta` and `/ping` endpoints sit outside it.
+add their own check on top: process and planning data requires the
+department-head role (`ADMIN` or `SUPERADMIN`), platform reference data requires
+the same, and a `WRITER` may mutate only records that identify them as the owner
+— their own profile, their own direct choice, their own turn. Only the
+framework's `/health`, `/meta` and `/ping` endpoints sit outside the floor.
+
+`Department.department_head_user_id` records who heads a department for
+attribution and UI defaults; it grants no permission. Authorization is always
+the caller's own role.
 
 | Area | Base path |
 | --- | --- |

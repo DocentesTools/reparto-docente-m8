@@ -44,13 +44,14 @@ async def stream_process_events(
 ) -> StreamingResponse:
     """Stream this process's domain events as SSE, projected to the viewer's tier.
 
-    Any authenticated caller may subscribe; what they *receive* is decided by
-    :func:`~reparto_service.services.sse.resolve_audience`, not by the request.
+    Any caller holding at least ``READER`` may subscribe; what they *receive* is
+    decided by :func:`~reparto_service.services.sse.resolve_audience`, not by
+    the request.
     The stream opens with a ``stream.opened`` frame carrying the current plan
     readiness, so a client needs no separate fetch to render its initial state.
     """
     DomainController.get_process_or_404(session, process_id)
-    resolved = sse.resolve_audience(session, process_id, current_user, audience)
+    resolved = sse.resolve_audience(current_user, audience)
     participant_id = sse.viewer_participant_id(session, process_id, current_user)
     readiness, selection_blocked = sse.current_readiness(session, process_id)
 

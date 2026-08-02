@@ -128,11 +128,11 @@ def test_evaluation_telemetry_is_bounded_and_contains_no_pii(
 
 
 def test_regular_writer_cannot_evaluate_or_read_witness(
-    client: TestClient, session: Session
+    writer_client: TestClient, session: Session
 ) -> None:
     process, _plan, _slots, _teachers = _feasible_setup(session)
-    assert client.post(_path(process.id, "evaluate")).status_code == 403
-    assert client.get(_path(process.id, "witness")).status_code == 403
+    assert writer_client.post(_path(process.id, "evaluate")).status_code == 403
+    assert writer_client.get(_path(process.id, "witness")).status_code == 403
 
 
 def test_evaluation_includes_fixed_assignments_in_complete_witness(

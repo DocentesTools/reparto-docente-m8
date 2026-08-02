@@ -124,27 +124,24 @@ def current_readiness(
 # ── Audience resolution (plan §11, §20.25) ────────────────────────────────────
 
 
-def granted_audience(
-    session: Session, process_id: uuid.UUID, current_user: UserModel
-) -> SseAudience:
-    """Return the highest tier ``current_user``'s role grants on this process.
+def granted_audience(current_user: UserModel) -> SseAudience:
+    """Return the highest tier ``current_user``'s role grants.
 
-    Anyone who may mutate the process — a platform writer/admin/superuser, or
-    the auth user bound as the department head — sees the full payload. Every
-    other authenticated caller is a teacher.
+    A department head — ``ADMIN`` or ``SUPERADMIN`` (§21.2) — sees the full
+    payload. Every other authenticated caller is a teacher. The stream tier is
+    deliberately derived from the same helper the mutation routes use, so a
+    caller can never watch a tier they could not act on.
     """
     from reparto_service.controllers.base import DomainController  # noqa: PLC0415
 
     try:
-        DomainController.require_process_writer(session, current_user, process_id)
+        DomainController.require_department_head(current_user)
     except HTTPException:
         return SseAudience.TEACHER
     return SseAudience.DEPARTMENT_HEAD
 
 
 def resolve_audience(
-    session: Session,
-    process_id: uuid.UUID,
     current_user: UserModel,
     requested: Optional[SseAudience] = None,
 ) -> SseAudience:
@@ -156,7 +153,7 @@ def resolve_audience(
     to a room. Asking for a *more* privileged tier is a 403: silently clamping a
     privilege request hides a misconfigured client.
     """
-    granted = granted_audience(session, process_id, current_user)
+    granted = granted_audience(current_user)
     if requested is None:
         return granted
     if _AUDIENCE_RANK[requested] < _AUDIENCE_RANK[granted]:

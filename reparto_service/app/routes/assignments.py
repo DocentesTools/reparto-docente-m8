@@ -37,7 +37,7 @@ def create_assignment(
     process_id: uuid.UUID,
     assignment_in: AssignmentCreate,
 ) -> AssignmentPublic:
-    AssignmentController.require_process_writer(session, current_user, process_id)
+    AssignmentController.require_department_head(current_user)
     return AssignmentController.create_assignment(
         session, process_id, current_user, assignment_in
     )
@@ -50,6 +50,10 @@ def create_direct_choice(
     process_id: uuid.UUID,
     choice: AssignmentDirectChoice,
 ) -> AssignmentPublic:
+    # Own-data mutation (plan §21.3): ``WRITER`` is the floor, and the
+    # controller binds the assignment to the caller's *own* participation row —
+    # there is no participant id in the payload to point somewhere else.
+    AssignmentController.require_writer(current_user)
     return AssignmentController.create_direct_choice(
         session, process_id, current_user, choice
     )
@@ -77,7 +81,7 @@ def update_assignment(
     assignment_id: uuid.UUID,
     assignment_in: AssignmentUpdate,
 ) -> AssignmentPublic:
-    AssignmentController.require_process_writer(session, current_user, process_id)
+    AssignmentController.require_department_head(current_user)
     return AssignmentController.update_assignment(
         session, process_id, assignment_id, assignment_in, current_user
     )

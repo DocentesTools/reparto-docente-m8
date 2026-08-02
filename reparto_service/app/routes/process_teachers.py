@@ -36,7 +36,7 @@ def create_process_teacher(
     process_id: uuid.UUID,
     process_teacher_in: ProcessTeacherCreate,
 ) -> ProcessTeacherPublic:
-    ProcessTeacherController.require_process_writer(session, current_user, process_id)
+    ProcessTeacherController.require_department_head(current_user)
     return ProcessTeacherController.create_process_teacher(
         session, process_id, current_user, process_teacher_in
     )
@@ -59,7 +59,7 @@ def update_process_teacher(
     process_teacher_id: uuid.UUID,
     process_teacher_in: ProcessTeacherUpdate,
 ) -> ProcessTeacherPublic:
-    ProcessTeacherController.require_process_writer(session, current_user, process_id)
+    ProcessTeacherController.require_department_head(current_user)
     return ProcessTeacherController.update_process_teacher(
         session,
         process_id,
@@ -82,7 +82,7 @@ def update_process_teacher_extra_hours(
     Keeps authorized-overload changes off the generic PATCH so they always
     carry a reason and an audit event.
     """
-    ProcessTeacherController.require_process_writer(session, current_user, process_id)
+    ProcessTeacherController.require_department_head(current_user)
     return ProcessTeacherController.update_extra_hours(
         session, process_id, process_teacher_id, payload, current_user
     )
@@ -95,7 +95,7 @@ def delete_process_teacher(
     process_id: uuid.UUID,
     process_teacher_id: uuid.UUID,
 ) -> ProcessTeacherPublic:
-    ProcessTeacherController.require_process_writer(session, current_user, process_id)
+    ProcessTeacherController.require_department_head(current_user)
     return ProcessTeacherController.delete_process_teacher(
         session, process_id, process_teacher_id, current_user
     )

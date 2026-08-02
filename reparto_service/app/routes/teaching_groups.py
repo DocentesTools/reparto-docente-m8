@@ -30,7 +30,7 @@ def bulk_create_groups(
     bulk_in: TeachingGroupBulkCreate,
 ) -> TeachingGroupsPublic:
     """Atomically create an inclusive classroom group range."""
-    TeachingGroupController.require_process_writer(session, current_user, process_id)
+    TeachingGroupController.require_department_head(current_user)
     return TeachingGroupController.bulk_create(
         session, process_id, bulk_in, current_user
     )
@@ -48,7 +48,7 @@ def create_group(
     process_id: uuid.UUID,
     group_in: TeachingGroupCreate,
 ) -> TeachingGroupPublic:
-    TeachingGroupController.require_process_writer(session, current_user, process_id)
+    TeachingGroupController.require_department_head(current_user)
     return TeachingGroupController.create_group(
         session, process_id, group_in, current_user
     )
@@ -69,7 +69,7 @@ def update_group(
     group_id: uuid.UUID,
     group_in: TeachingGroupUpdate,
 ) -> TeachingGroupPublic:
-    TeachingGroupController.require_process_writer(session, current_user, process_id)
+    TeachingGroupController.require_department_head(current_user)
     return TeachingGroupController.update_group(
         session, process_id, group_id, group_in, current_user
     )
@@ -82,7 +82,7 @@ def delete_group(
     process_id: uuid.UUID,
     group_id: uuid.UUID,
 ) -> TeachingGroupPublic:
-    TeachingGroupController.require_process_writer(session, current_user, process_id)
+    TeachingGroupController.require_department_head(current_user)
     return TeachingGroupController.delete_group(
         session, process_id, group_id, current_user
     )

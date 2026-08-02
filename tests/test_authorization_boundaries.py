@@ -12,9 +12,16 @@ import uuid
 from collections.abc import Iterator
 
 import pytest
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
+from sqlmodel import Session
 
+from reparto_service.db_models.assignment_processes import AssignmentProcess
+from reparto_service.db_models.process_teachers import ProcessTeacher
+from reparto_service.db_models.teacher_profiles import TeacherProfile
+from reparto_service.enums import MeetingSessionStatus
 from reparto_service.main import app
+from tests import factories
 
 #: Framework-owned, deliberately public endpoints. Everything else under the
 #: API prefix is domain surface and must sit behind the §21.1 reader floor.
@@ -101,3 +108,137 @@ def test_user_role_has_no_capability_anywhere(
     assert response.status_code == 403, (
         f"{method} {path} answered {response.status_code}"
     )
+
+
+# ── Own-data mutations: WRITER may act only on its own records (§21.3) ────────
+
+
+def _linked_participant(
+    session: Session, user: UserModel
+) -> tuple[AssignmentProcess, TeacherProfile, ProcessTeacher]:
+    """Build a process in which *user* is a participating teacher."""
+    process = factories.make_assignment_process(session)
+    profile = factories.make_teacher_profile(
+        session, display_name="Own", user_id=uuid.UUID(str(user.id))
+    )
+    return process, profile, factories.make_process_teacher(session, process, profile)
+
+
+def test_a_writer_may_act_on_their_own_turn(
+    writer_client: TestClient, session: Session, writer_user: UserModel
+) -> None:
+    process, _profile, participant = _linked_participant(session, writer_user)
+    meeting = factories.make_meeting_session(
+        session, process, status=MeetingSessionStatus.OPEN
+    )
+    turn = factories.make_selection_turn(session, meeting, participant)
+
+    response = writer_client.post(
+        f"/reparto/assignment-processes/{process.id}"
+        f"/meeting-sessions/{meeting.id}/turns/{turn.id}/start"
+    )
+    assert response.status_code == 200
+
+
+def test_a_writer_may_not_act_on_another_participants_turn(
+    writer_client: TestClient, session: Session, writer_user: UserModel
+) -> None:
+    process, _profile, _own = _linked_participant(session, writer_user)
+    other_profile = factories.make_teacher_profile(
+        session, display_name="Other", user_id=uuid.uuid4()
+    )
+    other = factories.make_process_teacher(session, process, other_profile)
+    meeting = factories.make_meeting_session(
+        session, process, status=MeetingSessionStatus.OPEN
+    )
+    turn = factories.make_selection_turn(session, meeting, other, position=1)
+
+    response = writer_client.post(
+        f"/reparto/assignment-processes/{process.id}"
+        f"/meeting-sessions/{meeting.id}/turns/{turn.id}/skip",
+        json={"reason": "Not mine to skip"},
+    )
+    assert response.status_code == 403
+    assert "your own participation" in response.json()["detail"]
+
+
+def test_a_writer_with_no_linked_profile_owns_nothing(
+    writer_client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    profile = factories.make_teacher_profile(session, user_id=uuid.uuid4())
+    participant = factories.make_process_teacher(session, process, profile)
+    meeting = factories.make_meeting_session(
+        session, process, status=MeetingSessionStatus.OPEN
+    )
+    turn = factories.make_selection_turn(session, meeting, participant)
+
+    response = writer_client.post(
+        f"/reparto/assignment-processes/{process.id}"
+        f"/meeting-sessions/{meeting.id}/turns/{turn.id}/start"
+    )
+    assert response.status_code == 404
+
+
+def test_a_writer_may_edit_their_own_profile(
+    writer_client: TestClient, session: Session, writer_user: UserModel
+) -> None:
+    profile = factories.make_teacher_profile(
+        session, display_name="Before", user_id=uuid.UUID(str(writer_user.id))
+    )
+    response = writer_client.patch(
+        f"/reparto/teacher-profiles/{profile.id}",
+        json={"display_name": "After", "notes": "Room 12"},
+    )
+    assert response.status_code == 200
+    assert response.json()["display_name"] == "After"
+
+
+def test_a_writer_may_not_edit_another_teachers_profile(
+    writer_client: TestClient, session: Session
+) -> None:
+    profile = factories.make_teacher_profile(session, user_id=uuid.uuid4())
+    response = writer_client.patch(
+        f"/reparto/teacher-profiles/{profile.id}",
+        json={"display_name": "Hijacked"},
+    )
+    assert response.status_code == 403
+    assert "your own teacher profile" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{"user_id": str(uuid.uuid4())}, {"active": False}],
+    ids=["relink", "deactivate"],
+)
+def test_a_writer_may_not_change_the_linkage_on_their_own_profile(
+    writer_client: TestClient,
+    session: Session,
+    writer_user: UserModel,
+    payload: dict[str, object],
+) -> None:
+    """Owning the record is not owning every field on it (§21.3).
+
+    Re-pointing ``user_id`` would let a teacher hand their own participation to
+    another account — or take somebody else's — so the linkage and the active
+    flag stay department-head fields even on one's own profile.
+    """
+    profile = factories.make_teacher_profile(
+        session, user_id=uuid.UUID(str(writer_user.id))
+    )
+    response = writer_client.patch(
+        f"/reparto/teacher-profiles/{profile.id}", json=payload
+    )
+    assert response.status_code == 403
+    assert "Only a department head" in response.json()["detail"]
+
+
+def test_a_department_head_may_edit_any_profile_field(
+    client: TestClient, session: Session
+) -> None:
+    profile = factories.make_teacher_profile(session, user_id=uuid.uuid4())
+    response = client.patch(
+        f"/reparto/teacher-profiles/{profile.id}", json={"active": False}
+    )
+    assert response.status_code == 200
+    assert response.json()["active"] is False

@@ -75,9 +75,28 @@ def test_require_writer_accepts_role_enum() -> None:
     DomainController.require_writer(user)
 
 
-def test_require_process_writer_passes_for_department_head_binding(
+@pytest.mark.parametrize("role", ["admin", "superadmin"])
+def test_require_department_head_passes_for_admin_and_above(role: str) -> None:
+    DomainController.require_department_head(_make_user(role))
+
+
+@pytest.mark.parametrize("role", ["writer", "reader", "user"])
+def test_require_department_head_blocks_everything_below_admin(role: str) -> None:
+    with pytest.raises(HTTPException) as exc:
+        DomainController.require_department_head(_make_user(role))
+    assert exc.value.status_code == 403
+
+
+def test_a_department_head_binding_no_longer_authorizes_anything(
     session: Session,
 ) -> None:
+    """§21.2: ``department_head_user_id`` is attribution, not authorization.
+
+    This is the behaviour change the section exists for. The bound account is
+    the department's recorded head and still holds a sub-``ADMIN`` role, and it
+    is now refused — a binding is not a credential, and cannot be revoked by
+    demoting the account.
+    """
     head_user_id = uuid.uuid4()
     process = __import__(
         "tests.factories", fromlist=["make_assignment_process"]
@@ -87,19 +106,10 @@ def test_require_process_writer_passes_for_department_head_binding(
     department.department_head_user_id = head_user_id
     session.add(department)
     session.commit()
-    user = _make_user("user", user_id=head_user_id)
-
-    DomainController.require_process_writer(session, user, process.id)
-
-
-def test_require_process_writer_blocks_unbound_user(session: Session) -> None:
-    process = __import__(
-        "tests.factories", fromlist=["make_assignment_process"]
-    ).make_assignment_process(session)
-    user = _make_user("user")
+    user = _make_user("writer", user_id=head_user_id)
 
     with pytest.raises(HTTPException) as exc:
-        DomainController.require_process_writer(session, user, process.id)
+        DomainController.require_department_head(user)
     assert exc.value.status_code == 403
 
 

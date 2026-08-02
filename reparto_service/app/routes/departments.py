@@ -37,7 +37,7 @@ def create_department(
     current_user: CurrentUser,
     department_in: DepartmentCreate,
 ) -> DepartmentPublic:
-    DepartmentController.require_writer(current_user)
+    DepartmentController.require_admin(current_user)
     return DepartmentController.create_department(session, department_in)
 
 
@@ -53,5 +53,5 @@ def update_department(
     department_id: uuid.UUID,
     department_in: DepartmentUpdate,
 ) -> DepartmentPublic:
-    DepartmentController.require_writer(current_user)
+    DepartmentController.require_admin(current_user)
     return DepartmentController.update_department(session, department_id, department_in)

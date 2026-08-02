@@ -7,6 +7,10 @@ import uuid
 from fastapi import HTTPException, status
 from sqlmodel import Session, func, select
 
+from auth_sdk_m8.authorization import has_minimum_role
+from auth_sdk_m8.schemas.base import RoleType
+from auth_sdk_m8.schemas.user import UserModel
+
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.teacher_profiles import (
     TeacherProfile,
@@ -55,14 +59,34 @@ class TeacherProfileController(DomainController):
         session.refresh(profile)
         return TeacherProfilePublic.model_validate(profile)
 
+    #: Fields a teacher may change on their own profile (plan §21.3). The
+    #: linkage (``user_id``) and the operational ``active`` flag are absent on
+    #: purpose: both decide *whose* participation a profile carries, which is a
+    #: department-head decision, not a self-service one.
+    SELF_EDITABLE_FIELDS: frozenset[str] = frozenset({"display_name", "notes"})
+
     @staticmethod
     def update_profile(
         session: Session,
         profile_id: uuid.UUID,
         profile_in: TeacherProfileUpdate,
+        current_user: UserModel,
     ) -> TeacherProfilePublic:
         profile = DomainController.get_or_404(session, TeacherProfile, profile_id)
-        profile.sqlmodel_update(profile_in.model_dump(exclude_unset=True))
+        changes = profile_in.model_dump(exclude_unset=True)
+        if not has_minimum_role(current_user.role, RoleType.ADMIN):
+            forbidden = sorted(
+                set(changes) - TeacherProfileController.SELF_EDITABLE_FIELDS
+            )
+            if forbidden:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=(
+                        "Only a department head may change "
+                        f"{', '.join(forbidden)} on a teacher profile."
+                    ),
+                )
+        profile.sqlmodel_update(changes)
         session.add(profile)
         session.commit()
         session.refresh(profile)

@@ -58,7 +58,6 @@ from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.meeting_sessions import MeetingSession
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.selection_turns import SelectionTurn
-from reparto_service.db_models.teacher_profiles import TeacherProfile
 from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
     AssignmentSource,
@@ -226,7 +225,7 @@ class AssignmentController(DomainController):
         meeting = AssignmentController._get_direct_selection_session(
             session, process_id, choice.meeting_session_id
         )
-        process_teacher = AssignmentController._get_linked_process_teacher(
+        process_teacher = AssignmentController.linked_process_teacher(
             session, process_id, current_user
         )
         AssignmentController._enforce_direct_turn(session, meeting, process_teacher.id)
@@ -973,25 +972,6 @@ class AssignmentController(DomainController):
                 detail="Direct teacher selection is disabled for this session.",
             )
         return meeting
-
-    @staticmethod
-    def _get_linked_process_teacher(
-        session: Session, process_id: uuid.UUID, current_user: UserModel
-    ) -> ProcessTeacher:
-        statement = (
-            select(ProcessTeacher, TeacherProfile)
-            .where(ProcessTeacher.assignment_process_id == process_id)
-            .where(ProcessTeacher.teacher_profile_id == TeacherProfile.id)
-            .where(TeacherProfile.user_id == uuid.UUID(str(current_user.id)))
-        )
-        row = session.exec(statement).first()
-        if row is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No teacher profile is linked to this auth user.",
-            )
-        process_teacher, _ = row
-        return process_teacher
 
     @staticmethod
     def _active_turn(

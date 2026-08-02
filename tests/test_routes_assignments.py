@@ -462,16 +462,18 @@ def test_undo_requires_reason_and_rejects_reader(
     assert forbidden.status_code == 403
 
 
-def test_undo_and_reassign_reject_writer(client: TestClient, session: Session) -> None:
+def test_undo_and_reassign_reject_writer(
+    writer_client: TestClient, session: Session
+) -> None:
     process, _activity, slot0, _slot1 = _plan_setup(session)
     first = _make_teacher(session, process)
     replacement = _make_teacher(session, process)
     assignment = factories.make_assignment(session, process, slot0, first)
 
-    undo = client.post(
+    undo = writer_client.post(
         _undo_path(process.id, assignment.id), json={"reason": "Writer attempt"}
     )
-    reassign = client.post(
+    reassign = writer_client.post(
         _reassign_path(process.id, assignment.id),
         json={
             "process_teacher_id": str(replacement.id),

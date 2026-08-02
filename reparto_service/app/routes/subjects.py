@@ -33,7 +33,7 @@ def create_subject(
     process_id: uuid.UUID,
     subject_in: SubjectCreate,
 ) -> SubjectPublic:
-    SubjectController.require_process_writer(session, current_user, process_id)
+    SubjectController.require_department_head(current_user)
     return SubjectController.create_subject(
         session, process_id, subject_in, current_user
     )
@@ -54,7 +54,7 @@ def update_subject(
     subject_id: uuid.UUID,
     subject_in: SubjectUpdate,
 ) -> SubjectPublic:
-    SubjectController.require_process_writer(session, current_user, process_id)
+    SubjectController.require_department_head(current_user)
     return SubjectController.update_subject(
         session, process_id, subject_id, subject_in, current_user
     )
@@ -67,7 +67,7 @@ def delete_subject(
     process_id: uuid.UUID,
     subject_id: uuid.UUID,
 ) -> SubjectPublic:
-    SubjectController.require_process_writer(session, current_user, process_id)
+    SubjectController.require_department_head(current_user)
     return SubjectController.delete_subject(
         session, process_id, subject_id, current_user
     )

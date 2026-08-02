@@ -38,7 +38,7 @@ def create_profile(
     current_user: CurrentUser,
     profile_in: TeacherProfileCreate,
 ) -> TeacherProfilePublic:
-    TeacherProfileController.require_writer(current_user)
+    TeacherProfileController.require_admin(current_user)
     return TeacherProfileController.create_profile(session, profile_in)
 
 
@@ -54,8 +54,17 @@ def update_profile(
     profile_id: uuid.UUID,
     profile_in: TeacherProfileUpdate,
 ) -> TeacherProfilePublic:
-    TeacherProfileController.require_writer(current_user)
-    return TeacherProfileController.update_profile(session, profile_id, profile_in)
+    # Own-data mutation (plan §21.3): a department head may edit any profile;
+    # anyone else may edit only the profile linked to their own account, and
+    # only its descriptive fields — the linkage and the active flag stay
+    # department-head territory, so nobody can re-point a profile at another
+    # account and inherit that account's participation.
+    TeacherProfileController.require_own_teacher_profile(
+        session, current_user, profile_id
+    )
+    return TeacherProfileController.update_profile(
+        session, profile_id, profile_in, current_user
+    )
 
 
 @router.post("/{profile_id}/link-user", response_model=TeacherProfilePublic)
@@ -65,7 +74,7 @@ def link_profile_user(
     profile_id: uuid.UUID,
     link_in: TeacherProfileLinkUser,
 ) -> TeacherProfilePublic:
-    TeacherProfileController.require_writer(current_user)
+    TeacherProfileController.require_admin(current_user)
     return TeacherProfileController.link_user(session, profile_id, link_in)
 
 
@@ -75,5 +84,5 @@ def delete_profile(
     current_user: CurrentUser,
     profile_id: uuid.UUID,
 ) -> TeacherProfilePublic:
-    TeacherProfileController.require_writer(current_user)
+    TeacherProfileController.require_admin(current_user)
     return TeacherProfileController.delete_profile(session, profile_id)

@@ -66,7 +66,7 @@ def import_planning(
     process_id: uuid.UUID,
     payload: PlanningImportRequest,
 ) -> PlanningImportResult:
-    PlanningExchangeController.require_process_writer(session, current_user, process_id)
+    PlanningExchangeController.require_department_head(current_user)
     return PlanningExchangeController.import_planning(
         session, process_id, payload, current_user
     )

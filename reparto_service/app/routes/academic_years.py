@@ -38,7 +38,7 @@ def create_year(
     current_user: CurrentUser,
     year_in: AcademicYearCreate,
 ) -> AcademicYearPublic:
-    AcademicYearController.require_writer(current_user)
+    AcademicYearController.require_admin(current_user)
     return AcademicYearController.create_year(session, current_user, year_in)
 
 
@@ -54,7 +54,7 @@ def update_year(
     year_id: uuid.UUID,
     year_in: AcademicYearUpdate,
 ) -> AcademicYearPublic:
-    AcademicYearController.require_writer(current_user)
+    AcademicYearController.require_admin(current_user)
     return AcademicYearController.update_year(session, year_id, year_in)
 
 
@@ -64,5 +64,5 @@ def archive_year(
     current_user: CurrentUser,
     year_id: uuid.UUID,
 ) -> AcademicYearPublic:
-    AcademicYearController.require_writer(current_user)
+    AcademicYearController.require_admin(current_user)
     return AcademicYearController.archive_year(session, year_id)

@@ -26,6 +26,7 @@ from reparto_service.enums import (
 )
 from reparto_service.schemas.events import DomainEvent
 from reparto_service.services import sse
+from tests.conftest import make_user
 from tests.factories import (
     make_assignment_process,
     make_department,
@@ -114,78 +115,52 @@ def test_readiness_projects_every_plan_status(
 # ── Audience resolution ───────────────────────────────────────────────────────
 
 
-def test_writer_role_is_granted_the_department_head_tier(
-    session: Session, current_user: UserModel
+def test_admin_role_is_granted_the_department_head_tier(
+    admin_user: UserModel,
 ) -> None:
-    process = make_assignment_process(session)
-    assert (
-        sse.granted_audience(session, process.id, current_user)
-        == SseAudience.DEPARTMENT_HEAD
-    )
+    assert sse.granted_audience(admin_user) == SseAudience.DEPARTMENT_HEAD
 
 
-def test_reader_role_is_granted_only_the_teacher_tier(
+@pytest.mark.parametrize("role", ["writer", "reader"])
+def test_roles_below_admin_are_granted_only_the_teacher_tier(role: str) -> None:
+    assert sse.granted_audience(make_user(role)) == SseAudience.TEACHER
+
+
+def test_a_bound_department_head_user_is_not_granted_the_head_tier(
     session: Session, reader: UserModel
 ) -> None:
-    process = make_assignment_process(session)
-    assert sse.granted_audience(session, process.id, reader) == SseAudience.TEACHER
-
-
-def test_bound_department_head_user_is_granted_the_head_tier(
-    session: Session, reader: UserModel
-) -> None:
-    # A plain (reader-role) auth user bound as the department head still gets the
-    # full payload — the same rule require_process_writer applies to mutations.
+    # §21.2: the binding is attribution metadata, not a credential. A reader
+    # named as a department's head watches the stream as a teacher, which is
+    # the same answer the mutation routes now give them.
     school = make_school(session)
     department = make_department(session, school)
     department.department_head_user_id = uuid.UUID(str(reader.id))
     session.add(department)
     session.commit()
-    process = make_assignment_process(session, school=school, department=department)
-    assert (
-        sse.granted_audience(session, process.id, reader) == SseAudience.DEPARTMENT_HEAD
-    )
+    make_assignment_process(session, school=school, department=department)
+    assert sse.granted_audience(reader) == SseAudience.TEACHER
 
 
 def test_resolve_audience_defaults_to_the_granted_tier(
-    session: Session, current_user: UserModel
+    admin_user: UserModel,
 ) -> None:
-    process = make_assignment_process(session)
-    assert (
-        sse.resolve_audience(session, process.id, current_user)
-        == SseAudience.DEPARTMENT_HEAD
-    )
+    assert sse.resolve_audience(admin_user) == SseAudience.DEPARTMENT_HEAD
 
 
-def test_resolve_audience_allows_a_downgrade(
-    session: Session, current_user: UserModel
-) -> None:
-    process = make_assignment_process(session)
+def test_resolve_audience_allows_a_downgrade(admin_user: UserModel) -> None:
     for requested in (SseAudience.TEACHER, SseAudience.SHARED_SCREEN):
-        assert (
-            sse.resolve_audience(session, process.id, current_user, requested)
-            == requested
-        )
+        assert sse.resolve_audience(admin_user, requested) == requested
 
 
-def test_resolve_audience_refuses_an_upgrade(
-    session: Session, reader: UserModel
-) -> None:
-    process = make_assignment_process(session)
+def test_resolve_audience_refuses_an_upgrade(reader: UserModel) -> None:
     with pytest.raises(HTTPException) as exc:
-        sse.resolve_audience(session, process.id, reader, SseAudience.DEPARTMENT_HEAD)
+        sse.resolve_audience(reader, SseAudience.DEPARTMENT_HEAD)
     assert exc.value.status_code == 403
     assert "grants at most teacher" in exc.value.detail
 
 
-def test_resolve_audience_allows_the_same_tier(
-    session: Session, reader: UserModel
-) -> None:
-    process = make_assignment_process(session)
-    assert (
-        sse.resolve_audience(session, process.id, reader, SseAudience.TEACHER)
-        == SseAudience.TEACHER
-    )
+def test_resolve_audience_allows_the_same_tier(reader: UserModel) -> None:
+    assert sse.resolve_audience(reader, SseAudience.TEACHER) == SseAudience.TEACHER
 
 
 # ── viewer_participant_id ─────────────────────────────────────────────────────

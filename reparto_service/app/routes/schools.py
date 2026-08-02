@@ -33,7 +33,7 @@ def create_school(
     current_user: CurrentUser,
     school_in: SchoolCreate,
 ) -> SchoolPublic:
-    SchoolController.require_writer(current_user)
+    SchoolController.require_admin(current_user)
     return SchoolController.create_school(session, school_in)
 
 
@@ -49,5 +49,5 @@ def update_school(
     school_id: uuid.UUID,
     school_in: SchoolUpdate,
 ) -> SchoolPublic:
-    SchoolController.require_writer(current_user)
+    SchoolController.require_admin(current_user)
     return SchoolController.update_school(session, school_id, school_in)

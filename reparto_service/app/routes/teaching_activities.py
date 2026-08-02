@@ -40,7 +40,7 @@ def create_teaching_activity(
     process_id: uuid.UUID,
     activity_in: TeachingActivityCreate,
 ) -> TeachingActivityPublic:
-    TeachingActivityController.require_process_writer(session, current_user, process_id)
+    TeachingActivityController.require_department_head(current_user)
     return TeachingActivityController.create_teaching_activity(
         session, process_id, activity_in, current_user
     )
@@ -63,7 +63,7 @@ def update_teaching_activity(
     activity_id: uuid.UUID,
     activity_in: TeachingActivityUpdate,
 ) -> TeachingActivityPublic:
-    TeachingActivityController.require_process_writer(session, current_user, process_id)
+    TeachingActivityController.require_department_head(current_user)
     return TeachingActivityController.update_teaching_activity(
         session, process_id, activity_id, activity_in, current_user
     )
@@ -76,7 +76,7 @@ def retire_teaching_activity(
     process_id: uuid.UUID,
     activity_id: uuid.UUID,
 ) -> TeachingActivityPublic:
-    TeachingActivityController.require_process_writer(session, current_user, process_id)
+    TeachingActivityController.require_department_head(current_user)
     return TeachingActivityController.retire_teaching_activity(
         session, process_id, activity_id, current_user
     )
