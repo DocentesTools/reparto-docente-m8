@@ -543,7 +543,22 @@ exceptions.
 
 ### 9.5 Permissions
 
-`DomainController` centralises the current checks:
+**The read floor comes first.** `reparto_service.app.main` mounts the SDK's
+`get_current_active_reader` on the *domain router aggregator*, so every domain
+route — list, get, export and mutation alike — rejects an unauthenticated caller
+with `401` and a `USER`-role caller with `403` before its handler runs. It is
+mounted once, on the aggregator, rather than repeated per router: a floor that
+must be remembered twenty-one times is a floor with twenty-one ways to forget
+it, and a router added later inherits it by construction. The framework's
+`/health`, `/meta`, `/ping` and `/metrics` endpoints are mounted outside the
+aggregator and keep their own visibility.
+
+It is the SDK-built dependency rather than a local role comparison on purpose:
+only that path re-validates against the fresh, no-positive-cache user, which is
+what makes a role-sensitive check observe a revocation committed after the last
+cache fill.
+
+`DomainController` centralises the checks layered on top of that floor:
 
 * `require_writer` — mutations require a writer-class role (`writer`, `admin`,
   `superadmin`) or superuser;
@@ -557,10 +572,14 @@ exceptions.
 (`USER < READER < WRITER < ADMIN < SUPERADMIN`, with `is_superuser` valid only
 alongside `SUPERADMIN`), and this service adds no roles of its own.
 
-Two hardening items are known-open and tracked as their own task: read routes do
-not yet carry a minimum-role (`>= READER`) floor, and department-head
-authorization is still satisfied by the role-independent
-`department_head_user_id` binding rather than by `ADMIN`/`SUPERADMIN` alone (§11).
+`tests/test_authorization_boundaries.py` sweeps the generated OpenAPI document
+rather than a hand-kept path list, so a route added tomorrow is swept the day it
+is added.
+
+One hardening item remains known-open and is tracked as its own task:
+department-head authorization is still satisfied by the role-independent
+`department_head_user_id` binding rather than by `ADMIN`/`SUPERADMIN` alone
+(§11).
 
 ### 9.6 Role-projected read models and SSE
 
@@ -634,11 +653,12 @@ extension point already in place.
 
 * **Decimal hour columns** — `HoursNumeric` exists but no model uses it yet; hour
   columns remain `float` and are lifted to `Decimal` in the services (§8.2).
-* **Authorization hardening** — a minimum-role (`>= READER`) floor on every
-  read/list/export route, `WRITER` restricted to its own records,
-  department-head authorization narrowed to `ADMIN`/`SUPERADMIN` with
+* **Authorization hardening** — the minimum-role (`>= READER`) floor is now in
+  place on every route (§9.5). Still open: `WRITER` restricted to its own
+  records, department-head authorization narrowed to `ADMIN`/`SUPERADMIN` with
   `department_head_user_id` demoted to attribution metadata, per-tenant read
-  scoping, and migration onto the SDK-provided role dependencies (§9.5).
+  scoping, and migration of the mutation guards onto the SDK-provided role
+  dependencies (§9.5).
 * **Destructive migration generation** — the new schema's migration is produced by
   the Compose bootstrap from these models and verified against a clean database
   (§3.1, §3.2).

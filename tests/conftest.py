@@ -15,9 +15,11 @@ The order of setup matters:
 
 from __future__ import annotations
 
+import inspect
 import os
 import uuid
 from collections.abc import Generator
+from typing import Any
 from unittest.mock import MagicMock
 
 _TEST_ENV: dict[str, str] = {
@@ -69,11 +71,44 @@ from auth_sdk_m8.schemas.user import UserModel  # noqa: E402
 # Pull every domain model so SQLModel.metadata is populated.
 import reparto_service.db_models  # noqa: F401, E402
 
-from reparto_service.core.deps import get_current_user, get_db  # noqa: E402
+from reparto_service.core.deps import auth, get_current_user, get_db  # noqa: E402
 from reparto_service.main import app  # noqa: E402
 
 # Restore find_dotenv (good hygiene).
 _paths_mod.find_dotenv = _real_find_dotenv
+
+
+def _fresh_user_dependency() -> Any:
+    """Return the SDK's shared no-positive-cache user dependency.
+
+    Every ``require_role`` guard (``get_current_active_reader``/``_writer``/
+    ``_admin``/``_superuser``) authenticates through this one closure and then
+    applies ``has_minimum_role`` itself. Overriding *it* — instead of
+    overriding each role guard with a pass-through — is what lets the tests
+    inject a role while the SDK's real hierarchy check still runs, so a test
+    asserting 403 for a ``READER`` is exercising the shipped comparison rather
+    than a stub of it.
+
+    Raises:
+        RuntimeError: if the SDK's guard no longer takes its user from a single
+            sub-dependency. Failing here is deliberate: silently not overriding
+            would turn every authorized-route test into a 401 mystery.
+    """
+    reader_guard = auth.get_current_active_reader
+    depends = [
+        parameter.default
+        for parameter in inspect.signature(reader_guard).parameters.values()
+        if hasattr(parameter.default, "dependency")
+    ]
+    if len(depends) != 1 or depends[0].dependency is None:
+        raise RuntimeError(
+            "fastapi-m8 role guards no longer resolve their user through a "
+            "single sub-dependency; update the test auth override."
+        )
+    return depends[0].dependency
+
+
+_FRESH_USER_DEPENDENCY = _fresh_user_dependency()
 
 
 # ── anyio backend — restrict to asyncio (trio not installed) ──────────────────
@@ -111,46 +146,57 @@ def session_fixture(engine):
 # ── User fixtures ────────────────────────────────────────────────────────────
 
 
-def _make_user(
-    *, is_superuser: bool = False, user_id: uuid.UUID | None = None
-) -> UserModel:
+def make_user(role: str = "writer", *, user_id: uuid.UUID | None = None) -> UserModel:
+    """Build a canonical ``UserModel`` for *role*.
+
+    ``is_superuser`` is derived, never passed: the SDK enforces the truth table
+    (``SUPERADMIN`` ⇔ ``is_superuser``) at construction, so an inconsistent pair
+    cannot be built here by accident.
+    """
     uid = user_id or uuid.uuid4()
     return UserModel(
         id=str(uid),
         email="test@example.com",
         is_active=True,
-        is_superuser=is_superuser,
-        role="superadmin" if is_superuser else "writer",
+        is_superuser=role == "superadmin",
+        role=role,
     )
+
+
+def _make_user(
+    *, is_superuser: bool = False, user_id: uuid.UUID | None = None
+) -> UserModel:
+    return make_user("superadmin" if is_superuser else "writer", user_id=user_id)
 
 
 @pytest.fixture
 def current_user() -> UserModel:
     """Regular (writer role) authenticated user."""
-    return _make_user()
+    return make_user("writer")
 
 
 @pytest.fixture
 def superuser() -> UserModel:
     """Superuser authenticated user."""
-    return _make_user(is_superuser=True)
+    return make_user("superadmin")
 
 
 @pytest.fixture
 def admin_user() -> UserModel:
     """Authenticated user with the existing admin role."""
-    user = _make_user()
-    user.role = "admin"  # type: ignore[assignment]
-    return user
+    return make_user("admin")
 
 
 @pytest.fixture
 def reader() -> UserModel:
     """Reader-role user (read-only access)."""
+    return make_user("reader")
 
-    user = _make_user()
-    user.role = "reader"  # type: ignore[assignment]
-    return user
+
+@pytest.fixture
+def plain_user() -> UserModel:
+    """``USER``-role identity — authenticated, but with no capability here."""
+    return make_user("user")
 
 
 # ── TestClient fixtures ──────────────────────────────────────────────────────
@@ -166,6 +212,10 @@ def _make_client(session: Session, user: UserModel | None) -> TestClient:
     app.dependency_overrides[get_db] = _override_db
     if user is not None:
         app.dependency_overrides[get_current_user] = _override_user
+        # The §21.1 reader floor and every role guard resolve their user
+        # through the SDK's fresh path, not through ``get_current_user``.
+        # Both are overridden so a test client is one identity everywhere.
+        app.dependency_overrides[_FRESH_USER_DEPENDENCY] = _override_user
     return TestClient(app)
 
 
@@ -218,10 +268,21 @@ def reader_client(
 
 
 @pytest.fixture
+def user_client(
+    session: Session,
+    plain_user: UserModel,
+) -> Generator[TestClient]:
+    """TestClient authenticated as a ``USER``-role identity (no capability)."""
+    tc = _make_client(session, plain_user)
+    with tc as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
 def unauth_client(session: Session) -> Generator[TestClient]:
-    """TestClient with no auth override (the default test auth dep returns
-    whatever the test client is configured with — but here we explicitly
-    raise 401 to simulate unauthenticated requests)."""
+    """TestClient with no auth override: the real bearer-token dependency runs
+    with no ``Authorization`` header, so every request is answered 401."""
     tc = _make_client(session, None)
     with tc as c:
         yield c

@@ -4,10 +4,23 @@ Wires the academic-year, school, department, teacher, requirement and
 assignment routers under the consumer's API prefix declared in
 ``reparto_service.main`` (default ``/reparto``). Summary and dashboard
 endpoints live on the parent assignment-processes router.
+
+Authorization floor (plan §21.1/§21.4)
+--------------------------------------
+``require_reader`` is mounted here, on the aggregator, rather than repeated on
+each router: a minimum-role floor that has to be remembered 21 times is a floor
+with 21 ways to forget it. Every domain route — list, get, export and mutation
+alike — therefore rejects an unauthenticated caller (401) and a ``USER``-role
+caller (403) before its handler runs, and a router added later inherits the
+floor by construction. Mutation routes add their own writer/department-head
+gate on top; nothing below removes this one. The framework's ``/health``,
+``/meta``, ``/ping`` and ``/metrics`` endpoints are mounted outside this
+aggregator and keep their own visibility.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from reparto_service.app.deps import require_reader
 from reparto_service.app.routes import (
     academic_years,
     assignment_processes,
@@ -23,8 +36,8 @@ from reparto_service.app.routes import (
     planning_exchange,
     process_events,
     process_teachers,
-    selection_turns,
     schools,
+    selection_turns,
     subjects,
     teacher_profiles,
     teaching_activities,
@@ -32,7 +45,7 @@ from reparto_service.app.routes import (
     teaching_plans,
 )
 
-api_router = APIRouter()
+api_router = APIRouter(dependencies=[Depends(require_reader)])
 api_router.include_router(academic_years.router)
 api_router.include_router(schools.router)
 api_router.include_router(classroom_stages.router)

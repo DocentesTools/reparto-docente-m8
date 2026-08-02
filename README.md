@@ -123,6 +123,13 @@ To check the schema the bootstrap will generate — without generating it — ru
 
 ## API map
 
+Every endpoint in this table requires an authenticated caller holding at least
+the `READER` role — reads, exports and mutations alike. The floor is mounted
+once on the domain router aggregator, so an unauthenticated request is answered
+`401` and a `USER`-role request `403` before any handler runs; mutations then
+add their own writer/department-head check on top. Only the framework's
+`/health`, `/meta` and `/ping` endpoints sit outside it.
+
 | Area | Base path |
 | --- | --- |
 | Reference administration | `/reparto/academic-years`, `/schools`, `/classroom-stages`, `/departments`, `/teacher-profiles` |
