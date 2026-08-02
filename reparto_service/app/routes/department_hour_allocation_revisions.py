@@ -10,7 +10,7 @@ import uuid
 
 from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
+from reparto_service.app.deps import CurrentAdmin, SessionDep, require_visible_process
 from reparto_service.controllers.department_hour_allocation_revisions import (
     DepartmentHourAllocationRevisionController,
 )
@@ -53,11 +53,10 @@ def get_current_allocation_revision(
 )
 def create_allocation_revision(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     revision_in: DepartmentHourAllocationRevisionCreate,
 ) -> DepartmentHourAllocationRevisionPublic:
-    DepartmentHourAllocationRevisionController.require_department_head(current_user)
     return DepartmentHourAllocationRevisionController.create_revision(
         session, process_id, current_user, revision_in
     )

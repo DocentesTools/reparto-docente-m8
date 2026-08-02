@@ -18,7 +18,7 @@ from typing import Optional
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 
-from reparto_service.app.deps import CurrentUser, SessionDep
+from reparto_service.app.deps import CurrentReader, SessionDep
 from reparto_service.enums import SseAudience, SseEventType
 from reparto_service.schemas.events import DomainEvent
 from reparto_service.services import sse
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/assignment-processes", tags=["assignment-processes"]
 @router.get("/{process_id}/events", response_class=StreamingResponse)
 async def stream_process_events(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentReader,
     process_id: uuid.UUID,
     audience: Optional[SseAudience] = Query(
         default=None,

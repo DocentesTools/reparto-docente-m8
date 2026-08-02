@@ -51,9 +51,12 @@ def test_stage_create_as_superuser(superuser_client: TestClient) -> None:
 
 
 def test_stage_mutations_reject_writer_and_reader(
-    client: TestClient, reader_client: TestClient
+    writer_client: TestClient, reader_client: TestClient
 ) -> None:
-    assert client.post("/reparto/classroom-stages/", json=payload()).status_code == 403
+    assert (
+        writer_client.post("/reparto/classroom-stages/", json=payload()).status_code
+        == 403
+    )
     assert (
         reader_client.post("/reparto/classroom-stages/", json=payload()).status_code
         == 403

@@ -19,6 +19,7 @@ from sqlmodel import Session
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.teacher_profiles import TeacherProfile
+from reparto_service.core import deps
 from reparto_service.enums import MeetingSessionStatus
 from reparto_service.main import app
 from tests import factories
@@ -242,3 +243,33 @@ def test_a_department_head_may_edit_any_profile_field(
     )
     assert response.status_code == 200
     assert response.json()["active"] is False
+
+
+# ── The revocation-cache guarantee (`RBAC-03`, plan §21.6) ───────────────────
+
+
+def test_the_role_gates_are_the_sdk_dependencies_not_local_comparisons() -> None:
+    """Identity, not equivalence: a local check that *behaves* the same is not
+    the same, because only the SDK path re-validates on the fresh user."""
+    assert deps.require_reader is deps.auth.get_current_active_reader
+    assert deps.require_writer is deps.auth.get_current_active_writer
+    assert deps.require_admin is deps.auth.get_current_active_admin
+
+
+@pytest.mark.parametrize(("method", "path"), DOMAIN_OPERATIONS)
+def test_no_domain_route_resolves_its_principal_from_the_cached_path(
+    cached_path_only_client: TestClient, method: str, path: str
+) -> None:
+    """The behavioural half of `RBAC-03`.
+
+    ``get_current_user`` may answer from the positive revocation cache, so a
+    role check hanging off it can keep honouring a role that was revoked up to
+    a TTL ago. Here *only* that dependency is satisfied and the SDK's fresh
+    path is left to the real bearer-token flow: every domain route must still
+    answer 401, which is only true if none of them takes its principal from the
+    cached dependency.
+    """
+    response = cached_path_only_client.request(method, concrete(path))
+    assert response.status_code == 401, (
+        f"{method} {path} authenticated through the cached user path"
+    )

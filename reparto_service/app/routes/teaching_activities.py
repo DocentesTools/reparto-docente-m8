@@ -11,7 +11,7 @@ import uuid
 
 from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
+from reparto_service.app.deps import CurrentAdmin, SessionDep, require_visible_process
 from reparto_service.controllers.teaching_activities import TeachingActivityController
 from reparto_service.db_models.teaching_activities import (
     TeachingActivitiesPublic,
@@ -40,11 +40,10 @@ def list_teaching_activities(
 @router.post("/", response_model=TeachingActivityPublic, status_code=201)
 def create_teaching_activity(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     activity_in: TeachingActivityCreate,
 ) -> TeachingActivityPublic:
-    TeachingActivityController.require_department_head(current_user)
     return TeachingActivityController.create_teaching_activity(
         session, process_id, activity_in, current_user
     )
@@ -62,12 +61,11 @@ def get_teaching_activity(
 @router.patch("/{activity_id}", response_model=TeachingActivityPublic)
 def update_teaching_activity(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     activity_id: uuid.UUID,
     activity_in: TeachingActivityUpdate,
 ) -> TeachingActivityPublic:
-    TeachingActivityController.require_department_head(current_user)
     return TeachingActivityController.update_teaching_activity(
         session, process_id, activity_id, activity_in, current_user
     )
@@ -76,11 +74,10 @@ def update_teaching_activity(
 @router.post("/{activity_id}/retire", response_model=TeachingActivityPublic)
 def retire_teaching_activity(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     activity_id: uuid.UUID,
 ) -> TeachingActivityPublic:
-    TeachingActivityController.require_department_head(current_user)
     return TeachingActivityController.retire_teaching_activity(
         session, process_id, activity_id, current_user
     )

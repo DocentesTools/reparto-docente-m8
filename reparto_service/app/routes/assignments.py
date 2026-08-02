@@ -6,7 +6,12 @@ import uuid
 
 from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
+from reparto_service.app.deps import (
+    CurrentAdmin,
+    CurrentWriter,
+    SessionDep,
+    require_visible_process,
+)
 from reparto_service.controllers.assignments import AssignmentController
 from reparto_service.db_models.assignments import (
     AssignmentCreate,
@@ -37,11 +42,10 @@ def list_assignments(session: SessionDep, process_id: uuid.UUID) -> AssignmentsP
 @router.post("/", response_model=AssignmentPublic, status_code=201)
 def create_assignment(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     assignment_in: AssignmentCreate,
 ) -> AssignmentPublic:
-    AssignmentController.require_department_head(current_user)
     return AssignmentController.create_assignment(
         session, process_id, current_user, assignment_in
     )
@@ -50,14 +54,13 @@ def create_assignment(
 @router.post("/direct-choice", response_model=AssignmentPublic, status_code=201)
 def create_direct_choice(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentWriter,
     process_id: uuid.UUID,
     choice: AssignmentDirectChoice,
 ) -> AssignmentPublic:
     # Own-data mutation (plan §21.3): ``WRITER`` is the floor, and the
     # controller binds the assignment to the caller's *own* participation row —
     # there is no participant id in the payload to point somewhere else.
-    AssignmentController.require_writer(current_user)
     return AssignmentController.create_direct_choice(
         session, process_id, current_user, choice
     )
@@ -80,12 +83,11 @@ def get_assignment(
 @router.patch("/{assignment_id}", response_model=AssignmentPublic)
 def update_assignment(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     assignment_id: uuid.UUID,
     assignment_in: AssignmentUpdate,
 ) -> AssignmentPublic:
-    AssignmentController.require_department_head(current_user)
     return AssignmentController.update_assignment(
         session, process_id, assignment_id, assignment_in, current_user
     )
@@ -94,12 +96,11 @@ def update_assignment(
 @router.post("/{assignment_id}/undo", response_model=AssignmentPublic)
 def undo_assignment(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     assignment_id: uuid.UUID,
     action: AssignmentUndo,
 ) -> AssignmentPublic:
-    AssignmentController.require_admin(current_user)
     return AssignmentController.undo_assignment(
         session, process_id, assignment_id, current_user, action
     )
@@ -110,12 +111,11 @@ def undo_assignment(
 )
 def reassign_assignment(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     assignment_id: uuid.UUID,
     action: AssignmentReassign,
 ) -> AssignmentPublic:
-    AssignmentController.require_admin(current_user)
     return AssignmentController.reassign_assignment(
         session, process_id, assignment_id, current_user, action
     )
@@ -129,13 +129,12 @@ def reassign_assignment(
 )
 def delete_assignment(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     assignment_id: uuid.UUID,
     action: AssignmentUndo,
 ) -> AssignmentPublic:
     """Compatibility alias for the explicit, reason-required undo action."""
-    AssignmentController.require_admin(current_user)
     return AssignmentController.undo_assignment(
         session, process_id, assignment_id, current_user, action
     )

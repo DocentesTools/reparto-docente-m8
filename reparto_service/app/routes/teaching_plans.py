@@ -12,7 +12,7 @@ import uuid
 
 from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
+from reparto_service.app.deps import CurrentAdmin, SessionDep, require_visible_process
 from reparto_service.controllers.teaching_activities import TeachingActivityController
 from reparto_service.controllers.teaching_plans import TeachingPlanController
 from reparto_service.db_models.teaching_activities import MainMaterializationResult
@@ -58,12 +58,11 @@ def get_teaching_plan_validations(
 )
 def evaluate_teaching_plan_feasibility(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
 ) -> FeasibilityEvaluationPublic:
     """Run the full bounded solver only for an administrator."""
 
-    TeachingPlanController.require_admin(current_user)
     return TeachingPlanController.evaluate_feasibility(session, process_id)
 
 
@@ -73,52 +72,47 @@ def evaluate_teaching_plan_feasibility(
 )
 def get_teaching_plan_feasibility_witness(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
 ) -> FeasibilityWitnessPublic:
     """Expose the provisional mapping only to an administrator."""
 
-    TeachingPlanController.require_admin(current_user)
     return TeachingPlanController.get_feasibility_witness(session, process_id)
 
 
 @router.post("", response_model=TeachingPlanPublic, status_code=201)
 def create_teaching_plan(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
 ) -> TeachingPlanPublic:
-    TeachingPlanController.require_department_head(current_user)
     return TeachingPlanController.create_plan(session, process_id, current_user)
 
 
 @router.post("/lock", response_model=TeachingPlanPublic)
 def lock_teaching_plan(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
 ) -> TeachingPlanPublic:
-    TeachingPlanController.require_department_head(current_user)
     return TeachingPlanController.lock_plan(session, process_id, current_user)
 
 
 @router.post("/unlock", response_model=TeachingPlanPublic)
 def unlock_teaching_plan(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
 ) -> TeachingPlanPublic:
-    TeachingPlanController.require_department_head(current_user)
     return TeachingPlanController.unlock_plan(session, process_id, current_user)
 
 
 @router.post("/materialize-main", response_model=MainMaterializationResult)
 def materialize_main_activities(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
 ) -> MainMaterializationResult:
-    TeachingActivityController.require_department_head(current_user)
     return TeachingActivityController.materialize_main(
         session, process_id, current_user
     )

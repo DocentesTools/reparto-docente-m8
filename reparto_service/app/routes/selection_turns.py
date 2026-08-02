@@ -6,7 +6,12 @@ import uuid
 
 from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
+from reparto_service.app.deps import (
+    CurrentAdmin,
+    CurrentWriter,
+    SessionDep,
+    require_visible_process,
+)
 from reparto_service.controllers.selection_turns import SelectionTurnController
 from reparto_service.db_models.selection_turns import (
     SelectionTurnAction,
@@ -39,11 +44,10 @@ def list_turns(
 @router.post("/initialize", response_model=SelectionTurnsPublic, status_code=201)
 def initialize_turns(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     meeting_session_id: uuid.UUID,
 ) -> SelectionTurnsPublic:
-    SelectionTurnController.require_department_head(current_user)
     return SelectionTurnController.initialize_turns(
         session, process_id, meeting_session_id
     )
@@ -52,7 +56,7 @@ def initialize_turns(
 @router.post("/{turn_id}/start", response_model=SelectionTurnPublic)
 def start_turn(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentWriter,
     process_id: uuid.UUID,
     meeting_session_id: uuid.UUID,
     turn_id: uuid.UUID,
@@ -68,7 +72,7 @@ def start_turn(
 @router.post("/{turn_id}/complete", response_model=SelectionTurnPublic)
 def complete_turn(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentWriter,
     process_id: uuid.UUID,
     meeting_session_id: uuid.UUID,
     turn_id: uuid.UUID,
@@ -85,7 +89,7 @@ def complete_turn(
 @router.post("/{turn_id}/skip", response_model=SelectionTurnPublic)
 def skip_turn(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentWriter,
     process_id: uuid.UUID,
     meeting_session_id: uuid.UUID,
     turn_id: uuid.UUID,
@@ -102,13 +106,12 @@ def skip_turn(
 @router.post("/{turn_id}/override", response_model=SelectionTurnPublic)
 def override_turn(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     meeting_session_id: uuid.UUID,
     turn_id: uuid.UUID,
     payload: SelectionTurnAction,
 ) -> SelectionTurnPublic:
-    SelectionTurnController.require_department_head(current_user)
     return SelectionTurnController.override_turn(
         session, process_id, meeting_session_id, turn_id, current_user, payload
     )

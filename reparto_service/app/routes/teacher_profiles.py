@@ -7,7 +7,12 @@ from typing import Optional
 
 from fastapi import APIRouter
 
-from reparto_service.app.deps import CurrentReader, CurrentUser, SessionDep
+from reparto_service.app.deps import (
+    CurrentAdmin,
+    CurrentReader,
+    CurrentWriter,
+    SessionDep,
+)
 from reparto_service.controllers.teacher_profiles import TeacherProfileController
 from reparto_service.db_models.teacher_profiles import (
     TeacherProfileCreate,
@@ -36,10 +41,9 @@ def list_profiles(
 @router.post("/", response_model=TeacherProfilePublic, status_code=201)
 def create_profile(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     profile_in: TeacherProfileCreate,
 ) -> TeacherProfilePublic:
-    TeacherProfileController.require_admin(current_user)
     return TeacherProfileController.create_profile(session, profile_in)
 
 
@@ -53,7 +57,7 @@ def get_profile(
 @router.patch("/{profile_id}", response_model=TeacherProfilePublic)
 def update_profile(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentWriter,
     profile_id: uuid.UUID,
     profile_in: TeacherProfileUpdate,
 ) -> TeacherProfilePublic:
@@ -73,19 +77,17 @@ def update_profile(
 @router.post("/{profile_id}/link-user", response_model=TeacherProfilePublic)
 def link_profile_user(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     profile_id: uuid.UUID,
     link_in: TeacherProfileLinkUser,
 ) -> TeacherProfilePublic:
-    TeacherProfileController.require_admin(current_user)
     return TeacherProfileController.link_user(session, profile_id, link_in)
 
 
 @router.delete("/{profile_id}", response_model=TeacherProfilePublic)
 def delete_profile(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     profile_id: uuid.UUID,
 ) -> TeacherProfilePublic:
-    TeacherProfileController.require_admin(current_user)
     return TeacherProfileController.delete_profile(session, profile_id)

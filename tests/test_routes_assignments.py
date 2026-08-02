@@ -449,16 +449,26 @@ def test_legacy_delete_requires_reason_and_delegates_to_undo(
 
 
 def test_undo_requires_reason_and_rejects_reader(
-    reader_client: TestClient, session: Session, reader: UserModel
+    admin_client: TestClient,
+    reader_client: TestClient,
+    session: Session,
+    reader: UserModel,
 ) -> None:
+    """A reader is refused before the body is even looked at.
+
+    The role gate is a route dependency now (§21.6), so it runs ahead of body
+    validation: an unauthorized caller gets 403 whatever they send, and never
+    learns which fields the payload wants.
+    """
     process, _activity, slot0, _slot1 = _plan_setup(session)
     factories.enrol(session, process, reader)
     teacher = _make_teacher(session, process)
     assignment = factories.make_assignment(session, process, slot0, teacher)
     path = _undo_path(process.id, assignment.id)
 
-    assert reader_client.post(path, json={}).status_code == 422
-    assert reader_client.post(path, json={"reason": ""}).status_code == 422
+    assert admin_client.post(path, json={}).status_code == 422
+    assert admin_client.post(path, json={"reason": ""}).status_code == 422
+    assert reader_client.post(path, json={}).status_code == 403
     forbidden = reader_client.post(path, json={"reason": "Not authorized"})
 
     assert forbidden.status_code == 403
@@ -627,7 +637,10 @@ def test_undo_ignores_nonmatching_live_meeting(
 
 
 def test_reassign_requires_reason_and_rejects_reader(
-    reader_client: TestClient, session: Session, reader: UserModel
+    admin_client: TestClient,
+    reader_client: TestClient,
+    session: Session,
+    reader: UserModel,
 ) -> None:
     process, _activity, slot0, _slot1 = _plan_setup(session)
     factories.enrol(session, process, reader)
@@ -637,7 +650,7 @@ def test_reassign_requires_reason_and_rejects_reader(
     path = _reassign_path(process.id, assignment.id)
 
     assert (
-        reader_client.post(
+        admin_client.post(
             path, json={"process_teacher_id": str(replacement.id)}
         ).status_code
         == 422

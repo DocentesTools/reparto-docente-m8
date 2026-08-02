@@ -37,10 +37,28 @@ engine: DbEngine = create_db_engine(settings)
 CurrentUser = auth.CurrentUser
 get_current_user = auth.get_current_user
 
+# ── Role gates (plan §21.1/§21.6) ────────────────────────────────────────────
+# All three are the SDK-built dependencies, never a local role comparison. They
+# authenticate through fastapi-m8's fresh, no-positive-cache user path, so a
+# role-sensitive decision always observes a revocation committed after the last
+# cache fill — a demoted writer stops being a writer on their next request
+# rather than at the end of the cache TTL. A hand-rolled check over
+# ``get_current_user`` cannot offer that, which is the whole reason `RBAC-03`
+# asked for this migration rather than leaving the equivalent local comparison
+# in place.
+
 #: Minimum-role gate mounted on every domain router (plan §21.1): ``USER`` and
 #: unauthenticated callers never reach a route function, including reads.
 require_reader = auth.get_current_active_reader
 CurrentReader = Annotated[UserModel, Depends(require_reader)]
+
+#: Own-data mutations (plan §21.3). Ownership is proven separately.
+require_writer = auth.get_current_active_writer
+CurrentWriter = Annotated[UserModel, Depends(require_writer)]
+
+#: Department-head and platform-administration mutations (plan §21.2/§21.3).
+require_admin = auth.get_current_active_admin
+CurrentAdmin = Annotated[UserModel, Depends(require_admin)]
 
 get_db = engine.session_dep
 SessionDep = Annotated[Session, Depends(get_db)]

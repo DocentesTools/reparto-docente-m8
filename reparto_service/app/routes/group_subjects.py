@@ -10,7 +10,7 @@ import uuid
 
 from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
+from reparto_service.app.deps import CurrentAdmin, SessionDep, require_visible_process
 from reparto_service.controllers.group_subjects import GroupSubjectController
 from reparto_service.db_models.group_subjects import (
     GroupSubjectBulkApplyRequest,
@@ -48,11 +48,10 @@ def list_group_subjects(
 @router.post("/", response_model=GroupSubjectPublic, status_code=201)
 def create_group_subject(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     group_subject_in: GroupSubjectCreate,
 ) -> GroupSubjectPublic:
-    GroupSubjectController.require_department_head(current_user)
     return GroupSubjectController.create_group_subject(
         session, process_id, group_subject_in, current_user
     )
@@ -61,45 +60,41 @@ def create_group_subject(
 @router.post("/bulk-preview", response_model=GroupSubjectBulkPreview)
 def bulk_preview_group_subjects(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     request: GroupSubjectBulkRequest,
 ) -> GroupSubjectBulkPreview:
-    GroupSubjectController.require_department_head(current_user)
     return GroupSubjectController.bulk_preview(session, process_id, request)
 
 
 @router.post("/bulk-apply", response_model=GroupSubjectBulkResult)
 def bulk_apply_group_subjects(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     request: GroupSubjectBulkApplyRequest,
 ) -> GroupSubjectBulkResult:
-    GroupSubjectController.require_department_head(current_user)
     return GroupSubjectController.bulk_apply(session, process_id, request, current_user)
 
 
 @router.post("/{group_subject_id}/sync-preview", response_model=MainActivitySyncPreview)
 def preview_group_subject_sync(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     group_subject_id: uuid.UUID,
 ) -> MainActivitySyncPreview:
-    GroupSubjectController.require_department_head(current_user)
     return GroupSubjectController.sync_preview(session, process_id, group_subject_id)
 
 
 @router.post("/{group_subject_id}/sync-apply", response_model=MainActivitySyncResult)
 def apply_group_subject_sync(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     group_subject_id: uuid.UUID,
     request: MainActivitySyncApplyRequest,
 ) -> MainActivitySyncResult:
-    GroupSubjectController.require_department_head(current_user)
     return GroupSubjectController.sync_apply(
         session, process_id, group_subject_id, request, current_user
     )
@@ -117,12 +112,11 @@ def get_group_subject(
 @router.patch("/{group_subject_id}", response_model=GroupSubjectPublic)
 def update_group_subject(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     group_subject_id: uuid.UUID,
     group_subject_in: GroupSubjectUpdate,
 ) -> GroupSubjectPublic:
-    GroupSubjectController.require_department_head(current_user)
     return GroupSubjectController.update_group_subject(
         session, process_id, group_subject_id, group_subject_in, current_user
     )
@@ -131,11 +125,10 @@ def update_group_subject(
 @router.post("/{group_subject_id}/retire", response_model=GroupSubjectPublic)
 def retire_group_subject(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     group_subject_id: uuid.UUID,
 ) -> GroupSubjectPublic:
-    GroupSubjectController.require_department_head(current_user)
     return GroupSubjectController.retire_group_subject(
         session, process_id, group_subject_id, current_user
     )

@@ -6,7 +6,7 @@ import uuid
 
 from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
+from reparto_service.app.deps import CurrentAdmin, SessionDep, require_visible_process
 from reparto_service.controllers.meeting_sessions import MeetingSessionController
 from reparto_service.db_models.meeting_sessions import (
     MeetingSessionCreate,
@@ -33,11 +33,10 @@ def list_sessions(session: SessionDep, process_id: uuid.UUID) -> MeetingSessions
 @router.post("/", response_model=MeetingSessionPublic, status_code=201)
 def create_session(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     meeting_session_in: MeetingSessionCreate,
 ) -> MeetingSessionPublic:
-    MeetingSessionController.require_department_head(current_user)
     return MeetingSessionController.create_session(
         session, process_id, current_user, meeting_session_in
     )
@@ -55,12 +54,11 @@ def get_session(
 @router.patch("/{meeting_session_id}", response_model=MeetingSessionPublic)
 def update_session(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     meeting_session_id: uuid.UUID,
     meeting_session_in: MeetingSessionUpdate,
 ) -> MeetingSessionPublic:
-    MeetingSessionController.require_department_head(current_user)
     return MeetingSessionController.update_session(
         session, process_id, meeting_session_id, current_user, meeting_session_in
     )
@@ -69,11 +67,10 @@ def update_session(
 @router.post("/{meeting_session_id}/close", response_model=MeetingSessionPublic)
 def close_session(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     meeting_session_id: uuid.UUID,
 ) -> MeetingSessionPublic:
-    MeetingSessionController.require_department_head(current_user)
     return MeetingSessionController.close_session(
         session, process_id, meeting_session_id
     )

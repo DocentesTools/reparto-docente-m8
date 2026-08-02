@@ -6,14 +6,12 @@ import logging
 import uuid
 from typing import Any
 
-from fastapi import HTTPException, status
-from sqlmodel import Session, select
-
 from auth_sdk_m8.authorization import has_minimum_role
 from auth_sdk_m8.controllers.base import BaseController
 from auth_sdk_m8.schemas.base import RoleType
 from auth_sdk_m8.schemas.user import UserModel
-from sqlmodel import SQLModel
+from fastapi import HTTPException, status
+from sqlmodel import Session, SQLModel, select
 
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.audit_events import AuditEvent
@@ -41,15 +39,20 @@ class DomainController(BaseController):
 
     Provides:
 
-    * the three §21 authorization helpers — ``require_writer`` (own-data
-      mutations), ``require_department_head`` (process and planning data) and
-      ``require_admin`` (platform reference data),
     * the ownership resolvers backing "own records only" (``linked_process_
-      teacher``, ``require_own_teacher_profile``),
+      teacher``, ``require_own_teacher_profile``) and the two role predicates
+      they build on (``require_writer``, ``require_department_head``),
     * lookup-or-404 helpers for every owned parent (process, teacher profile, etc.),
     * a ``ensure_process_mutable`` guard that every child resource
       controller calls before a write, enforcing plan §8.4's
       "final process is immutable" rule.
+
+    Route-level role gating lives in the SDK dependencies the routes declare
+    (``CurrentReader``/``CurrentWriter``/``CurrentAdmin``, plan §21.6), not
+    here. What remains are the checks a *dependency* cannot express, because
+    they need the row: is this the caller's own participation, their own
+    profile, and — for the SSE projection — would this caller be allowed to act
+    as department head at all.
 
     Every role decision goes through the SDK's ``has_minimum_role``. Nothing
     here inspects ``is_superuser``: the SDK's truth table makes the flag
@@ -96,15 +99,6 @@ class DomainController(BaseController):
             current_user,
             RoleType.ADMIN,
             "Department-head role (admin) required to mutate this resource.",
-        )
-
-    @staticmethod
-    def require_admin(current_user: UserModel) -> None:
-        """Raise 403 unless the caller may administer platform reference data."""
-        DomainController._require_role(
-            current_user,
-            RoleType.ADMIN,
-            "Administrator role required to mutate platform reference data.",
         )
 
     @staticmethod

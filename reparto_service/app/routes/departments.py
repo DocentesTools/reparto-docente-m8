@@ -8,8 +8,8 @@ from typing import Optional
 from fastapi import APIRouter
 
 from reparto_service.app.deps import (
+    CurrentAdmin,
     CurrentReader,
-    CurrentUser,
     SessionDep,
     UserRoleLookupDep,
 )
@@ -40,11 +40,10 @@ def list_departments(
 @router.post("/", response_model=DepartmentPublic, status_code=201)
 def create_department(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     department_in: DepartmentCreate,
     role_lookup: UserRoleLookupDep,
 ) -> DepartmentPublic:
-    DepartmentController.require_admin(current_user)
     return DepartmentController.create_department(session, department_in, role_lookup)
 
 
@@ -58,12 +57,11 @@ def get_department(
 @router.patch("/{department_id}", response_model=DepartmentPublic)
 def update_department(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     department_id: uuid.UUID,
     department_in: DepartmentUpdate,
     role_lookup: UserRoleLookupDep,
 ) -> DepartmentPublic:
-    DepartmentController.require_admin(current_user)
     return DepartmentController.update_department(
         session, department_id, department_in, role_lookup
     )

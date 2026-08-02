@@ -55,24 +55,25 @@ for _k, _v in _TEST_ENV.items():
     os.environ.setdefault(_k, _v)
 
 # Disable the local .env lookup BEFORE the first service import.
-import auth_sdk_m8.utils.paths as _paths_mod  # noqa: E402
+import auth_sdk_m8.utils.paths as _paths_mod
 
 _real_find_dotenv = _paths_mod.find_dotenv
 _paths_mod.find_dotenv = lambda *_a, **_kw: ""
 
-# Now safe to import the service.
-import pytest  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-from sqlmodel import Session, SQLModel, create_engine  # noqa: E402
-from sqlmodel.pool import StaticPool  # noqa: E402
-
-from auth_sdk_m8.schemas.user import UserModel  # noqa: E402
+# Now safe to import the service. These imports are deliberately below the
+# env setup above and not at the top of the file; ``E402`` is not enabled in
+# this repository's ruff configuration, so they carry no suppression.
+import pytest
+from auth_sdk_m8.schemas.user import UserModel
+from fastapi import HTTPException, Request
+from fastapi.testclient import TestClient
+from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel.pool import StaticPool
 
 # Pull every domain model so SQLModel.metadata is populated.
-import reparto_service.db_models  # noqa: F401, E402
-
-from reparto_service.core.deps import auth, get_current_user, get_db  # noqa: E402
-from reparto_service.main import app  # noqa: E402
+import reparto_service.db_models  # noqa: F401
+from reparto_service.core.deps import auth, get_current_user, get_db
+from reparto_service.main import app
 
 # Restore find_dotenv (good hygiene).
 _paths_mod.find_dotenv = _real_find_dotenv
@@ -215,21 +216,36 @@ def plain_user() -> UserModel:
 # ── TestClient fixtures ──────────────────────────────────────────────────────
 
 
+#: Identities registered by the client fixtures, keyed by the opaque header
+#: each client sends. ``app.dependency_overrides`` is global to the app, so a
+#: test asking for two clients would otherwise get whichever was built last for
+#: both of them — a silent way to assert the wrong thing.
+_TEST_IDENTITIES: dict[str, UserModel] = {}
+_IDENTITY_HEADER = "x-test-identity"
+
+
 def _make_client(session: Session, user: UserModel | None) -> TestClient:
     def _override_db():
         yield session
 
-    def _override_user():
-        return user
+    def _override_user(request: Request) -> UserModel:
+        identity = _TEST_IDENTITIES.get(request.headers.get(_IDENTITY_HEADER, ""))
+        if identity is None:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        return identity
 
     app.dependency_overrides[get_db] = _override_db
-    if user is not None:
-        app.dependency_overrides[get_current_user] = _override_user
-        # The §21.1 reader floor and every role guard resolve their user
-        # through the SDK's fresh path, not through ``get_current_user``.
-        # Both are overridden so a test client is one identity everywhere.
-        app.dependency_overrides[_FRESH_USER_DEPENDENCY] = _override_user
-    return TestClient(app)
+    if user is None:
+        return TestClient(app)
+
+    key = str(uuid.uuid4())
+    _TEST_IDENTITIES[key] = user
+    app.dependency_overrides[get_current_user] = _override_user
+    # The §21.1 reader floor and every role guard resolve their user through
+    # the SDK's fresh path, not through ``get_current_user``. Both are
+    # overridden so a test client is one identity everywhere.
+    app.dependency_overrides[_FRESH_USER_DEPENDENCY] = _override_user
+    return TestClient(app, headers={_IDENTITY_HEADER: key})
 
 
 @pytest.fixture
@@ -242,6 +258,7 @@ def client(
     with tc as c:
         yield c
     app.dependency_overrides.clear()
+    _TEST_IDENTITIES.clear()
 
 
 @pytest.fixture
@@ -254,6 +271,7 @@ def writer_client(
     with tc as c:
         yield c
     app.dependency_overrides.clear()
+    _TEST_IDENTITIES.clear()
 
 
 @pytest.fixture
@@ -266,6 +284,7 @@ def superuser_client(
     with tc as c:
         yield c
     app.dependency_overrides.clear()
+    _TEST_IDENTITIES.clear()
 
 
 @pytest.fixture
@@ -278,6 +297,7 @@ def admin_client(
     with tc as c:
         yield c
     app.dependency_overrides.clear()
+    _TEST_IDENTITIES.clear()
 
 
 @pytest.fixture
@@ -290,6 +310,7 @@ def reader_client(
     with tc as c:
         yield c
     app.dependency_overrides.clear()
+    _TEST_IDENTITIES.clear()
 
 
 @pytest.fixture
@@ -302,6 +323,7 @@ def user_client(
     with tc as c:
         yield c
     app.dependency_overrides.clear()
+    _TEST_IDENTITIES.clear()
 
 
 @pytest.fixture
@@ -312,6 +334,7 @@ def unauth_client(session: Session) -> Generator[TestClient]:
     with tc as c:
         yield c
     app.dependency_overrides.clear()
+    _TEST_IDENTITIES.clear()
 
 
 # ── Convenience mock ────────────────────────────────────────────────────────
@@ -321,3 +344,28 @@ def unauth_client(session: Session) -> Generator[TestClient]:
 def mock_object() -> MagicMock:
     """Plain MagicMock for ad-hoc test double injection."""
     return MagicMock()
+
+
+@pytest.fixture
+def cached_path_only_client(
+    session: Session,
+    current_user: UserModel,
+) -> Generator[TestClient]:
+    """A client whose identity resolves *only* through ``get_current_user``.
+
+    The SDK's fresh, no-positive-cache dependency is deliberately left
+    un-overridden, so anything that authenticates through it falls back to the
+    real bearer-token flow and answers 401. That asymmetry is what lets a test
+    prove no route takes its principal from the cacheable path (`RBAC-03`).
+    """
+
+    def _override_db():
+        yield session
+
+    app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_current_user] = lambda: current_user
+    tc = TestClient(app)
+    with tc as c:
+        yield c
+    app.dependency_overrides.clear()
+    _TEST_IDENTITIES.clear()

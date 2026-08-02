@@ -17,7 +17,7 @@ from typing import Optional
 
 from fastapi import APIRouter
 
-from reparto_service.app.deps import CurrentReader, CurrentUser, SessionDep
+from reparto_service.app.deps import CurrentAdmin, CurrentReader, SessionDep
 from reparto_service.controllers.assignment_processes import (
     AssignmentProcessController,
 )
@@ -57,10 +57,9 @@ def list_processes(
 @router.post("/", response_model=AssignmentProcessPublic, status_code=201)
 def create_process(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_in: AssignmentProcessCreate,
 ) -> AssignmentProcessPublic:
-    AssignmentProcessController.require_department_head(current_user)
     return AssignmentProcessController.create_process(session, current_user, process_in)
 
 
@@ -75,11 +74,10 @@ def get_process(
 @router.patch("/{process_id}", response_model=AssignmentProcessPublic)
 def update_process(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     process_in: AssignmentProcessUpdate,
 ) -> AssignmentProcessPublic:
-    AssignmentProcessController.require_department_head(current_user)
     return AssignmentProcessController.update_process(
         session, process_id, process_in, current_user
     )
@@ -91,11 +89,10 @@ def update_process(
 @router.post("/{process_id}/transition", response_model=AssignmentProcessPublic)
 def transition_process(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     request: ProcessTransitionRequest,
 ) -> AssignmentProcessPublic:
-    AssignmentProcessController.require_department_head(current_user)
     return AssignmentProcessController.transition_process(
         session, process_id, current_user, request
     )
@@ -104,11 +101,10 @@ def transition_process(
 @router.post("/{process_id}/reopen", response_model=AssignmentProcessPublic)
 def reopen_process(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     request: ProcessReopenRequest,
 ) -> AssignmentProcessPublic:
-    AssignmentProcessController.require_department_head(current_user)
     return AssignmentProcessController.reopen_process(
         session, process_id, current_user, request
     )
@@ -120,12 +116,11 @@ def reopen_process(
 )
 def copy_from_process(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     source_process_id: uuid.UUID,
     request: ProcessCopyRequest,
 ) -> AssignmentProcessPublic:
-    AssignmentProcessController.require_department_head(current_user)
     return AssignmentProcessController.copy_from_process(
         session, process_id, source_process_id, request, current_user
     )
@@ -153,7 +148,7 @@ def get_process_dashboard(
 @router.get("/{process_id}/lan/me", response_model=TeacherLanSummary)
 def get_teacher_lan_summary(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentReader,
     process_id: uuid.UUID,
 ) -> TeacherLanSummary:
     ensure_process_visible(session, current_user, process_id)

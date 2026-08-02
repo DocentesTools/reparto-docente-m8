@@ -6,7 +6,7 @@ import uuid
 
 from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
+from reparto_service.app.deps import CurrentAdmin, SessionDep, require_visible_process
 from reparto_service.controllers.history import HistoryController
 from reparto_service.controllers.process_versions import ProcessVersionController
 from reparto_service.db_models.assignment_processes import AssignmentProcessPublic
@@ -41,11 +41,10 @@ def list_versions(session: SessionDep, process_id: uuid.UUID) -> ProcessVersions
 @router.post("/versions", response_model=ProcessVersionPublic, status_code=201)
 def create_version(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     payload: ProcessVersionCreate,
 ) -> ProcessVersionPublic:
-    ProcessVersionController.require_department_head(current_user)
     return ProcessVersionController.create_version(
         session, process_id, current_user, payload
     )
@@ -81,22 +80,20 @@ def list_artifacts(session: SessionDep, process_id: uuid.UUID) -> ExportArtifact
 @router.post("/exports", response_model=ExportArtifactPublic, status_code=201)
 def create_artifact(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     payload: ExportArtifactCreate,
 ) -> ExportArtifactPublic:
-    HistoryController.require_department_head(current_user)
     return HistoryController.create_artifact(session, process_id, current_user, payload)
 
 
 @router.post("/restore-draft", response_model=AssignmentProcessPublic, status_code=201)
 def restore_backup_to_draft(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     payload: ExportBackupRestoreRequest,
 ) -> AssignmentProcessPublic:
-    HistoryController.require_department_head(current_user)
     return HistoryController.restore_backup_to_draft(
         session, process_id, current_user, payload
     )

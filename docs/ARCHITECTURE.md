@@ -553,24 +553,40 @@ it, and a router added later inherits it by construction. The framework's
 `/health`, `/meta`, `/ping` and `/metrics` endpoints are mounted outside the
 aggregator and keep their own visibility.
 
-It is the SDK-built dependency rather than a local role comparison on purpose:
-only that path re-validates against the fresh, no-positive-cache user, which is
-what makes a role-sensitive check observe a revocation committed after the last
-cache fill.
+It is the SDK-built dependency rather than a local role comparison on purpose,
+and so is every gate above it: only that path re-validates against the fresh,
+no-positive-cache user, which is what makes a role-sensitive check observe a
+revocation committed after the last cache fill — a demoted writer stops being a
+writer on their next request rather than at the end of the cache TTL. A
+hand-rolled comparison over `get_current_user` cannot offer that however
+correct its arithmetic, which is why `RBAC-03` asked for the dependency and not
+merely for equivalent behaviour. `tests/test_authorization_boundaries.py`
+proves it from both sides: the gates are asserted to *be* the SDK objects, and
+a client that satisfies only the cacheable `get_current_user` path is answered
+`401` on every route in the schema.
 
-`DomainController` centralises the checks layered on top of that floor:
+**Every route names the role it needs in its own signature.** `CurrentReader`,
+`CurrentWriter` and `CurrentAdmin` are the SDK's `get_current_active_reader`/
+`_writer`/`_admin` dependencies, so the requirement is visible where the handler
+is read and enforced before the handler runs — including before body
+validation, so an unauthorized caller never learns what the payload wants.
+There is deliberately no bare `CurrentUser` export left: a new route cannot
+settle for "authenticated" by omission.
 
-* `require_writer` — the floor for an **own-data** mutation (§21.3): editing
-  one's own profile, claiming a slot in one's own turn. Never sufficient by
-  itself for process or planning data;
-* `require_department_head` — `ADMIN` or `SUPERADMIN`, required for every
-  process and planning mutation;
-* `require_admin` — platform reference data (schools, academic years, classroom
-  stages, departments, teacher-profile lifecycle);
+Mapping: `CurrentAdmin` for every process/planning mutation (the department
+head, §21.2) and all platform reference data; `CurrentWriter` for the three
+own-data actions; `CurrentReader` everywhere else.
+
+`DomainController` keeps only the checks a dependency cannot express, because
+they need the row:
+
 * `require_own_process_teacher` / `require_own_teacher_profile` — the ownership
   resolvers that turn "writer" into "writer, on their own record". A department
   head passes them unconditionally; anybody else must be acting on the row
   linked to their own auth id;
+* `require_writer` / `require_department_head` — the role predicates those
+  resolvers build on, and the one the SSE projection asks in order to pick a
+  viewer's tier;
 * `ensure_process_mutable` — every child-resource write is refused when the parent
   process is `final` or `archived`, from one place.
 
@@ -716,11 +732,10 @@ extension point already in place.
 
 * **Decimal hour columns** — `HoursNumeric` exists but no model uses it yet; hour
   columns remain `float` and are lifted to `Decimal` in the services (§8.2).
-* **Authorization hardening** — the read floor, the `WRITER`-owns-its-own-records
-  rule, the `ADMIN`/`SUPERADMIN` department head, the issuer-checked
-  `department_head_user_id` and per-department read scoping are all in place
-  (§9.5, §9.5.1). Still open: migration of the mutation guards onto the
-  SDK-provided role dependencies.
+* **Authorization hardening** — complete (§9.5, §9.5.1): the read floor, the
+  `WRITER`-owns-its-own-records rule, the `ADMIN`/`SUPERADMIN` department head,
+  the issuer-checked `department_head_user_id`, per-department read scoping, and
+  every gate on the SDK's role dependencies.
 * **Destructive migration generation** — the new schema's migration is produced by
   the Compose bootstrap from these models and verified against a clean database
   (§3.1, §3.2).

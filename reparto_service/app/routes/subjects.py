@@ -6,7 +6,7 @@ import uuid
 
 from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
+from reparto_service.app.deps import CurrentAdmin, SessionDep, require_visible_process
 from reparto_service.controllers.subjects import SubjectController
 from reparto_service.db_models.subjects import (
     SubjectCreate,
@@ -33,11 +33,10 @@ def list_subjects(session: SessionDep, process_id: uuid.UUID) -> SubjectsPublic:
 @router.post("/", response_model=SubjectPublic, status_code=201)
 def create_subject(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     subject_in: SubjectCreate,
 ) -> SubjectPublic:
-    SubjectController.require_department_head(current_user)
     return SubjectController.create_subject(
         session, process_id, subject_in, current_user
     )
@@ -53,12 +52,11 @@ def get_subject(
 @router.patch("/{subject_id}", response_model=SubjectPublic)
 def update_subject(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     subject_id: uuid.UUID,
     subject_in: SubjectUpdate,
 ) -> SubjectPublic:
-    SubjectController.require_department_head(current_user)
     return SubjectController.update_subject(
         session, process_id, subject_id, subject_in, current_user
     )
@@ -67,11 +65,10 @@ def update_subject(
 @router.delete("/{subject_id}", response_model=SubjectPublic)
 def delete_subject(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     subject_id: uuid.UUID,
 ) -> SubjectPublic:
-    SubjectController.require_department_head(current_user)
     return SubjectController.delete_subject(
         session, process_id, subject_id, current_user
     )

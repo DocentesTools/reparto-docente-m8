@@ -6,7 +6,7 @@ import uuid
 
 from fastapi import APIRouter
 
-from reparto_service.app.deps import CurrentReader, CurrentUser, SessionDep
+from reparto_service.app.deps import CurrentAdmin, CurrentReader, SessionDep
 from reparto_service.controllers.schools import SchoolController
 from reparto_service.db_models.schools import (
     SchoolCreate,
@@ -31,10 +31,9 @@ def list_schools(
 @router.post("/", response_model=SchoolPublic, status_code=201)
 def create_school(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     school_in: SchoolCreate,
 ) -> SchoolPublic:
-    SchoolController.require_admin(current_user)
     return SchoolController.create_school(session, school_in)
 
 
@@ -48,9 +47,8 @@ def get_school(
 @router.patch("/{school_id}", response_model=SchoolPublic)
 def update_school(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     school_id: uuid.UUID,
     school_in: SchoolUpdate,
 ) -> SchoolPublic:
-    SchoolController.require_admin(current_user)
     return SchoolController.update_school(session, school_id, school_in)

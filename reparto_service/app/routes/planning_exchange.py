@@ -17,7 +17,7 @@ import uuid
 
 from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
+from reparto_service.app.deps import CurrentAdmin, SessionDep, require_visible_process
 from reparto_service.controllers.planning_exchange import PlanningExchangeController
 from reparto_service.enums import PlanningExportMode
 from reparto_service.schemas.exchange import (
@@ -66,11 +66,10 @@ def export_planning_final(
 @router.post("/imports/planning", response_model=PlanningImportResult)
 def import_planning(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     payload: PlanningImportRequest,
 ) -> PlanningImportResult:
-    PlanningExchangeController.require_department_head(current_user)
     return PlanningExchangeController.import_planning(
         session, process_id, payload, current_user
     )

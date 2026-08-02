@@ -14,7 +14,7 @@ import uuid
 
 from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
+from reparto_service.app.deps import CurrentAdmin, SessionDep, require_visible_process
 from reparto_service.controllers.hour_requirements import HourRequirementController
 from reparto_service.db_models.hour_requirements import (
     HourRequirementPublic,
@@ -46,41 +46,37 @@ def list_requirements(
 @router.post("/generation-preview", response_model=RequirementGenerationPreview)
 def preview_requirement_generation(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
 ) -> RequirementGenerationPreview:
-    HourRequirementController.require_department_head(current_user)
     return HourRequirementController.generation_preview(session, process_id)
 
 
 @router.post("/generate", response_model=RequirementGenerationResult)
 def generate_requirements(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
 ) -> RequirementGenerationResult:
-    HourRequirementController.require_department_head(current_user)
     return HourRequirementController.generate(session, process_id, current_user)
 
 
 @router.post("/reconciliation-preview", response_model=RequirementReconciliationPreview)
 def preview_requirement_reconciliation(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
 ) -> RequirementReconciliationPreview:
-    HourRequirementController.require_department_head(current_user)
     return HourRequirementController.reconciliation_preview(session, process_id)
 
 
 @router.post("/reconcile", response_model=RequirementReconciliationResult)
 def reconcile_requirements(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     request: RequirementReconcileRequest,
 ) -> RequirementReconciliationResult:
-    HourRequirementController.require_department_head(current_user)
     return HourRequirementController.reconcile(
         session, process_id, current_user, request
     )

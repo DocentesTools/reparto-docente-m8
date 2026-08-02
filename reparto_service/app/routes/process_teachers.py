@@ -6,7 +6,7 @@ import uuid
 
 from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep, require_visible_process
+from reparto_service.app.deps import CurrentAdmin, SessionDep, require_visible_process
 from reparto_service.controllers.process_teachers import ProcessTeacherController
 from reparto_service.db_models.process_teachers import (
     ProcessTeacherCreate,
@@ -36,11 +36,10 @@ def list_process_teachers(
 @router.post("/", response_model=ProcessTeacherPublic, status_code=201)
 def create_process_teacher(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     process_teacher_in: ProcessTeacherCreate,
 ) -> ProcessTeacherPublic:
-    ProcessTeacherController.require_department_head(current_user)
     return ProcessTeacherController.create_process_teacher(
         session, process_id, current_user, process_teacher_in
     )
@@ -58,12 +57,11 @@ def get_process_teacher(
 @router.patch("/{process_teacher_id}", response_model=ProcessTeacherPublic)
 def update_process_teacher(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     process_teacher_id: uuid.UUID,
     process_teacher_in: ProcessTeacherUpdate,
 ) -> ProcessTeacherPublic:
-    ProcessTeacherController.require_department_head(current_user)
     return ProcessTeacherController.update_process_teacher(
         session,
         process_id,
@@ -76,7 +74,7 @@ def update_process_teacher(
 @router.post("/{process_teacher_id}/extra-hours", response_model=ProcessTeacherPublic)
 def update_process_teacher_extra_hours(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     process_teacher_id: uuid.UUID,
     payload: ProcessTeacherExtraHoursUpdate,
@@ -86,7 +84,6 @@ def update_process_teacher_extra_hours(
     Keeps authorized-overload changes off the generic PATCH so they always
     carry a reason and an audit event.
     """
-    ProcessTeacherController.require_department_head(current_user)
     return ProcessTeacherController.update_extra_hours(
         session, process_id, process_teacher_id, payload, current_user
     )
@@ -95,11 +92,10 @@ def update_process_teacher_extra_hours(
 @router.delete("/{process_teacher_id}", response_model=ProcessTeacherPublic)
 def delete_process_teacher(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     process_teacher_id: uuid.UUID,
 ) -> ProcessTeacherPublic:
-    ProcessTeacherController.require_department_head(current_user)
     return ProcessTeacherController.delete_process_teacher(
         session, process_id, process_teacher_id, current_user
     )
