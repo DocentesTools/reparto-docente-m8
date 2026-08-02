@@ -135,7 +135,13 @@ framework's `/health`, `/meta` and `/ping` endpoints sit outside the floor.
 
 `Department.department_head_user_id` records who heads a department for
 attribution and UI defaults; it grants no permission. Authorization is always
-the caller's own role.
+the caller's own role. Because the field is read as a statement of fact, it is
+still checked against the identity service when set: an account it does not know
+or that holds a role below `ADMIN` is refused (`400`), and an identity service
+that cannot be reached is a `503` that leaves the recorded head unchanged. That
+lookup uses the issuer's own user endpoint with the caller's token, so it
+requires `INTROSPECTION_URL` to be configured; clearing the field never needs a
+lookup.
 
 | Area | Base path |
 | --- | --- |

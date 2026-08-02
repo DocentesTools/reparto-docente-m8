@@ -7,7 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter
 
-from reparto_service.app.deps import CurrentUser, SessionDep
+from reparto_service.app.deps import CurrentUser, SessionDep, UserRoleLookupDep
 from reparto_service.controllers.departments import DepartmentController
 from reparto_service.db_models.departments import (
     DepartmentCreate,
@@ -36,9 +36,10 @@ def create_department(
     session: SessionDep,
     current_user: CurrentUser,
     department_in: DepartmentCreate,
+    role_lookup: UserRoleLookupDep,
 ) -> DepartmentPublic:
     DepartmentController.require_admin(current_user)
-    return DepartmentController.create_department(session, department_in)
+    return DepartmentController.create_department(session, department_in, role_lookup)
 
 
 @router.get("/{department_id}", response_model=DepartmentPublic)
@@ -52,6 +53,9 @@ def update_department(
     current_user: CurrentUser,
     department_id: uuid.UUID,
     department_in: DepartmentUpdate,
+    role_lookup: UserRoleLookupDep,
 ) -> DepartmentPublic:
     DepartmentController.require_admin(current_user)
-    return DepartmentController.update_department(session, department_id, department_in)
+    return DepartmentController.update_department(
+        session, department_id, department_in, role_lookup
+    )

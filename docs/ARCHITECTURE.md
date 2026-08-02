@@ -590,6 +590,22 @@ behaviour change — an account bound as a department's head that does not hold
 `ADMIN` loses process-mutation rights it previously had, and existing bindings
 must be audited before this ships.
 
+Because the field is descriptive, it must still *describe something true*:
+`POST`/`PATCH /departments` refuse (400) a target the identity service does not
+know or that holds a role below `ADMIN`. This service never reads the auth
+service's user table (`ARCH-NO-CROSS-SERVICE-DATA`), so the role comes from the
+issuer's own `GET {AUTH_PREFIX}/users/get/{user_id}/` contract, called with the
+**caller's own** bearer token (`services/user_directory.py`) — a lookup can
+never see more than the caller already may. The check fails closed: an
+unconfigured `INTROSPECTION_URL`, a transport failure or an unexpected status is
+a `503` and the head is left unchanged, and the raised reason is a bounded,
+secret-free code that never carries the token, the target id or the response
+body. One consequence is deliberate and worth stating plainly: the issuer gates
+that endpoint on superuser, so naming *somebody else* as head is in practice a
+`SUPERADMIN` act, because nothing weaker can verify the claim. Clearing the
+field is always allowed — a department whose head has left must not be stranded
+by the check.
+
 `tests/test_authorization_boundaries.py` sweeps the generated OpenAPI document
 rather than a hand-kept path list, so a route added tomorrow is swept the day it
 is added.
@@ -667,10 +683,10 @@ extension point already in place.
 * **Decimal hour columns** — `HoursNumeric` exists but no model uses it yet; hour
   columns remain `float` and are lifted to `Decimal` in the services (§8.2).
 * **Authorization hardening** — the read floor, the `WRITER`-owns-its-own-records
-  rule and the `ADMIN`/`SUPERADMIN` department head are all in place (§9.5).
-  Still open: validating the role of a `department_head_user_id` assignment
-  target, per-tenant read scoping, and migration of the mutation guards onto the
-  SDK-provided role dependencies.
+  rule, the `ADMIN`/`SUPERADMIN` department head and the issuer-checked
+  `department_head_user_id` are all in place (§9.5). Still open: per-tenant read
+  scoping, and migration of the mutation guards onto the SDK-provided role
+  dependencies.
 * **Destructive migration generation** — the new schema's migration is produced by
   the Compose bootstrap from these models and verified against a clean database
   (§3.1, §3.2).

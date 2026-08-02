@@ -71,6 +71,10 @@ REFRESH_TOKEN_EXPIRE_MINUTES=3600
 # Required when TOKEN_MODE=stateful. Must match auth_user_service PRIVATE_API_SECRET.
 # The auth service exposes this endpoint on its Docker-internal network only.
 INTROSPECTION_URL=http://auth_user_service:8000/user/private/v1/jti-status
+# The department-head accuracy check (plan §21.2) also derives the issuer's
+# user-lookup URL from this value: `PATCH /departments/{id}` confirms a
+# candidate `department_head_user_id` holds at least ADMIN before recording it.
+# With this unset, that check fails closed (503) and the field cannot be set.
 PRIVATE_API_SECRET=changethis
 
 # ── Revocation failure mode (consumer) ───────────────────────────────────────
