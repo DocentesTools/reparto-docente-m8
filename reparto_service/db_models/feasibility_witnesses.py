@@ -92,7 +92,36 @@ class FeasibilityEvaluationPublic(SQLModel):
     memoization_hits: int
 
 
+class FeasibilityDiagnosticPublic(SQLModel):
+    """One administration-only finding from the latest current evaluation.
+
+    ``code`` is the stable machine key (the frontend keys off it, never off
+    the human ``message``); ``related_ids`` carries the affected slot or
+    activity identifiers when the code has any. The complete provisional
+    reparto itself is never part of this payload (plan §20.24).
+    """
+
+    code: str = Field(description="Stable diagnostic code (plan §20.20).")
+    message: str = Field(description="Administration-facing explanation.")
+    related_ids: list[uuid.UUID] = Field(
+        default_factory=list,
+        description="Affected slot/activity identifiers, when the code has any.",
+    )
+
+
+class FeasibilityDiagnosticsPublic(SQLModel):
+    """Administration-only diagnostics of the latest current evaluation."""
+
+    teaching_plan_id: uuid.UUID
+    assignment_process_id: uuid.UUID
+    status: FeasibilityStatus
+    checked_at: datetime
+    diagnostics: list[FeasibilityDiagnosticPublic]
+
+
 __all__ = [
+    "FeasibilityDiagnosticPublic",
+    "FeasibilityDiagnosticsPublic",
     "FeasibilityEvaluationPublic",
     "FeasibilityWitness",
     "FeasibilityWitnessEntryPublic",

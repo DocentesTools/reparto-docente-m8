@@ -16,7 +16,7 @@ both delegate to the services that own the numbers and the findings, and both
 are solver-free. Locking evaluates the exact intended requirement generation,
 fails closed unless it is feasible, and persists the witness that generation
 must match. This controller also exposes the administrator-only feasibility
-evaluation and witness retrieval operations from §20.20.
+evaluation, witness retrieval and diagnostics operations from §7.3 and §20.20.
 ``mark_stale`` is the concrete allocation-change side effect (plan §3.11, §9)
 exposed for that wiring.
 """
@@ -37,6 +37,7 @@ from reparto_service.db_models.teaching_plans import (
     TeachingPlanPublic,
 )
 from reparto_service.db_models.feasibility_witnesses import (
+    FeasibilityDiagnosticsPublic,
     FeasibilityEvaluationPublic,
     FeasibilityWitnessPublic,
 )
@@ -124,6 +125,15 @@ class TeachingPlanController(DomainController):
 
         DomainController.get_process_or_404(session, process_id)
         return FeasibilityWitnessService.get_witness(session, process_id)
+
+    @staticmethod
+    def get_feasibility_diagnostics(
+        session: Session, process_id: uuid.UUID
+    ) -> FeasibilityDiagnosticsPublic:
+        """Return the latest evaluation's findings to an authorized caller."""
+
+        DomainController.get_process_or_404(session, process_id)
+        return FeasibilityWitnessService.get_diagnostics(session, process_id)
 
     @staticmethod
     def create_plan(

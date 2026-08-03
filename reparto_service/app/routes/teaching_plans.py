@@ -2,8 +2,8 @@
 
 This slice exposes the plan's ownership surface, the read-only planning
 ``summary`` and ``validations`` endpoints, the ``materialize-main`` action, and
-the administrator-only feasibility evaluation/witness operations (plan §7.3,
-§20.20), plus feasibility-gated lock/unlock lifecycle actions.
+the administrator-only feasibility evaluation/witness/diagnostics operations
+(plan §7.3, §20.20), plus feasibility-gated lock/unlock lifecycle actions.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from reparto_service.controllers.teaching_activities import TeachingActivityCont
 from reparto_service.controllers.teaching_plans import TeachingPlanController
 from reparto_service.db_models.teaching_activities import MainMaterializationResult
 from reparto_service.db_models.feasibility_witnesses import (
+    FeasibilityDiagnosticsPublic,
     FeasibilityEvaluationPublic,
     FeasibilityWitnessPublic,
 )
@@ -78,6 +79,20 @@ def get_teaching_plan_feasibility_witness(
     """Expose the provisional mapping only to an administrator."""
 
     return TeachingPlanController.get_feasibility_witness(session, process_id)
+
+
+@router.get(
+    "/feasibility/diagnostics",
+    response_model=FeasibilityDiagnosticsPublic,
+)
+def get_teaching_plan_feasibility_diagnostics(
+    session: SessionDep,
+    current_user: CurrentAdmin,
+    process_id: uuid.UUID,
+) -> FeasibilityDiagnosticsPublic:
+    """Expose the latest evaluation's findings only to an administrator."""
+
+    return TeachingPlanController.get_feasibility_diagnostics(session, process_id)
 
 
 @router.post("", response_model=TeachingPlanPublic, status_code=201)

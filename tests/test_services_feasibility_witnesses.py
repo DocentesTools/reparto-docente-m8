@@ -340,3 +340,149 @@ def test_missing_or_mismatched_internal_row_is_never_reused(
     refreshed = admin_client.post(_path(process.id, "evaluate"))
     assert refreshed.status_code == 200
     assert refreshed.json()["cache_reused"] is False
+
+
+# ── Administration-only diagnostics (plan §7.3, §20.24) ──────────────────────
+
+
+def test_diagnostics_report_feasible_evaluation_has_no_findings(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, plan, _slots, _teachers = _feasible_setup(session)
+    admin_client.post(_path(process.id, "evaluate"))
+
+    response = admin_client.get(_path(process.id, "diagnostics"))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["teaching_plan_id"] == str(plan.id)
+    assert body["assignment_process_id"] == str(process.id)
+    assert body["status"] == FeasibilityStatus.FEASIBLE.value
+    assert body["checked_at"] is not None
+    assert body["diagnostics"] == []
+
+
+def test_diagnostics_report_infeasible_lists_stable_findings(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _plan, _slots, teachers = _feasible_setup(session)
+    teachers[0].base_weekly_hours = 3.0
+    session.add(teachers[0])
+    session.commit()
+    evaluation = admin_client.post(_path(process.id, "evaluate"))
+    assert evaluation.json()["status"] == FeasibilityStatus.INFEASIBLE.value
+
+    response = admin_client.get(_path(process.id, "diagnostics"))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == FeasibilityStatus.INFEASIBLE.value
+    assert body["diagnostics"] == [
+        {
+            "code": "incompatible_residual_totals",
+            "message": (
+                "Remaining participant targets and slot hours have different totals."
+            ),
+            "related_ids": [],
+        }
+    ]
+
+
+def test_diagnostics_related_ids_identify_the_oversized_slot(
+    admin_client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    plan = factories.make_teaching_plan(session, process)
+    subject = factories.make_subject(session, process)
+    oversized = factories.make_teaching_activity(
+        session,
+        plan,
+        subject,
+        required_teacher_count=1,
+        teacher_weekly_hours_per_position=3.0,
+    )
+    small = factories.make_teaching_activity(
+        session,
+        plan,
+        subject,
+        required_teacher_count=1,
+        teacher_weekly_hours_per_position=1.0,
+    )
+    oversized_slot = factories.make_hour_requirement(
+        session, process, oversized, required_teacher_hours=3.0
+    )
+    factories.make_hour_requirement(session, process, small, required_teacher_hours=1.0)
+    for index in range(2):
+        factories.make_process_teacher(
+            session,
+            process,
+            factories.make_teacher_profile(session, display_name=f"Teacher {index}"),
+            base_weekly_hours=2.0,
+        )
+    evaluation = admin_client.post(_path(process.id, "evaluate"))
+    assert evaluation.json()["status"] == FeasibilityStatus.INFEASIBLE.value
+
+    response = admin_client.get(_path(process.id, "diagnostics"))
+
+    assert response.status_code == 200
+    (diagnostic,) = response.json()["diagnostics"]
+    assert diagnostic["code"] == "slot_exceeds_every_target"
+    assert diagnostic["related_ids"] == [str(oversized_slot.id)]
+
+
+def test_diagnostics_fail_closed_without_a_current_evaluation(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, plan, _slots, _teachers = _feasible_setup(session)
+    assert admin_client.get(_path(process.id, "diagnostics")).status_code == 409
+
+    admin_client.post(_path(process.id, "evaluate"))
+    plan.current_generation_number = 7
+    session.add(plan)
+    session.commit()
+    stale = admin_client.get(_path(process.id, "diagnostics"))
+    assert stale.status_code == 409
+    assert "evaluation is required" in stale.json()["detail"]
+
+    missing = factories.make_assignment_process(session)
+    assert admin_client.get(_path(missing.id, "diagnostics")).status_code == 404
+
+
+def test_diagnostics_fail_closed_after_invalidation(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, _plan, _slots, teachers = _feasible_setup(session)
+    admin_client.post(_path(process.id, "evaluate"))
+    assert admin_client.get(_path(process.id, "diagnostics")).status_code == 200
+
+    patch = admin_client.patch(
+        f"/reparto/assignment-processes/{process.id}/teachers/{teachers[0].id}",
+        json={"base_weekly_hours": 6.0},
+    )
+    assert patch.status_code == 200
+
+    assert admin_client.get(_path(process.id, "diagnostics")).status_code == 409
+
+
+def test_diagnostics_checked_at_falls_back_to_the_row_timestamp(
+    admin_client: TestClient, session: Session
+) -> None:
+    process, plan, _slots, _teachers = _feasible_setup(session)
+    admin_client.post(_path(process.id, "evaluate"))
+    plan.feasibility_checked_at = None
+    session.add(plan)
+    session.commit()
+
+    response = admin_client.get(_path(process.id, "diagnostics"))
+
+    assert response.status_code == 200
+    row = session.exec(select(FeasibilityWitness)).one()
+    assert response.json()["checked_at"] == row.updated_at.isoformat()
+
+
+def test_regular_writer_cannot_read_diagnostics(
+    writer_client: TestClient, session: Session, writer_user: UserModel
+) -> None:
+    process, _plan, _slots, _teachers = _feasible_setup(session)
+    factories.enrol(session, process, writer_user)
+    assert writer_client.get(_path(process.id, "diagnostics")).status_code == 403

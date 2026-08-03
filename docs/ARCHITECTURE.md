@@ -438,7 +438,12 @@ process close only verify a current matching witness and never invoke the solver
 `POST /assignment-processes/{process_id}/teaching-plan/feasibility/evaluate`
 runs or reuses the bounded evaluation for that exact fingerprint; the full
 witness is available only through the administrator-gated
-`GET .../feasibility/witness`. Relevant participant, planning, allocation,
+`GET .../feasibility/witness`, and the latest evaluation's stable findings
+(code, message, affected slot/activity identifiers — never the witness itself)
+through the equally administrator-gated `GET .../feasibility/diagnostics`
+(plan §7.3, §20.24), which fails closed with `409` whenever no current
+fingerprint- and generation-matching evaluation exists. Relevant participant,
+planning, allocation,
 generation, reconciliation and undo mutations immediately reset the plan to
 `NOT_EVALUATED` and delete the cached row. A valid assignment hot path loads the
 matching row, performs bounded local repair, and persists the repaired mapping

@@ -329,6 +329,8 @@ ROLE_RANK: dict[str, int] = {
 #: Reads that sit *above* the floor. The feasibility witness is a provisional
 #: slot-to-teacher mapping (§20.20) — it says who *would* get what before anyone
 #: has chosen, so it is department-head-only however harmless a `GET` looks.
+#: The diagnostics name the concrete slots/activities a remediation must touch
+#: (§20.24), so they sit behind the same gate.
 ADMIN_ONLY_READS: frozenset[tuple[str, str]] = frozenset(
     {
         (
@@ -337,7 +339,14 @@ ADMIN_ONLY_READS: frozenset[tuple[str, str]] = frozenset(
                 "/reparto/assignment-processes/{process_id}"
                 "/teaching-plan/feasibility/witness"
             ),
-        )
+        ),
+        (
+            "GET",
+            (
+                "/reparto/assignment-processes/{process_id}"
+                "/teaching-plan/feasibility/diagnostics"
+            ),
+        ),
     }
 )
 

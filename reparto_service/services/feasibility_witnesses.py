@@ -22,6 +22,8 @@ from sqlmodel import Session, col, select
 
 from reparto_service.db_models.assignments import Assignment
 from reparto_service.db_models.feasibility_witnesses import (
+    FeasibilityDiagnosticPublic,
+    FeasibilityDiagnosticsPublic,
     FeasibilityEvaluationPublic,
     FeasibilityWitness,
     FeasibilityWitnessEntryPublic,
@@ -429,6 +431,51 @@ class FeasibilityWitnessService:
                     process_teacher_id=uuid.UUID(item["participant_id"]),
                 )
                 for item in row.witness_json
+            ],
+        )
+
+    @staticmethod
+    def get_diagnostics(
+        session: Session, process_id: uuid.UUID
+    ) -> FeasibilityDiagnosticsPublic:
+        """Return the latest evaluation's findings or fail closed when stale.
+
+        The findings are administration-only (plan §7.3, §20.24): they name the
+        concrete slots/activities a remediation must touch, so they live behind
+        the same gate as the witness without ever carrying the witness itself.
+        Any input mutation has already invalidated the cached row, so a missing
+        or mismatched fingerprint/generation means a fresh evaluation is due.
+        """
+
+        plan = FeasibilityWitnessService._plan_or_404(session, process_id)
+        snapshot = build_feasibility_snapshot(session, process_id)
+        row = FeasibilityWitnessService._current_row(session, plan, snapshot)
+        if (
+            row is None
+            or plan.feasibility_status == FeasibilityStatus.NOT_EVALUATED
+            or plan.feasibility_generation != plan.current_generation_number
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Current feasibility diagnostics are unavailable; an "
+                    "administrative feasibility evaluation is required."
+                ),
+            )
+        return FeasibilityDiagnosticsPublic(
+            teaching_plan_id=plan.id,
+            assignment_process_id=process_id,
+            status=plan.feasibility_status,
+            checked_at=plan.feasibility_checked_at or row.updated_at,
+            diagnostics=[
+                FeasibilityDiagnosticPublic(
+                    code=item["code"],
+                    message=item["message"],
+                    related_ids=[
+                        uuid.UUID(str(value)) for value in item["related_ids"]
+                    ],
+                )
+                for item in row.diagnostics_json
             ],
         )
 
