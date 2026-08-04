@@ -13,7 +13,13 @@ from sqlmodel import Session, select
 
 from reparto_service.db_models.feasibility_witnesses import FeasibilityWitness
 from reparto_service.enums import FeasibilityStatus, HourRequirementStatus
-from reparto_service.services.feasibility import SOLVER_VERSION, FeasibilityWitnessEntry
+from reparto_service.services.feasibility import (
+    SOLVER_VERSION,
+    FeasibilityDiagnostic,
+    FeasibilityDiagnosticCode,
+    FeasibilityResult,
+    FeasibilityWitnessEntry,
+)
 from reparto_service.services.feasibility_witnesses import (
     FeasibilityWitnessService,
     build_feasibility_snapshot,
@@ -486,3 +492,54 @@ def test_regular_writer_cannot_read_diagnostics(
     process, _plan, _slots, _teachers = _feasible_setup(session)
     factories.enrol(session, process, writer_user)
     assert writer_client.get(_path(process.id, "diagnostics")).status_code == 403
+
+
+def test_the_published_summary_lists_each_related_id_once(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two findings about the same slot are one entry, not two (plan §20.25)."""
+
+    process, plan, slots, _teachers = _feasible_setup(session)
+    slot_id = str(slots[0].id)
+    published: list[dict[str, object]] = []
+
+    def _capture(_session, **kwargs):
+        published.append(kwargs)
+
+    monkeypatch.setattr("reparto_service.services.sse.publish_domain_event", _capture)
+
+    result = FeasibilityResult(
+        status=FeasibilityStatus.INFEASIBLE,
+        witness=None,
+        diagnostics=(
+            FeasibilityDiagnostic(
+                code=FeasibilityDiagnosticCode.SLOT_EXCEEDS_EVERY_TARGET,
+                message="First finding.",
+                related_ids=(slot_id,),
+            ),
+            FeasibilityDiagnostic(
+                code=FeasibilityDiagnosticCode.INCOMPATIBLE_RESIDUAL_TOTALS,
+                message="Second finding about the same slot.",
+                related_ids=(slot_id, str(slots[1].id)),
+            ),
+        ),
+        states_explored=1,
+        memoization_hits=0,
+    )
+    evaluation = FeasibilityWitnessService._evaluation_public(
+        plan, result=result, cache_reused=False, witness_available=False
+    )
+
+    FeasibilityWitnessService._publish_evaluation(
+        session, plan, result, evaluation, started_at=0.0
+    )
+
+    assert len(published) == 1
+    payload = published[0]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["affected_ids"] == [slot_id, str(slots[1].id)]
+    assert payload["diagnostic_codes"] == [
+        FeasibilityDiagnosticCode.SLOT_EXCEEDS_EVERY_TARGET.value,
+        FeasibilityDiagnosticCode.INCOMPATIBLE_RESIDUAL_TOTALS.value,
+    ]
+    assert published[0]["process_id"] == process.id

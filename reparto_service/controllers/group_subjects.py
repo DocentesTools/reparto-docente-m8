@@ -142,7 +142,7 @@ class GroupSubjectController(DomainController):
             after=group_subject,
         )
         try:
-            FeasibilityWitnessService.invalidate(session, process_id)
+            invalidated = FeasibilityWitnessService.invalidate(session, process_id)
             session.commit()
         except Exception as exc:
             session.rollback()
@@ -154,6 +154,8 @@ class GroupSubjectController(DomainController):
                 ),
             ) from exc
         session.refresh(group_subject)
+        if invalidated:
+            GroupSubjectController.publish_feasibility_invalidated(session, process_id)
         return GroupSubjectPublic.model_validate(group_subject)
 
     @staticmethod
@@ -201,9 +203,11 @@ class GroupSubjectController(DomainController):
             before=before,
             after=group_subject,
         )
-        FeasibilityWitnessService.invalidate(session, process_id)
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(group_subject)
+        if invalidated:
+            GroupSubjectController.publish_feasibility_invalidated(session, process_id)
         return GroupSubjectPublic.model_validate(group_subject)
 
     @staticmethod
@@ -256,9 +260,11 @@ class GroupSubjectController(DomainController):
             before=before,
             after=group_subject,
         )
-        FeasibilityWitnessService.invalidate(session, process_id)
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(group_subject)
+        if invalidated:
+            GroupSubjectController.publish_feasibility_invalidated(session, process_id)
         return GroupSubjectPublic.model_validate(group_subject)
 
     # ── Bulk preview / apply (plan §7.2, §8.4) ───────────────────────────────
@@ -369,10 +375,12 @@ class GroupSubjectController(DomainController):
                 rows=rows_detail,
             ),
         )
-        FeasibilityWitnessService.invalidate(session, process_id)
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         for row in affected:
             session.refresh(row)
+        if invalidated:
+            GroupSubjectController.publish_feasibility_invalidated(session, process_id)
         return GroupSubjectBulkResult(
             created_count=len(create_specs),
             updated_count=len(update_specs),
@@ -454,6 +462,7 @@ class GroupSubjectController(DomainController):
                 ),
             )
 
+        invalidated = False
         before = TeachingActivity.model_validate(activity.model_dump())
         was_noop = (
             preview.is_noop and activity.sync_state == TeachingActivitySyncState.IN_SYNC
@@ -482,7 +491,7 @@ class GroupSubjectController(DomainController):
                 before=before,
                 after=activity,
             )
-            FeasibilityWitnessService.invalidate(session, process_id)
+            invalidated = FeasibilityWitnessService.invalidate(session, process_id)
 
         if not was_noop:
             session.flush()
@@ -492,6 +501,8 @@ class GroupSubjectController(DomainController):
         session.commit()
         session.refresh(activity)
         session.refresh(plan)
+        if invalidated:
+            GroupSubjectController.publish_feasibility_invalidated(session, process_id)
         return MainActivitySyncResult(
             activity=TeachingActivityController._to_public(session, activity),
             applied_differences=preview.differences,

@@ -34,6 +34,7 @@ from reparto_service.enums import (
 )
 from reparto_service.schemas.events import DomainEvent
 from reparto_service.services import sse
+from reparto_service.services.feasibility import SOLVER_VERSION
 from tests.factories import (
     enrol,
     make_assignment,
@@ -71,6 +72,23 @@ def _only(subscription: sse.Subscription) -> DomainEvent:
     assert dropped == 0
     assert len(events) == 1, f"expected exactly one event, got {events}"
     return events[0]
+
+
+def _after_feasibility(subscription: sse.Subscription) -> DomainEvent:
+    """Drain an operation that runs the solver first (plan §20.23, §20.25).
+
+    Lock, generation and reconciliation evaluate the intended state before they
+    commit, so a persisted result publishes ``teaching_plan.feasibility_updated``
+    ahead of the operation's own frame. Asserting the order here keeps the
+    per-operation tests about the operation.
+    """
+    events, dropped = subscription.drain()
+    assert dropped == 0
+    assert len(events) == 2, f"expected a feasibility frame and one more, got {events}"
+    assert events[0].event_type == SseEventType.TEACHING_PLAN_FEASIBILITY_UPDATED
+    assert events[0].payload["feasibility_status"] == "feasible"
+    assert events[0].payload["witness_available"] is True
+    return events[1]
 
 
 def _live_activity(
@@ -283,7 +301,7 @@ def test_generating_requirements_publishes_the_generation_counts(
     resp = client.post(f"{PREFIX}/{process.id}/requirements/generate")
     assert resp.status_code == 200
 
-    event = _only(subscription)
+    event = _after_feasibility(subscription)
     assert event.event_type == SseEventType.REQUIREMENTS_GENERATED
     assert event.payload["generation_number"] == 1
     assert event.payload["created_count"] == 2
@@ -358,7 +376,7 @@ def test_reconciling_publishes_the_released_assignments(
     )
     assert resp.status_code == 200
 
-    event = _only(subscription)
+    event = _after_feasibility(subscription)
     assert event.event_type == SseEventType.REQUIREMENTS_RECONCILED
     assert event.payload["resolved_count"] == 1
     assert event.payload["released_assignment_ids"] == [str(assignment.id)]
@@ -551,3 +569,154 @@ def test_stream_rejects_an_unknown_audience(
     process = make_assignment_process(session)
     resp = client.get(f"{PREFIX}/{process.id}/events?audience=headmaster")
     assert resp.status_code == 422
+
+
+# ── Emit site: teaching_plan.feasibility_* (plan §20.25) ──────────────────────
+
+
+def _feasibility_setup(session: Session):
+    """A two-slot plan with exactly two matching participants — solvable."""
+    process = make_assignment_process(session)
+    plan = make_teaching_plan(session, process)
+    activity = _live_activity(session, process, plan, hours=4.0, positions=2)
+    slots = [
+        make_hour_requirement(
+            session,
+            process,
+            activity,
+            position_index=index,
+            required_teacher_hours=4.0,
+        )
+        for index in range(2)
+    ]
+    teachers = [
+        make_process_teacher(
+            session,
+            process,
+            make_teacher_profile(session, display_name=f"Teacher {index}"),
+            base_weekly_hours=4.0,
+        )
+        for index in range(2)
+    ]
+    return process, plan, slots, teachers
+
+
+def test_evaluating_feasibility_publishes_the_persisted_result(
+    admin_client: TestClient, session: Session, subscribe
+) -> None:
+    process, plan, _slots, _teachers = _feasibility_setup(session)
+    subscription = subscribe(process.id)
+
+    resp = admin_client.post(
+        f"{PREFIX}/{process.id}/teaching-plan/feasibility/evaluate"
+    )
+    assert resp.status_code == 200
+
+    event = _only(subscription)
+    assert event.event_type == SseEventType.TEACHING_PLAN_FEASIBILITY_UPDATED
+    assert event.payload["teaching_plan_id"] == str(plan.id)
+    assert event.payload["feasibility_status"] == "feasible"
+    assert event.payload["witness_available"] is True
+    assert event.payload["solver_version"] == SOLVER_VERSION
+    assert event.payload["diagnostic_codes"] == []
+    assert event.payload["affected_ids"] == []
+    assert event.payload["duration_ms"] >= 0
+    assert event.payload["feasibility_checked_at"] is not None
+    # The witness is a complete provisional reparto and never leaves its
+    # restricted store (plan §20.24).
+    assert "witness" not in event.payload
+
+
+def test_a_reused_feasibility_result_publishes_nothing(
+    admin_client: TestClient, session: Session, subscribe
+) -> None:
+    process, _plan, _slots, _teachers = _feasibility_setup(session)
+    admin_client.post(f"{PREFIX}/{process.id}/teaching-plan/feasibility/evaluate")
+    subscription = subscribe(process.id)
+
+    resp = admin_client.post(
+        f"{PREFIX}/{process.id}/teaching-plan/feasibility/evaluate"
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["cache_reused"] is True
+    # No status transitioned, so there is nothing for a viewer to react to.
+    assert subscription.drain()[0] == []
+
+
+def test_an_infeasible_result_publishes_its_diagnostic_summary(
+    admin_client: TestClient, session: Session, subscribe
+) -> None:
+    process, _plan, _slots, teachers = _feasibility_setup(session)
+    # One participant can no longer reach an exact target with 4.00-hour slots.
+    teachers[0].base_weekly_hours = 5.0
+    session.add(teachers[0])
+    session.commit()
+    subscription = subscribe(process.id)
+
+    resp = admin_client.post(
+        f"{PREFIX}/{process.id}/teaching-plan/feasibility/evaluate"
+    )
+    assert resp.status_code == 200
+
+    event = _only(subscription)
+    assert event.event_type == SseEventType.TEACHING_PLAN_FEASIBILITY_UPDATED
+    assert event.payload["feasibility_status"] == "infeasible"
+    assert event.payload["witness_available"] is False
+    assert event.payload["diagnostic_codes"]
+    # The head tier receives the codes; a teacher receives none of this (below).
+    assert all(isinstance(code, str) for code in event.payload["diagnostic_codes"])
+
+
+def test_a_feasibility_frame_carries_no_payload_to_the_lower_tiers(
+    admin_client: TestClient, session: Session, subscribe
+) -> None:
+    process, _plan, _slots, _teachers = _feasibility_setup(session)
+    subscription = subscribe(process.id)
+    admin_client.post(f"{PREFIX}/{process.id}/teaching-plan/feasibility/evaluate")
+    event = _only(subscription)
+
+    teacher_view = sse.project_event(event, SseAudience.TEACHER)
+    screen_view = sse.project_event(event, SseAudience.SHARED_SCREEN)
+
+    # A feasibility event names no participant, so the teacher tier never gets
+    # the "own participant" payload exception — status and diagnostics stay
+    # administration-only (plan §20.24, §20.25).
+    assert "payload" not in teacher_view
+    assert teacher_view["readiness"] == event.readiness.value
+    assert teacher_view["selection_blocked"] == event.selection_blocked
+    assert screen_view == {"readiness": event.readiness.value}
+
+
+def test_a_mutation_that_drops_a_stored_result_publishes_invalidated(
+    admin_client: TestClient, session: Session, subscribe
+) -> None:
+    process, _plan, _slots, teachers = _feasibility_setup(session)
+    admin_client.post(f"{PREFIX}/{process.id}/teaching-plan/feasibility/evaluate")
+    subscription = subscribe(process.id)
+
+    resp = admin_client.patch(
+        f"{PREFIX}/{process.id}/teachers/{teachers[0].id}",
+        json={"base_weekly_hours": 6.0},
+    )
+    assert resp.status_code == 200
+
+    event = _only(subscription)
+    assert event.event_type == SseEventType.TEACHING_PLAN_FEASIBILITY_INVALIDATED
+    assert event.payload == {"feasibility_status": "not_evaluated"}
+
+
+def test_a_mutation_without_a_stored_result_publishes_no_invalidation(
+    admin_client: TestClient, session: Session, subscribe
+) -> None:
+    process, _plan, _slots, teachers = _feasibility_setup(session)
+    subscription = subscribe(process.id)
+
+    resp = admin_client.patch(
+        f"{PREFIX}/{process.id}/teachers/{teachers[0].id}",
+        json={"base_weekly_hours": 6.0},
+    )
+
+    assert resp.status_code == 200
+    # Nothing transitioned: the plan was already NOT_EVALUATED.
+    assert subscription.drain()[0] == []

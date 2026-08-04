@@ -453,6 +453,16 @@ class SseEventType(str, Enum):
     TEACHING_PLAN_BALANCED = "teaching_plan.balanced"
     TEACHING_PLAN_LOCKED = "teaching_plan.locked"
     TEACHING_PLAN_STALE = "teaching_plan.stale"
+    #: A bounded solve persisted a new feasibility result for the process. The
+    #: department-head payload carries the status, its provenance and a
+    #: diagnostic summary; the lower tiers receive only the coarse readiness the
+    #: projection derives (plan §20.25).
+    TEACHING_PLAN_FEASIBILITY_UPDATED = "teaching_plan.feasibility_updated"
+    #: A planning input changed, so the stored result and its witness were
+    #: dropped. Announced separately from the mutation's own event because a
+    #: viewer's feasibility display must fall back to "not evaluated" even when
+    #: the change itself is invisible at their tier.
+    TEACHING_PLAN_FEASIBILITY_INVALIDATED = "teaching_plan.feasibility_invalidated"
     REQUIREMENTS_GENERATED = "requirements.generated"
     REQUIREMENTS_RECONCILED = "requirements.reconciled"
     REQUIREMENTS_RECONCILIATION_REQUIRED = "requirements.reconciliation_required"

@@ -26,9 +26,13 @@ This module is the whole outbound event path. It has three parts:
   frames, with a heartbeat so a LAN proxy does not reap an idle connection.
 
 Feasibility events (``teaching_plan.feasibility_updated`` /
-``feasibility_invalidated``, plan §20.25) are deliberately absent: they belong to
-the §20.20 feasibility solver task, which has no driver yet. They will publish
-through this same broker and tier projection when it lands.
+``feasibility_invalidated``, plan §20.25) publish through this same broker and
+tier projection: :func:`publish_domain_event` is called once where a bounded
+solve persists a result, and once per committed invalidation. Their
+department-head payload names the status, its provenance and the diagnostic
+summary; the teacher and shared-screen tiers receive only the coarse readiness
+the projection derives, so the witness and individualized diagnostics stay
+administration-only exactly as §20.24 requires.
 """
 
 from __future__ import annotations
@@ -45,10 +49,9 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
-
-from auth_sdk_m8.schemas.user import UserModel
 
 from reparto_service.core.decimals import quantize_hours
 from reparto_service.db_models.process_teachers import ProcessTeacher
@@ -262,7 +265,7 @@ class Subscription:
 
     def __init__(
         self,
-        broker: "EventBroker",
+        broker: EventBroker,
         process_id: uuid.UUID,
         *,
         buffer_size: int = DEFAULT_BUFFER_SIZE,
@@ -391,6 +394,48 @@ class EventBroker:
 event_broker = EventBroker()
 
 
+def publish_domain_event(
+    session: Session,
+    *,
+    process_id: uuid.UUID,
+    event_type: SseEventType,
+    payload: dict[str, Any] | None = None,
+    subject_process_teacher_id: uuid.UUID | None = None,
+) -> DomainEvent | None:
+    """Fan one already-committed change out to the subscribers (plan §11).
+
+    Call this **after** ``session.commit()``, never before: an event announces a
+    change that already happened, and publishing inside the transaction would
+    advertise a state a rollback could still erase.
+
+    It never raises. A failed broadcast must not fail the request, because the
+    write already succeeded and the stream is explicitly best-effort (a viewer
+    converges on the next event, gap frame or refetch). Returns the published
+    event, or ``None`` when publishing failed.
+
+    The readiness carried to the teacher and shared-screen tiers is read here,
+    once, rather than at each emit site, so no caller can publish a readiness
+    that disagrees with the committed plan status.
+    """
+    try:
+        readiness, selection_blocked = current_readiness(session, process_id)
+        return event_broker.publish(
+            process_id=process_id,
+            event_type=event_type,
+            readiness=readiness,
+            selection_blocked=selection_blocked,
+            payload=payload,
+            subject_process_teacher_id=subject_process_teacher_id,
+        )
+    except Exception:
+        logger.exception(
+            "sse publish failed event_type=%s process_id=%s",
+            event_type.value,
+            process_id,
+        )
+        return None
+
+
 # ── Stream generator ──────────────────────────────────────────────────────────
 
 
@@ -450,6 +495,7 @@ __all__ = [
     "granted_audience",
     "hours_string",
     "project_event",
+    "publish_domain_event",
     "resolve_audience",
     "viewer_participant_id",
 ]

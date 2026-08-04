@@ -88,7 +88,7 @@ class ProcessTeacherController(DomainController):
             before=None,
             after=process_teacher,
         )
-        FeasibilityWitnessService.invalidate(session, process_id)
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         try:
             session.commit()
         except Exception as exc:
@@ -101,6 +101,10 @@ class ProcessTeacherController(DomainController):
                 ),
             ) from exc
         session.refresh(process_teacher)
+        if invalidated:
+            ProcessTeacherController.publish_feasibility_invalidated(
+                session, process_id
+            )
         return ProcessTeacherPublic.model_validate(process_teacher)
 
     @staticmethod
@@ -130,9 +134,13 @@ class ProcessTeacherController(DomainController):
             before=before,
             after=process_teacher,
         )
-        FeasibilityWitnessService.invalidate(session, process_id)
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(process_teacher)
+        if invalidated:
+            ProcessTeacherController.publish_feasibility_invalidated(
+                session, process_id
+            )
         return ProcessTeacherPublic.model_validate(process_teacher)
 
     @staticmethod
@@ -185,9 +193,13 @@ class ProcessTeacherController(DomainController):
             after=process_teacher,
             reason=payload.reason,
         )
-        FeasibilityWitnessService.invalidate(session, process_id)
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(process_teacher)
+        if invalidated:
+            ProcessTeacherController.publish_feasibility_invalidated(
+                session, process_id
+            )
         # Participant-scoped: only this teacher (and the head) ever sees the
         # figures — another teacher's target is never published (plan §20.25).
         ProcessTeacherController.publish_event(
@@ -231,8 +243,12 @@ class ProcessTeacherController(DomainController):
             before=before,
             after=None,
         )
-        FeasibilityWitnessService.invalidate(session, process_id)
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
+        if invalidated:
+            ProcessTeacherController.publish_feasibility_invalidated(
+                session, process_id
+            )
         return ProcessTeacherPublic.model_validate(process_teacher)
 
     # ── Internal helpers ─────────────────────────────────────────────────────

@@ -180,9 +180,13 @@ class TeachingActivityController(DomainController):
             before=None,
             after=activity,
         )
-        FeasibilityWitnessService.invalidate(session, process_id)
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(activity)
+        if invalidated:
+            TeachingActivityController.publish_feasibility_invalidated(
+                session, process_id
+            )
         return TeachingActivityController._to_public(session, activity)
 
     @staticmethod
@@ -226,9 +230,13 @@ class TeachingActivityController(DomainController):
             before=before,
             after=activity,
         )
-        FeasibilityWitnessService.invalidate(session, process_id)
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(activity)
+        if invalidated:
+            TeachingActivityController.publish_feasibility_invalidated(
+                session, process_id
+            )
         return TeachingActivityController._to_public(session, activity)
 
     @staticmethod
@@ -300,9 +308,13 @@ class TeachingActivityController(DomainController):
             before=before,
             after=activity,
         )
-        FeasibilityWitnessService.invalidate(session, process_id)
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(activity)
+        if invalidated:
+            TeachingActivityController.publish_feasibility_invalidated(
+                session, process_id
+            )
         return TeachingActivityController._to_public(session, activity)
 
     # ── Main-activity materialization (plan §7.3, §20.10) ────────────────────
@@ -380,9 +392,14 @@ class TeachingActivityController(DomainController):
             )
             created.append(TeachingActivityController._to_public(session, activity))
 
+        invalidated = False
         if created:
-            FeasibilityWitnessService.invalidate(session, process_id)
+            invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
+        if invalidated:
+            TeachingActivityController.publish_feasibility_invalidated(
+                session, process_id
+            )
         return MainMaterializationResult(
             created=created,
             created_count=len(created),

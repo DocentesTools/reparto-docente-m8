@@ -307,7 +307,7 @@ class AssignmentController(DomainController):
         AssignmentController._ensure_active_for_action(assignment)
         before = Assignment.model_validate(assignment.model_dump())
         AssignmentController._release_assignment(session, assignment)
-        FeasibilityWitnessService.invalidate(session, process_id)
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         AssignmentController.record_audit_event(
             session,
             process_id=process_id,
@@ -328,6 +328,8 @@ class AssignmentController(DomainController):
         )
         session.commit()
         session.refresh(assignment)
+        if invalidated:
+            AssignmentController.publish_feasibility_invalidated(session, process_id)
         return AssignmentPublic.model_validate(assignment)
 
     @staticmethod

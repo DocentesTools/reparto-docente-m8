@@ -17,9 +17,14 @@ from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.audit_events import AuditEvent
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.teacher_profiles import TeacherProfile
-from reparto_service.enums import AssignmentProcessStatus, AuditEventType, SseEventType
+from reparto_service.enums import (
+    AssignmentProcessStatus,
+    AuditEventType,
+    FeasibilityStatus,
+    SseEventType,
+)
 from reparto_service.schemas.events import DomainEvent
-from reparto_service.services.sse import current_readiness, event_broker
+from reparto_service.services.sse import publish_domain_event
 
 logger = logging.getLogger(__name__)
 
@@ -266,39 +271,40 @@ class DomainController(BaseController):
     ) -> DomainEvent | None:
         """Fan one committed change out to the SSE subscribers (plan §11).
 
-        The counterpart to :meth:`record_audit_event`, and its mirror image in
-        two ways. It is called **after** ``session.commit()``, never before: an
+        The counterpart to :meth:`record_audit_event`, and its mirror image: an
         audit row is part of the transaction and must roll back with it, whereas
-        an event announces a change that already happened — publishing inside the
-        transaction would advertise a state a rollback could still erase.
-
-        And it never raises. A failed audit write must fail the request; a failed
-        broadcast must not, because the write already succeeded and the stream is
-        explicitly best-effort (a viewer converges on the next event, gap frame or
-        refetch — see :mod:`reparto_service.services.sse`). Returns the published
-        event, or ``None`` if publishing failed.
-
-        The plan readiness carried to the teacher/shared-screen tiers is read
-        here, once, rather than at each emit site, so no caller can publish a
-        readiness that disagrees with the committed plan status.
+        an event announces a change that already happened, so this is called
+        **after** ``session.commit()`` and never raises. The whole behaviour
+        lives with the broker in :func:`~reparto_service.services.sse.publish_domain_event`,
+        because the services layer emits through it too (feasibility, §20.25).
         """
-        try:
-            readiness, selection_blocked = current_readiness(session, process_id)
-            return event_broker.publish(
-                process_id=process_id,
-                event_type=event_type,
-                readiness=readiness,
-                selection_blocked=selection_blocked,
-                payload=payload,
-                subject_process_teacher_id=subject_process_teacher_id,
-            )
-        except Exception:
-            logger.exception(
-                "sse publish failed event_type=%s process_id=%s",
-                event_type.value,
-                process_id,
-            )
-            return None
+        return publish_domain_event(
+            session,
+            process_id=process_id,
+            event_type=event_type,
+            payload=payload,
+            subject_process_teacher_id=subject_process_teacher_id,
+        )
+
+    @staticmethod
+    def publish_feasibility_invalidated(
+        session: Session, process_id: uuid.UUID
+    ) -> DomainEvent | None:
+        """Announce that a committed input change dropped the stored result (§20.25).
+
+        Emitted only where :meth:`FeasibilityWitnessService.invalidate` actually
+        discarded an evaluation, so a subscriber never sees a transition that did
+        not happen. The payload names the resulting status and nothing else: the
+        witness and the individualized diagnostics are administration-only, and
+        the mutation that caused the invalidation publishes its own event with
+        its own payload.
+        """
+        return publish_domain_event(
+            session,
+            process_id=process_id,
+            event_type=SseEventType.TEACHING_PLAN_FEASIBILITY_INVALIDATED,
+            payload={"feasibility_status": FeasibilityStatus.NOT_EVALUATED.value},
+        )
 
     @staticmethod
     def _audit_payload(row: SQLModel | None) -> dict[str, Any] | None:

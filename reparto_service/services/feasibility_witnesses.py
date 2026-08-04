@@ -37,6 +37,7 @@ from reparto_service.enums import (
     AssignmentStatus,
     FeasibilityStatus,
     ProcessTeacherStatus,
+    SseEventType,
 )
 from reparto_service.services.feasibility import (
     DEFAULT_SOLVER_LIMITS,
@@ -358,12 +359,72 @@ class FeasibilityWitnessService:
                 ),
                 started_at=started_at,
             )
-            return FeasibilityWitnessService._evaluation_public(
+            evaluation = FeasibilityWitnessService._evaluation_public(
                 plan,
                 result=result,
                 cache_reused=False,
                 witness_available=result.witness is not None,
             )
+            FeasibilityWitnessService._publish_evaluation(
+                session, plan, result, evaluation, started_at=started_at
+            )
+            return evaluation
+
+    @staticmethod
+    def _publish_evaluation(
+        session: Session,
+        plan: TeachingPlan,
+        result: FeasibilityResult,
+        evaluation: FeasibilityEvaluationPublic,
+        *,
+        started_at: float,
+    ) -> None:
+        """Announce a newly persisted feasibility result (plan §11, §20.25).
+
+        The single emit site for ``teaching_plan.feasibility_updated``: every
+        administrative entry point — the explicit evaluate endpoint, plan lock,
+        requirement generation and reconciliation — reaches a persisted result
+        through :meth:`_evaluate_snapshot`, and a reused cache publishes nothing
+        because no status transitioned.
+
+        The payload is the department-head tier's by construction: the projection
+        drops it entirely for the teacher and shared-screen tiers, which see only
+        the derived readiness (§20.25). It summarises the diagnostics by stable
+        code and names the activities/slots they refer to, so a head can react
+        without a second request — but it never carries the witness, which stays
+        in its restricted store (§20.24).
+        """
+        # Imported here, not at module scope: the readiness projection in
+        # ``services.sse`` reads the lifecycle gates, which read this module.
+        from reparto_service.services.sse import publish_domain_event
+
+        related_ids: list[str] = []
+        for diagnostic in result.diagnostics:
+            for related_id in diagnostic.related_ids:
+                text = str(related_id)
+                if text not in related_ids:
+                    related_ids.append(text)
+        publish_domain_event(
+            session,
+            process_id=plan.assignment_process_id,
+            event_type=SseEventType.TEACHING_PLAN_FEASIBILITY_UPDATED,
+            payload={
+                "teaching_plan_id": str(plan.id),
+                "feasibility_status": evaluation.status.value,
+                "feasibility_checked_at": (
+                    evaluation.checked_at.isoformat()
+                    if evaluation.checked_at is not None
+                    else None
+                ),
+                "solver_version": evaluation.solver_version,
+                "witness_available": evaluation.witness_available,
+                "duration_ms": round((time.monotonic() - started_at) * 1000, 3),
+                "diagnostic_codes": [
+                    diagnostic.code.value for diagnostic in result.diagnostics
+                ],
+                "affected_ids": related_ids,
+            },
+        )
 
     @staticmethod
     def _log_evaluation(
@@ -637,9 +698,16 @@ class FeasibilityWitnessService:
         session.add(plan)
 
     @staticmethod
-    def invalidate(session: Session, process_id: uuid.UUID) -> None:
-        """Immediately remove cached provenance and witness after an input mutation."""
+    def invalidate(session: Session, process_id: uuid.UUID) -> bool:
+        """Immediately remove cached provenance and witness after an input mutation.
 
+        Returns whether a stored evaluation was actually discarded. Invalidation
+        is called unconditionally on every mutating path, so most calls find a
+        plan that is already ``NOT_EVALUATED`` (or no plan at all); only a real
+        transition is worth announcing on the stream, and the caller publishes
+        ``teaching_plan.feasibility_invalidated`` after its commit when this
+        returns ``True``.
+        """
         # Mutation controllers may already hold a newly added row whose eventual
         # commit is expected to raise a handled uniqueness error. Looking up the
         # cache must not autoflush that row before the controller's try/rollback.
@@ -650,7 +718,8 @@ class FeasibilityWitnessService:
                 )
             ).first()
         if plan is None:
-            return
+            return False
+        invalidated = plan.feasibility_status != FeasibilityStatus.NOT_EVALUATED
         plan.feasibility_status = FeasibilityStatus.NOT_EVALUATED
         plan.feasibility_generation = None
         plan.feasibility_checked_at = None
@@ -662,6 +731,7 @@ class FeasibilityWitnessService:
             row = FeasibilityWitnessService._row(session, plan.id)
         if row is not None:
             session.delete(row)
+        return invalidated
 
     @staticmethod
     def _cached_result(

@@ -298,6 +298,10 @@ class TeachingPlanController(DomainController):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No teaching plan for process {process_id}.",
             )
+        # Read before the transition: moving to STALE resets the stored status
+        # itself, so asking `invalidate` afterwards would always answer "nothing
+        # was dropped" and the transition would never reach a subscriber.
+        invalidated = plan.feasibility_status != FeasibilityStatus.NOT_EVALUATED
         TeachingPlanController.apply_status_transition(
             plan, TeachingPlanStatus.STALE, stale_reason=reason
         )
@@ -319,6 +323,8 @@ class TeachingPlanController(DomainController):
         TeachingPlanController._publish_plan_event(
             session, plan, SseEventType.TEACHING_PLAN_STALE, reason=reason
         )
+        if invalidated:
+            TeachingPlanController.publish_feasibility_invalidated(session, process_id)
         return TeachingPlanPublic.model_validate(plan)
 
     # ── SSE emission (plan §11) ──────────────────────────────────────────────

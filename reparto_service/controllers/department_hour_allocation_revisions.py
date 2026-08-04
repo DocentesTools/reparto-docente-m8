@@ -124,7 +124,7 @@ class DepartmentHourAllocationRevisionController(DomainController):
             after=revision,
             reason=revision_in.reason,
         )
-        FeasibilityWitnessService.invalidate(session, process_id)
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         try:
             session.commit()
         except Exception as exc:  # pragma: no cover - DB race guard
@@ -148,6 +148,10 @@ class DepartmentHourAllocationRevisionController(DomainController):
                 "reason": revision.reason,
             },
         )
+        if invalidated:
+            DepartmentHourAllocationRevisionController.publish_feasibility_invalidated(
+                session, process_id
+            )
         return DepartmentHourAllocationRevisionPublic.model_validate(revision)
 
     # ── Internal helpers ─────────────────────────────────────────────────────
