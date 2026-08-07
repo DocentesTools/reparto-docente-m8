@@ -34,7 +34,13 @@ def _make_user(
 
 
 def test_require_writer_passes_for_superuser() -> None:
-    user = _make_user("user", superuser=True)
+    # auth-sdk-m8's canonical role/is_superuser truth table (3.x) only
+    # accepts is_superuser=True paired with role=SUPERADMIN; a "user"-role
+    # superuser is no longer a constructible UserModel (raises
+    # inconsistent_privilege_claims). SUPERADMIN + is_superuser=True is the
+    # only valid superuser pair, so that is what exercises the
+    # is_superuser-first branch in require_writer.
+    user = _make_user("superadmin", superuser=True)
     DomainController.require_writer(user)  # should not raise
 
 
@@ -49,7 +55,10 @@ def test_require_writer_passes_for_admin_role() -> None:
 
 
 def test_require_writer_passes_for_superadmin_role() -> None:
-    user = _make_user("superadmin")
+    # role=SUPERADMIN requires is_superuser=True per the same truth table
+    # (see test_require_writer_passes_for_superuser); superadmin with the
+    # default is_superuser=False is not a constructible UserModel.
+    user = _make_user("superadmin", superuser=True)
     DomainController.require_writer(user)
 
 
