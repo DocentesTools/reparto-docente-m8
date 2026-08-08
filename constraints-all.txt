@@ -167,7 +167,7 @@ redis==8.1.0
     # via -r reparto_service/requirements_base.txt
 rich==15.0.0
     # via bandit
-ruff==0.16.2
+ruff==0.15.18
     # via -r reparto_service/requirements_dev.txt
 sqlalchemy==2.0.51
     # via
