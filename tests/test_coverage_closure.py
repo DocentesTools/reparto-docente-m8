@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -601,50 +600,10 @@ def test_summary_non_participating_and_warning_without_messages(
 
 
 @pytest.mark.anyio
-async def test_auth_event_stream_handlers(caplog) -> None:
-    caplog.set_level(logging.DEBUG, logger="reparto_service.core.events")
-    auth = MagicMock()
-    await events.handle_auth_event(
-        SimpleNamespace(payload={"event_type": "session.revoked", "jti": "j1"}),
-        auth=auth,
-    )
-    await events.handle_auth_event(
-        SimpleNamespace(payload={"event_type": "session.revoked", "user_id": "u1"}),
-        auth=auth,
-    )
-    await events.handle_auth_event(
-        SimpleNamespace(payload={"event_type": "user.deleted", "user_id": "u2"}),
-        auth=auth,
-    )
-    await events.handle_auth_event(
-        SimpleNamespace(payload={"event_type": "unknown"}),
-        auth=auth,
-    )
-
-    auth.evict_jti.assert_called_once_with("j1")
-    auth.evict_user.assert_any_call("u1")
-    auth.evict_user.assert_any_call("u2")
-    assert "unknown_event_type" in caplog.text
-
-
-@pytest.mark.anyio
-async def test_auth_event_stream_logs_handler_and_gap_failures(caplog) -> None:
-    auth = MagicMock()
-    auth.evict_jti.side_effect = RuntimeError("boom")
-    auth.flush_cache.side_effect = RuntimeError("gap")
-
-    await events.handle_auth_event(
-        SimpleNamespace(payload={"event_type": "session.revoked", "jti": "j1"}),
-        auth=auth,
-    )
-    await events.handle_auth_gap(auth=auth)
-
-    assert "handler failed" in caplog.text
-    assert "gap handler failed" in caplog.text
-
-
-@pytest.mark.anyio
 async def test_stream_lifespan_starts_and_stops_client(monkeypatch) -> None:
+    """The stream client is built with the SDK's own dispatch, not a local
+    re-implementation: ``on_event`` must be ``auth.handle_auth_event`` and
+    ``on_gap`` must delegate to ``auth.flush_cache``."""
     client = MagicMock()
     client.stop = AsyncMock()
     build_client = MagicMock(return_value=client)
@@ -655,13 +614,17 @@ async def test_stream_lifespan_starts_and_stops_client(monkeypatch) -> None:
     extras = events.make_lifespan_extras(settings, auth)
     assert extras is not None
     async with extras(MagicMock()):
-        await build_client.call_args.kwargs["on_event"](
-            SimpleNamespace(payload={"event_type": "user.deleted", "user_id": "u1"})
-        )
-        await build_client.call_args.kwargs["on_gap"]()
+        pass
 
     client.start.assert_called_once_with()
     client.stop.assert_awaited_once_with()
+
+    # The client must be wired straight to the SDK's own dispatch methods —
+    # no locally re-derived handler in between.
+    assert build_client.call_args.kwargs["on_event"] is auth.handle_auth_event
+
+    await build_client.call_args.kwargs["on_gap"]()
+    auth.flush_cache.assert_called_once()
 
 
 def test_lifespan_extras_disabled_without_introspection() -> None:
