@@ -165,8 +165,13 @@ def get_teacher_lan_summary(
 def stream_process_summary(
     session: SessionDep, process_id: uuid.UUID
 ) -> StreamingResponse:
+    # Resolve the summary before the response starts. A 404 raised from
+    # inside ``generate`` fires after the SSE headers are already on the
+    # wire, and Starlette can only surface it as "Caught handled exception,
+    # but response already started".
+    payload = DashboardController.get_summary(session, process_id)
+
     def generate() -> Iterator[str]:
-        payload = DashboardController.get_summary(session, process_id)
         yield f"event: process.summary\ndata: {payload.model_dump_json()}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")

@@ -200,6 +200,21 @@ def test_process_summary_event_stream(client: TestClient, session: Session) -> N
     assert f'"process_id":"{process.id}"' in text
 
 
+def test_process_summary_event_stream_404_before_stream_starts(
+    client: TestClient,
+) -> None:
+    """A missing process must 404 instead of blowing up mid-stream.
+
+    The lookup has to happen before ``StreamingResponse`` flushes its
+    headers; otherwise Starlette raises "response already started".
+    """
+    with client.stream(
+        "GET", f"/reparto/assignment-processes/{uuid.uuid4()}/events"
+    ) as resp:
+        assert resp.status_code == 404
+        assert not resp.headers["content-type"].startswith("text/event-stream")
+
+
 def test_summary_returns_404_for_missing_process(
     client: TestClient,
 ) -> None:
