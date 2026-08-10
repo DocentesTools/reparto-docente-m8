@@ -6,6 +6,7 @@ all inherited via the base class.
 """
 
 from pathlib import Path
+from typing import ClassVar
 
 from auth_sdk_m8.utils.paths import find_dotenv
 from fastapi_m8 import ConsumerServiceSettings
@@ -24,11 +25,12 @@ class Settings(ConsumerServiceSettings):
     package/env.
     """
 
-    ENV_FILE_DIR: Path = Path(__file__).resolve().parent.parent
+    ENV_FILE_DIR: ClassVar[Path] = Path(__file__).resolve().parent.parent
 
     SERVICE_VERSION: str = __version__
-    CONTRACT_VERSION: str = "0.9"
-    CONTRACT_RANGE: str = ">=1.0.0 <2.0.0"
+    CONTRACT_NAME: str = "reparto-docente-m8"
+    CONTRACT_VERSION: str = "2.0.0"
+    CONTRACT_RANGE: str = ">=2.0.0 <3.0.0"
 
     # Vault/`_FILE` source ordering is handled by the inherited
     # CommonSettings.settings_customise_sources classmethod — no override needed.
