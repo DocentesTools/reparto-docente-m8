@@ -333,6 +333,28 @@ authoritative — so a subscriber that falls behind receives a `stream.gap` fram
 telling it to refetch rather than silently missing a change.
 Consult the OpenAPI schema for request and response models.
 
+### Published route surface
+
+[`docs/served-api-surface.json`](docs/served-api-surface.json) lists every
+`METHOD path` this service serves, with the contract name, version and API
+prefix they are served under. It is generated from the app's own OpenAPI
+document and regenerated and compared on every test run by
+`tests/test_served_api_surface.py`, so a route added, removed or re-verbed fails
+the suite until the artifact is refreshed:
+
+```bash
+REPARTO_WRITE_API_SURFACE=1 pytest tests/test_served_api_surface.py
+```
+
+The artifact exists for consumers. The optional `astro-reparto-m8` plugin
+declares the method and path of every endpoint it calls; until this file
+existed, nothing compared that declaration with what is served, and the plugin
+shipped `DELETE` calls against two endpoints this service had already replaced
+with the guarded `retire` action. A document that only exists on a running
+instance cannot gate a consumer's pull request — a tracked one can. Refreshing
+it is deliberate and leaves a reviewable diff, which is what makes it worth
+trusting.
+
 ## Quality gates
 
 Run these commands from the repository root in the repository's Python

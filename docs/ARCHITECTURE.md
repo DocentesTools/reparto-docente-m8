@@ -787,6 +787,10 @@ The suite is layered:
    happy paths, permission refusals, cross-process 404s, lifecycle conflicts and
    the DB-level uniqueness invariants.
 4. **Smoke** — `test_main.py` for the wired app (openapi, health, meta, routes).
+5. **Published surface** — `test_served_api_surface.py` regenerates
+   `docs/served-api-surface.json` from `app.openapi()` and fails on any drift.
+   That artifact is what a consumer's own gate compares its declared calls
+   against; refresh it with `REPARTO_WRITE_API_SURFACE=1`.
 
 Coverage is **100 %, enforced** (`pytest --cov --cov-fail-under=100`);
 `# pragma: no cover` is reserved for genuinely unreachable guards. Domain
