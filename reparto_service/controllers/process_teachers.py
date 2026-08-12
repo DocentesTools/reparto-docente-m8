@@ -202,6 +202,9 @@ class ProcessTeacherController(DomainController):
             )
         # Participant-scoped: only this teacher (and the head) ever sees the
         # figures — another teacher's target is never published (plan §20.25).
+        # ``reason`` is carried for the head's tier alone; the projection strips
+        # it from the teacher's own frame (plan §17), so it is safe to publish
+        # once here rather than building two payloads at the emit site.
         ProcessTeacherController.publish_event(
             session,
             process_id=process_id,

@@ -245,6 +245,44 @@ def test_teacher_tier_receives_their_own_participant_payload() -> None:
     assert projected["process_teacher_id"] == str(subject)
 
 
+def test_teacher_tier_strips_the_extra_hours_reason_from_their_own_payload() -> None:
+    """Plan §17: the head's written justification is not a LAN field.
+
+    The figures it produced are the teacher's own and stay; the reason is the
+    head's record of *why* and is department-head-only, exactly as
+    ``TeacherLanSummary`` already reports this participant without one. The
+    discriminating case is the viewer's *own* event, because that is the single
+    path on which any payload reaches a teacher at all.
+    """
+    subject = uuid.uuid4()
+    event = _event(
+        payload={
+            "process_teacher_id": str(subject),
+            "base_weekly_hours": "21.00",
+            "extra_weekly_hours": "1.00",
+            "target_weekly_hours": "22.00",
+            "is_overloaded": True,
+            "reason": "Covering a colleague's sick leave",
+        },
+        subject=subject,
+    )
+    projected = sse.project_event(event, SseAudience.TEACHER, subject)
+    assert projected["payload"] == {
+        "process_teacher_id": str(subject),
+        "base_weekly_hours": "21.00",
+        "extra_weekly_hours": "1.00",
+        "target_weekly_hours": "22.00",
+        "is_overloaded": True,
+    }
+    assert "sick leave" not in json.dumps(projected)
+    # The head's own tier still carries it: the key is redacted per audience,
+    # never dropped at the emit site.
+    assert (
+        sse.project_event(event, SseAudience.DEPARTMENT_HEAD)["payload"]["reason"]
+        == "Covering a colleague's sick leave"
+    )
+
+
 def test_teacher_tier_hides_the_payload_of_an_unscoped_event() -> None:
     # A plan-wide event has no subject, so it is nobody's "own" event even for a
     # viewer who is a participant — the plan status stays head-only.

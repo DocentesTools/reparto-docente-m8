@@ -535,6 +535,43 @@ async def test_stream_relays_only_a_teachers_own_hours(
 
 
 @pytest.mark.anyio
+async def test_stream_relays_a_teachers_own_hours_without_the_reason(
+    session: Session, current_user: UserModel, reader: UserModel
+) -> None:
+    # The mirror of the test above, and the case that actually reaches a LAN
+    # client: the head raises the *subscriber's own* hours. The figures are
+    # theirs and arrive; the head's written justification is department-head-only
+    # (plan §17) and must not, exactly as the LAN read payload omits it.
+    process = make_assignment_process(session)
+    subscriber_profile = make_teacher_profile(
+        session, user_id=uuid.UUID(str(reader.id))
+    )
+    participant = make_process_teacher(
+        session, process, subscriber_profile, base_weekly_hours=18.0
+    )
+    _, _, body = await _open(session, reader, process.id)
+
+    ProcessTeacherController.update_extra_hours(
+        session,
+        process.id,
+        participant.id,
+        ProcessTeacherExtraHoursUpdate(
+            extra_weekly_hours=3.0, reason="Covers a vacancy"
+        ),
+        current_user,
+    )
+
+    frame = await asyncio.wait_for(body.__anext__(), 1.0)
+    assert frame.startswith("event: participant.extra_hours_updated")
+    data = _data(frame)
+    assert data["payload"]["target_weekly_hours"] == "21.00"
+    assert data["payload"]["extra_weekly_hours"] == "3.00"
+    assert "reason" not in data["payload"]
+    assert "Covers a vacancy" not in frame
+    await body.aclose()
+
+
+@pytest.mark.anyio
 async def test_stream_detaches_the_subscription_on_disconnect(
     session: Session, current_user: UserModel
 ) -> None:

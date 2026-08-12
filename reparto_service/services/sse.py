@@ -83,6 +83,18 @@ _AUDIENCE_RANK: dict[SseAudience, int] = {
     SseAudience.SHARED_SCREEN: 2,
 }
 
+#: Payload keys the department-head tier owns and no LAN client ever receives,
+#: even on an event about the viewer themselves (plan §17: "extra-hours reasons
+#: are private from general LAN/shared-screen views").
+#:
+#: ``reason`` is the head's written justification for authorizing extra hours. A
+#: teacher is entitled to the *figures* it produced — base, extra, target — and
+#: :class:`~reparto_service.schemas.dashboard.TeacherLanSummary` gives them
+#: exactly those and no reason, so the stream must not be the one surface that
+#: hands the justification back. The two teacher-facing surfaces have to agree,
+#: and the read payload is the one that states the contract.
+DEPARTMENT_HEAD_ONLY_PAYLOAD_KEYS: frozenset[str] = frozenset({"reason"})
+
 
 # ── Payload helpers ───────────────────────────────────────────────────────────
 
@@ -151,10 +163,18 @@ def resolve_audience(
     """Resolve the tier for this subscriber, refusing an upgrade.
 
     A caller may explicitly ask for a *less* privileged tier than their role
-    grants — a shared projection screen authenticates as an ordinary user and
-    asks for ``shared_screen`` so it never receives identifiers it would display
-    to a room. Asking for a *more* privileged tier is a 403: silently clamping a
-    privilege request hides a misconfigured client.
+    grants — a shared projection screen asks for ``shared_screen`` so it never
+    receives identifiers it would display to a room. Asking for a *more*
+    privileged tier is a 403: silently clamping a privilege request hides a
+    misconfigured client.
+
+    The screen still has to be signed in as somebody this process is *visible*
+    to. Read scope is participation-derived
+    (:mod:`reparto_service.services.read_scope`), so an account that merely
+    exists — authenticated, but in no ``ProcessTeacher`` row of this department
+    — reads nothing at all: every route under the process answers ``404`` and
+    this stream with it. In practice the room's screen runs on the department
+    head's session, or on a participant's, and asks for the lower tier.
     """
     granted = granted_audience(current_user)
     if requested is None:
@@ -202,7 +222,9 @@ def project_event(
 
     * ``department_head`` — the event verbatim.
     * ``teacher`` — readiness, whether selection is blocked, and the event's own
-      identity; the payload only when the event is about *this* teacher.
+      identity; the payload only when the event is about *this* teacher, and
+      then without the :data:`DEPARTMENT_HEAD_ONLY_PAYLOAD_KEYS` — an event
+      about the viewer is not the same thing as the head's own record of it.
     * ``shared_screen`` — readiness alone: ready / not ready / recalculation
       required, with no identifier, hour figure or plan-stage detail. The frame's
       ``event:`` name is retained (it names a kind of change, never a subject),
@@ -229,7 +251,11 @@ def project_event(
     )
     if is_own:
         projected["process_teacher_id"] = str(event.subject_process_teacher_id)
-        projected["payload"] = event.payload
+        projected["payload"] = {
+            key: value
+            for key, value in event.payload.items()
+            if key not in DEPARTMENT_HEAD_ONLY_PAYLOAD_KEYS
+        }
     return projected
 
 
@@ -485,6 +511,7 @@ async def event_stream(
 __all__ = [
     "DEFAULT_BUFFER_SIZE",
     "DEFAULT_HEARTBEAT_SECONDS",
+    "DEPARTMENT_HEAD_ONLY_PAYLOAD_KEYS",
     "EventBroker",
     "Subscription",
     "current_readiness",
