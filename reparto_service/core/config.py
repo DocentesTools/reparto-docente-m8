@@ -32,6 +32,11 @@ class Settings(ConsumerServiceSettings):
     CONTRACT_VERSION: str = "2.0.0"
     CONTRACT_RANGE: str = ">=2.0.0 <3.0.0"
 
+    #: Insert the worked configuration example (``reparto_service.initial_data``)
+    #: when the domain is empty. Off by default: a fresh Compose database is
+    #: expected to come up empty, and a deployment must never invent rows.
+    SEED_EXAMPLE_DATA: bool = False
+
     # Vault/`_FILE` source ordering is handled by the inherited
     # CommonSettings.settings_customise_sources classmethod — no override needed.
     model_config = SettingsConfigDict(

@@ -41,6 +41,20 @@ docker compose down            # stop the stack (volumes preserved)
 bash init.sh --reset-db --yes  # wipe the database and re-init from scratch
 ```
 
+After `--reset-db`, also clear the generated revisions before starting again —
+`rm -f shared_migrations/reparto_docentes/versions/*.py` — so the bootstrap
+autogenerates one revision describing the current models against the empty
+database. See the repository README, *Development database reset*.
+
+## Example data
+
+Set `SEED_EXAMPLE_DATA=true` in `reparto.env` before `docker compose up` to have
+the bootstrap insert one worked department — groups, subjects, the
+group-subject matrix, participants and the leadership hour allocation — that
+balances exactly at 120 group / 124 teacher hours once its plan is materialised.
+It is skipped unless the domain is completely empty, and it seeds no plan,
+requirement or assignment. Leave it `false` anywhere real.
+
 ## Local-only vs LAN exposure
 
 The Traefik routers in `traefik/dynamic_conf.yml` are pinned to

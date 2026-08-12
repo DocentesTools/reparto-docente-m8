@@ -147,6 +147,48 @@ exist with no revision recording them.
 Deleting `db_data` also resets the `fa-auth-m8` issuer, which shares the same
 PostgreSQL instance — expect to recreate the local superuser afterwards.
 
+A reset database is empty, and an empty domain is correct for a deployment and
+useless for a walk-through — see §3.2a.
+
+### 3.2a The worked configuration example
+
+`reparto_service/initial_data.py` seeds one department into an empty domain,
+behind `SEED_EXAMPLE_DATA` (default `false`). `pre_start.sh` invokes it on every
+start; it does nothing unless the flag is on **and** the domain holds no
+assignment process, so it can never extend or collide with data somebody else
+put there, and a second start is a no-op.
+
+It configures **stage 1 only** — school, department, academic year, process, 17
+teaching groups over two classroom stages, 14 subjects, the group-subject matrix,
+6 participants and the leadership hour allocation. It creates no teaching plan,
+activity, requirement or assignment: stages 2 and 3 are what an operator walks,
+so seeding them would consume the demonstration.
+
+The matrix is chosen so that completing those stages lands on the §5 co-teaching
+numbers exactly:
+
+```text
+116 h  main activities           (materialised, one per active main cell)
++  2 h  two tutoring activities  (1 h each, two positions each)
++  2 h  one co-teaching activity (2 h, two positions)
+─────
+120 h  group load    = the allocated 120 h        → balanced
+124 h  teacher load  = the six participants' 124 h → balanced
+```
+
+Both balances are exact at two different numbers, which is the point of the
+example. `tests/test_initial_data.py` completes the plan over the seed through
+the real materialisation and activity-creation controllers and asserts those
+totals against the calculation service, so the arithmetic is gated rather than
+asserted in prose.
+
+The cells carry no hour values of their own, only their position count, so they
+resolve through the subject defaults — the documented behaviour, exercised.
+Nobody carries authorized extra hours: raising a target is the audited
+`POST /teachers/{id}/extra-hours` action, never a seeded value. Seeded teacher
+profiles are left unlinked to any auth user, and every row's author is a fixed
+synthetic UUID5, so the seed claims no real identity.
+
 ### 3.3 Verifying the schema without generating a revision
 
 `tests/test_schema_migration_gate.py` checks, on the declared metadata and the

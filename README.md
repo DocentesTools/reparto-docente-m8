@@ -121,6 +121,25 @@ To check the schema the bootstrap will generate — without generating it — ru
 `pytest tests/test_schema_migration_gate.py`, and see
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §3.3 for the PostgreSQL variant.
 
+### Example data
+
+A reset database comes up empty, which is right for a deployment and unhelpful
+for a walk-through. Set `SEED_EXAMPLE_DATA=true` in `reparto.env` before
+`docker compose up` and the bootstrap inserts one worked department: 17 teaching
+groups, a realistic main and secondary subject set including tutoring and
+co-teaching, the group-subject matrix, six participants and the 120 h leadership
+allocation.
+
+Only the configuration stage is seeded. Materialising the main activities and
+adding the three secondary ones is the walk-through, and doing so balances the
+plan exactly — 120 group hours against the 120 allocated, and 124 teacher hours
+against the participants' 124. Both numbers are correct at once and are never
+summed.
+
+Seeding is skipped unless the domain holds no assignment process at all, so it
+never touches existing data and a restart is a no-op. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §3.2a.
+
 ## API map
 
 Every endpoint in this table requires an authenticated caller holding at least
