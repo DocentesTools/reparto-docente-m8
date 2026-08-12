@@ -20,8 +20,8 @@ from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
 import reparto_service.db_models  # noqa: F401
+from reparto_service.core.autogenerate import make_include_object
 from reparto_service.core.config import settings
-from reparto_service.core.migrations import make_include_object
 
 # ---------------------------------------------------------------------
 # PYTHONPATH (Docker / monorepo safe)
@@ -59,7 +59,7 @@ def get_url() -> str:
 # ---------------------------------------------------------------------
 # INCLUDE OBJECT FILTER
 # ---------------------------------------------------------------------
-# Owned by reparto_service.core.migrations so tests/test_schema_migration_gate
+# Owned by reparto_service.core.autogenerate so tests/test_schema_migration_gate
 # asserts the comparison this bootstrap actually performs.
 include_object = make_include_object(VERSION_TABLE, target_metadata)
 

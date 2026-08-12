@@ -39,7 +39,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlmodel import SQLModel
 
-from reparto_service.core.migrations import (
+from reparto_service.core.autogenerate import (
     make_include_object,
     type_bound_check_constraint_names,
 )

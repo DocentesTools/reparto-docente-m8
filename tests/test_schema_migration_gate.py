@@ -30,11 +30,11 @@ from alembic.migration import MigrationContext
 from sqlalchemy.schema import CreateTable
 from sqlmodel import Session, SQLModel
 
-from reparto_service.core.db_models import prefixed_tables
-from reparto_service.core.migrations import (
+from reparto_service.core.autogenerate import (
     make_include_object,
     type_bound_check_constraint_names,
 )
+from reparto_service.core.db_models import prefixed_tables
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.enums import ProcessTeacherStatus
 from tests.factories import (

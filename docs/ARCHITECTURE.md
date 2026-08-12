@@ -81,7 +81,7 @@ start it:
 usable: `compare_type=True`, a `render_item` hook that emits the `import` for
 project-defined column types (`UUIDString`) so the generated revision is
 self-contained, and the `include_object` filter owned by
-`reparto_service/core/migrations.py`.
+`reparto_service/core/autogenerate.py`.
 
 That filter withholds two things from the comparison. Reflected tables other
 than the version table are not ours to diff — the dev stacks put several

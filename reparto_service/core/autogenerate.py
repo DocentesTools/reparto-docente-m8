@@ -1,12 +1,17 @@
 """Autogenerate filters shared by the Alembic environment and its gate test.
 
-Migrations are never hand-authored here: the Compose bootstrap runs
-``alembic check`` and, on drift, ``alembic revision --autogenerate`` against
-``SQLModel.metadata`` before applying the result (``docs/ARCHITECTURE.md``
-§3.1). Every filter that shapes that comparison therefore belongs to the
-service, not to the environment script, so ``tests/test_schema_migration_gate``
-can assert the *same* comparison the bootstrap performs rather than an
-approximation of it.
+**This module holds no migration content.** It contains no revision, no schema
+operation and no DDL — only the ``include_object`` predicate Alembic consults
+while *comparing* the declared models against a live database. Revisions
+themselves are never hand-authored in this repository: the Compose bootstrap
+runs ``alembic check`` and, on drift, ``alembic revision --autogenerate``
+against ``SQLModel.metadata`` before applying the result
+(``docs/ARCHITECTURE.md`` §3.1), and the generated files live outside the
+repository under ``shared_migrations/``.
+
+Every filter that shapes that comparison belongs to the service rather than to
+the environment script, so ``tests/test_schema_migration_gate`` can assert the
+*same* comparison the bootstrap performs rather than an approximation of it.
 """
 
 from __future__ import annotations
