@@ -39,7 +39,28 @@ from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlmodel import SQLModel
 
+from reparto_service.core.migrations import (
+    make_include_object,
+    type_bound_check_constraint_names,
+)
+
 METADATA = SQLModel.metadata
+
+#: The bootstrap's own version table, so the comparisons below are configured
+#: exactly as ``reparto_service/alembic/env.py`` configures them.
+VERSION_TABLE = "alembic_version_reparto"
+
+
+def _bootstrap_diff(connection: sa.Connection, *, filtered: bool = True) -> list:
+    """Diff the metadata against *connection* the way the bootstrap does."""
+    opts: dict[str, object] = {
+        "compare_type": True,
+        "target_metadata": METADATA,
+    }
+    if filtered:
+        opts["include_object"] = make_include_object(VERSION_TABLE, METADATA)
+    return compare_metadata(MigrationContext.configure(connection, opts=opts), METADATA)
+
 
 DSN = os.environ.get("REPARTO_SCHEMA_CHECK_DSN", "")
 
@@ -83,13 +104,40 @@ def test_clean_database_creation_matches_the_metadata(engine: sa.Engine) -> None
 
     with engine.connect() as connection:
         tables = [row[0] for row in connection.execute(PUBLIC_TABLES)]
-        context = MigrationContext.configure(
-            connection,
-            opts={"compare_type": True, "target_metadata": METADATA},
-        )
-        assert compare_metadata(context, METADATA) == []
+        assert _bootstrap_diff(connection) == []
 
     assert sorted(tables) == sorted(METADATA.tables)
+
+
+def test_enum_check_constraints_survive_a_second_bootstrap(engine: sa.Engine) -> None:
+    """The second Compose initialization must not drop the enum validation.
+
+    Alembic 1.19 reads the metadata side of a check-constraint comparison
+    through ``all_table_check_constraints``, which excludes type-bound
+    constraints, while PostgreSQL reflects every one of them by name. Each
+    enum ``CHECK`` therefore compares as *removed*: the unfiltered diff below
+    is the revision the bootstrap generated and applied on the second
+    ``docker compose up``, leaving 0 of the 22 constraints in place with the
+    schema otherwise intact and the service healthy.
+
+    Only PostgreSQL shows this — SQLite reflects the same constraints without
+    names, so the SQLite gate passes either way (which is why it did).
+    """
+    METADATA.create_all(engine)
+
+    with engine.connect() as connection:
+        dropped = {
+            operation[1].name
+            for diff in _bootstrap_diff(connection, filtered=False)
+            for operation in (diff if isinstance(diff, list) else [diff])
+            if operation[0] == "remove_constraint"
+        }
+        assert _bootstrap_diff(connection) == []
+
+    assert dropped == type_bound_check_constraint_names(METADATA)
+
+    with engine.connect() as connection:
+        assert connection.execute(ENUM_CHECK_CONSTRAINTS).scalar_one() == 22
 
 
 def test_no_native_enum_type_is_created(engine: sa.Engine) -> None:
@@ -127,8 +175,4 @@ def test_the_destructive_reset_is_repeatable(engine: sa.Engine) -> None:
     METADATA.create_all(engine)
 
     with engine.connect() as connection:
-        context = MigrationContext.configure(
-            connection,
-            opts={"compare_type": True, "target_metadata": METADATA},
-        )
-        assert compare_metadata(context, METADATA) == []
+        assert _bootstrap_diff(connection) == []

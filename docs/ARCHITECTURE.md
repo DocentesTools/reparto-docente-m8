@@ -77,10 +77,29 @@ start it:
 3. hands over to `pre_start.sh`, which waits for the database and runs
    `alembic upgrade head`.
 
-`reparto_service/alembic/env.py` supplies the two settings that make the output
-usable: `compare_type=True`, and a `render_item` hook that emits the `import` for
+`reparto_service/alembic/env.py` supplies the settings that make the output
+usable: `compare_type=True`, a `render_item` hook that emits the `import` for
 project-defined column types (`UUIDString`) so the generated revision is
-self-contained.
+self-contained, and the `include_object` filter owned by
+`reparto_service/core/migrations.py`.
+
+That filter withholds two things from the comparison. Reflected tables other
+than the version table are not ours to diff — the dev stacks put several
+services' schemas in one PostgreSQL instance. And reflected **type-bound enum
+`CHECK` constraints** are withheld because Alembic cannot match them: since
+1.19 it compares check constraints by name, reading the metadata side through
+`all_table_check_constraints`, which excludes exactly the type-bound ones, while
+reflecting every named constraint from the database. Each `Enum(...,
+create_constraint=True)` constraint therefore compares as *removed*. Unfiltered,
+the **second** `docker compose up` generates a revision dropping all 22 of them
+and applies it: the schema still reads correctly and the service still starts
+healthy, so nothing else reports that the database-level validation is gone.
+
+The exclusion is derived from the current metadata, not a kept list, so
+dropping an enum column from the models still drops its stale constraint. Only
+PostgreSQL exposes the problem — SQLite reflects the same constraints without
+names — which is why `tests/live/test_schema_postgres.py` carries the
+discriminating case (§3.3).
 
 Because nobody writes the revision, **the declared metadata is the only place a
 schema defect can be caught**. Two consequences:
