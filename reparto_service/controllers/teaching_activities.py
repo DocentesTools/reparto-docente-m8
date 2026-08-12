@@ -180,6 +180,7 @@ class TeachingActivityController(DomainController):
             before=None,
             after=activity,
         )
+        TeachingActivityController._recompute_unlocked_plan_balance(session, plan)
         invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(activity)
@@ -203,7 +204,7 @@ class TeachingActivityController(DomainController):
         DomainController.ensure_process_mutable(
             DomainController.get_process_or_404(session, process_id)
         )
-        TeachingActivityController._require_mutable_plan(session, process_id)
+        plan = TeachingActivityController._require_mutable_plan(session, process_id)
 
         before = TeachingActivity.model_validate(activity.model_dump())
         patch = activity_in.model_dump(exclude_unset=True)
@@ -230,6 +231,7 @@ class TeachingActivityController(DomainController):
             before=before,
             after=activity,
         )
+        TeachingActivityController._recompute_unlocked_plan_balance(session, plan)
         invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(activity)
@@ -394,6 +396,7 @@ class TeachingActivityController(DomainController):
 
         invalidated = False
         if created:
+            TeachingActivityController._recompute_unlocked_plan_balance(session, plan)
             invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         if invalidated:
@@ -499,6 +502,22 @@ class TeachingActivityController(DomainController):
         )
 
     @staticmethod
+    def _recompute_unlocked_plan_balance(session: Session, plan: TeachingPlan) -> None:
+        """Move an unlocked plan onto whichever of the two balance states it is in.
+
+        Plan §20.14: an unlocked plan recalculates in place. Every activity
+        mutation moves the planned totals, so every one of them has to land the
+        plan on `BALANCED` or `UNBALANCED` — a plan that reaches both exact
+        targets by *adding* activities must become lockable, and one that leaves
+        them by adding activities must stop being lockable.
+        """
+        exact = PlanningCalculationService.compute_plan_balance(session, plan).is_exact
+        target = TeachingPlanStatus.BALANCED if exact else TeachingPlanStatus.UNBALANCED
+        if plan.status != target:
+            TeachingPlanController.apply_status_transition(plan, target)
+        session.add(plan)
+
+    @staticmethod
     def _advance_plan_after_retirement(
         session: Session,
         plan: TeachingPlan,
@@ -508,14 +527,7 @@ class TeachingActivityController(DomainController):
     ) -> None:
         reason = "A teaching activity was retired."
         if plan.status in _MUTABLE_PLAN_STATUSES:
-            exact = PlanningCalculationService.compute_plan_balance(
-                session, plan
-            ).is_exact
-            target = (
-                TeachingPlanStatus.BALANCED if exact else TeachingPlanStatus.UNBALANCED
-            )
-            if plan.status != target:
-                TeachingPlanController.apply_status_transition(plan, target)
+            TeachingActivityController._recompute_unlocked_plan_balance(session, plan)
         elif plan.status == TeachingPlanStatus.LOCKED:
             TeachingPlanController.apply_status_transition(
                 plan, TeachingPlanStatus.STALE, stale_reason=reason
