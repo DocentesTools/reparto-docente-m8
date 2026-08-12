@@ -38,6 +38,7 @@ from reparto_service.enums import (
     FeasibilityStatus,
     ProcessTeacherStatus,
     SseEventType,
+    TeachingPlanStatus,
 )
 from reparto_service.services.feasibility import (
     DEFAULT_SOLVER_LIMITS,
@@ -262,6 +263,32 @@ def _fingerprint(
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
+#: Plan statuses that hold no requirement rows because generation has not run
+#: (plan §20.14). In these the only feasibility question with an answer is about
+#: the state generation *would* produce — see :meth:`FeasibilityWitnessService.evaluate`.
+_PRE_LOCK_PLAN_STATUSES: frozenset[TeachingPlanStatus] = frozenset(
+    {
+        TeachingPlanStatus.DRAFT,
+        TeachingPlanStatus.UNBALANCED,
+        TeachingPlanStatus.BALANCED,
+    }
+)
+
+
+def _has_live_requirements(session: Session, process_id: uuid.UUID) -> bool:
+    """Whether the process holds a requirement slot generation has not retired."""
+
+    return (
+        session.exec(
+            select(HourRequirement.id)
+            .where(HourRequirement.assignment_process_id == process_id)
+            .where(col(HourRequirement.retired_generation).is_(None))
+            .limit(1)
+        ).first()
+        is not None
+    )
+
+
 class FeasibilityWitnessService:
     """Database orchestration around the pure solver and local repair."""
 
@@ -269,9 +296,36 @@ class FeasibilityWitnessService:
     def evaluate(
         session: Session, process_id: uuid.UUID
     ) -> FeasibilityEvaluationPublic:
-        """Evaluate or reuse the exact current fingerprint and persist its witness."""
+        """Evaluate or reuse the exact current fingerprint and persist its witness.
+
+        An unlocked plan has no requirement rows yet, so the current-state
+        snapshot holds no slots at all: it would weigh every participant target
+        against zero slot hours and answer ``INFEASIBLE`` for a structural
+        reason that says nothing about the plan. It would also be a permanent
+        answer — the only route out is generation, and §20.1 will not lock, let
+        alone generate, until feasibility is confirmed.
+
+        The state an unlocked plan is actually being asked about is the one
+        generation would produce, which is exactly what the lock and generation
+        gates already enforce through :meth:`require_intended_feasible`. So
+        evaluate that, and let the status this stores be the status those gates
+        will act on rather than a second, contradictory one (§13.6 walk-through).
+
+        Both halves of the condition below are load-bearing. No live requirement
+        row is what makes the current-state snapshot unable to answer at all; an
+        unlocked status is what makes ``current_generation_number`` the
+        generation whose *successor* the intended snapshot describes, so the
+        stored generation stays the one the witness readers expect. From
+        ``LOCKED`` onwards the live rows are the state, and the stored generation
+        has to keep matching ``current_generation_number`` so the witness reads
+        that gate assignment stay current.
+        """
 
         plan = FeasibilityWitnessService._plan_or_404(session, process_id)
+        if plan.status in _PRE_LOCK_PLAN_STATUSES and not _has_live_requirements(
+            session, process_id
+        ):
+            return FeasibilityWitnessService.evaluate_intended(session, process_id)
         snapshot = build_feasibility_snapshot(session, process_id)
         return FeasibilityWitnessService._evaluate_snapshot(
             session,
