@@ -13,13 +13,17 @@ from collections.abc import Iterator
 
 import pytest
 from auth_sdk_m8.schemas.user import UserModel
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.teacher_profiles import TeacherProfile
+from reparto_service.app import deps as app_deps
+from reparto_service.app import main as domain_main
 from reparto_service.core import deps
+from reparto_service.core.config import settings
 from reparto_service.db_models.departments import Department
 from reparto_service.enums import MeetingSessionStatus
 from reparto_service.main import app
@@ -499,3 +503,44 @@ def test_a_recorded_head_is_re_evaluated_from_the_role_on_every_request(
 
     response = client.post(f"/reparto/assignment-processes/{process.id}/teaching-plan")
     assert response.status_code == 403
+
+
+# ── The floor's *shape*, not only its effect (plan §21.1) ────────────────────
+
+
+def test_the_reader_floor_is_mounted_on_the_aggregator_not_annotated() -> None:
+    """Where the floor lives is itself the guarantee.
+
+    The sweeps above prove every operation *in today's schema* is floored, and
+    would fail the day one is not. This asserts the mechanism that makes that
+    true without anyone having to remember it: the floor is a dependency of the
+    aggregator, so a router included there later inherits it rather than needing
+    its own mount — and every operation the sweeps see does come from that
+    aggregator, so none of them is registered on a path that bypasses it.
+    """
+    mounted = {
+        dependency.dependency for dependency in domain_main.api_router.dependencies
+    }
+    assert mounted == {deps.require_reader}
+
+    probe = FastAPI()
+    probe.include_router(domain_main.api_router, prefix=settings.API_PREFIX)
+    floored = {
+        (method.upper(), path)
+        for path, operations in probe.openapi()["paths"].items()
+        for method in operations
+    }
+    assert set(DOMAIN_OPERATIONS) <= floored
+
+
+def test_no_bare_current_user_alias_is_exported() -> None:
+    """A route must not be able to settle for "authenticated" by importing it.
+
+    ``get_current_user`` survives as the ``dependency_overrides`` seam the test
+    suite needs, and is asserted above to be reachable from no route. A
+    ``CurrentUser`` *annotation* alias is different: it exists only to be put in
+    a signature, so keeping one is keeping the shape this floor removed.
+    """
+    assert not hasattr(deps, "CurrentUser")
+    assert not hasattr(app_deps, "CurrentUser")
+    assert "CurrentUser" not in app_deps.__all__

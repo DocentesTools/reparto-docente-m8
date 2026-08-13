@@ -47,11 +47,14 @@ ever produce a second, divergent answer.
   unauthenticated and `403` for a `USER` before its handler runs, and a router
   added later inherits the floor by construction. `/health`, `/meta`, `/ping`
   and `/metrics` are framework-owned and mounted outside it.
-- **No bare `CurrentUser`.** `reparto_service/app/deps.py` deliberately exports
-  none. A route names the role it needs — `CurrentReader`, `CurrentWriter` or
-  `CurrentAdmin` — so it cannot silently settle for "authenticated".
-  `get_current_user` is re-exported only as the dependency-override seam the
-  test suite needs; using it as a route's principal is not a supported shape.
+- **No bare `CurrentUser`.** Neither `reparto_service/core/deps.py` nor
+  `reparto_service/app/deps.py` defines or re-exports one, so there is nothing
+  to import. A route names the role it needs — `CurrentReader`, `CurrentWriter`
+  or `CurrentAdmin` — and cannot silently settle for "authenticated".
+  `get_current_user` survives only as the dependency-override seam the test
+  suite needs; using it as a route's principal is not a supported shape, and
+  `tests/test_authorization_boundaries.py` answers `401` on every route to a
+  client that satisfies only that dependency.
 - **The gates are the SDK dependencies, by identity.** `require_reader` /
   `require_writer` / `require_admin` in `reparto_service/core/deps.py` *are*
   `auth.get_current_active_reader` / `_writer` / `_admin`, not local

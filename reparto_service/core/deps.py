@@ -1,7 +1,10 @@
 """Build-once site for auth and database dependencies.
 
-Import ``auth``, ``engine``, ``CurrentUser``, and ``SessionDep`` from here.
-Never call ``build_auth_deps`` or ``create_db_engine`` a second time.
+Import ``auth``, ``engine``, the role vocabulary (``CurrentReader`` /
+``CurrentWriter`` / ``CurrentAdmin`` and the ``require_*`` gates they wrap) and
+``SessionDep`` from here. Never call ``build_auth_deps`` or ``create_db_engine``
+a second time. There is deliberately no bare ``CurrentUser`` alias to import:
+see the floor note below.
 
 Authorization floor (plan §21.1/§21.4)
 --------------------------------------
@@ -34,7 +37,11 @@ from .config import settings
 auth: AuthDeps = build_auth_deps(settings)
 engine: DbEngine = create_db_engine(settings)
 
-CurrentUser = auth.CurrentUser
+# ``auth.CurrentUser`` is deliberately *not* re-exported under a local name: an
+# alias here is an invitation to annotate a route with bare authentication, and
+# the whole point of the vocabulary below is that a route has to name the role
+# it needs. ``get_current_user`` stays because the test suite needs it as the
+# ``dependency_overrides`` seam — it is not a supported route principal.
 get_current_user = auth.get_current_user
 
 # ── Role gates (plan §21.1/§21.6) ────────────────────────────────────────────
