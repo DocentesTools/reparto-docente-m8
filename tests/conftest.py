@@ -55,25 +55,26 @@ for _k, _v in _TEST_ENV.items():
     os.environ.setdefault(_k, _v)
 
 # Disable the local .env lookup BEFORE the first service import.
-import auth_sdk_m8.utils.paths as _paths_mod
+import auth_sdk_m8.utils.paths as _paths_mod  # noqa: E402
 
 _real_find_dotenv = _paths_mod.find_dotenv
 _paths_mod.find_dotenv = lambda *_a, **_kw: ""
 
-# Now safe to import the service. These imports are deliberately below the
-# env setup above and not at the top of the file; ``E402`` is not enabled in
-# this repository's ruff configuration, so they carry no suppression.
-import pytest
-from auth_sdk_m8.schemas.user import UserModel
-from fastapi import HTTPException, Request
-from fastapi.testclient import TestClient
-from sqlmodel import Session, SQLModel, create_engine
-from sqlmodel.pool import StaticPool
+# Now safe to import the service. These imports are deliberately below the env
+# setup above and not at the top of the file, so each one suppresses ``E402``
+# individually — the rule is on by default in ruff's ``E4`` set, which this
+# repository's ``ruff.toml`` does not narrow.
+import pytest  # noqa: E402
+from auth_sdk_m8.schemas.user import UserModel  # noqa: E402
+from fastapi import HTTPException, Request  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlmodel import Session, SQLModel, create_engine  # noqa: E402
+from sqlmodel.pool import StaticPool  # noqa: E402
 
 # Pull every domain model so SQLModel.metadata is populated.
-import reparto_service.db_models  # noqa: F401
-from reparto_service.core.deps import auth, get_current_user, get_db
-from reparto_service.main import app
+import reparto_service.db_models  # noqa: F401, E402
+from reparto_service.core.deps import auth, get_current_user, get_db  # noqa: E402
+from reparto_service.main import app  # noqa: E402
 
 # Restore find_dotenv (good hygiene).
 _paths_mod.find_dotenv = _real_find_dotenv
