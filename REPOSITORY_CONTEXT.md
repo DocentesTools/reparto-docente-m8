@@ -29,7 +29,69 @@ The API prefix defaults to `/reparto`; OpenAPI documentation is enabled when
 - Do not hand-author Alembic revisions; use the repository's existing Compose
   workflow to generate and apply migrations from the models.
 - Preserve the public HTTP contract consumed by the optional `astro-reparto-m8`
-  plugin, including the `reparto-docente-m8@0.1` compatibility range.
+  plugin, including the `reparto-docente-m8@2.0.0` compatibility range declared
+  in `reparto_service/core/config.py` and published in
+  `docs/served-api-surface.json`.
+
+## Authorization model
+
+Roles are issued by `fa-auth-m8` and are fixed: `USER < READER < WRITER <
+ADMIN < SUPERADMIN`. This service registers no role of its own, and no code
+here inspects `is_superuser` on its own — the issuer's truth table makes that
+flag equivalent to `role == SUPERADMIN`, so a separate reading of it could only
+ever produce a second, divergent answer.
+
+- **One mounted floor, not 21 remembered ones.** `reparto_service/app/main.py`
+  mounts `Depends(require_reader)` on the router that aggregates every domain
+  router, so every route — read, export and mutation alike — answers `401`
+  unauthenticated and `403` for a `USER` before its handler runs, and a router
+  added later inherits the floor by construction. `/health`, `/meta`, `/ping`
+  and `/metrics` are framework-owned and mounted outside it.
+- **No bare `CurrentUser`.** `reparto_service/app/deps.py` deliberately exports
+  none. A route names the role it needs — `CurrentReader`, `CurrentWriter` or
+  `CurrentAdmin` — so it cannot silently settle for "authenticated".
+  `get_current_user` is re-exported only as the dependency-override seam the
+  test suite needs; using it as a route's principal is not a supported shape.
+- **The gates are the SDK dependencies, by identity.** `require_reader` /
+  `require_writer` / `require_admin` in `reparto_service/core/deps.py` *are*
+  `auth.get_current_active_reader` / `_writer` / `_admin`, not local
+  equivalents: only that path re-validates on the fresh, no-positive-cache
+  user, which is what makes a demoted or revoked account lose the role on its
+  next request instead of at the end of a cache TTL.
+- **Department-head authority is `ADMIN`/`SUPERADMIN`, full stop.**
+  `Department.department_head_user_id` is descriptive metadata for attribution
+  and UI defaults and grants no capability: a binding is not a credential and
+  cannot be revoked by demoting the account.
+- **`WRITER` mutates its own records only** — own teacher profile, own
+  direct-choice, own selection turn — and ownership is proven against the row,
+  never inferred from the role.
+
+### Controller-level role checks are kept on purpose
+
+The `has_minimum_role` calls in `controllers/base.py`,
+`controllers/departments.py`, `controllers/teacher_profiles.py` and
+`services/read_scope.py` sit *underneath* the route-level role dependencies.
+That layering is deliberate and reviewed; do not collapse it into the
+dependencies, and do not re-raise it as duplication.
+
+- Most of them are not the same question the dependency answers. A dependency
+  decides about the caller alone; these decide about a **row** (is this the
+  caller's own participation or profile?), about a **third party** (may the
+  account being recorded as department head hold that record?), or about
+  **query scope** (which departments may this caller see at all?). None of
+  those can be expressed by a dependency without moving row access into the
+  dependency layer.
+- Where a floor genuinely does repeat one — `DomainController.require_writer`
+  under a route's `CurrentWriter` — the repeat costs one comparison and buys
+  the controller a guarantee that does not depend on every present and future
+  caller having declared the right annotation. A route-level floor also never
+  makes a finer check unnecessary: reader does not imply writer, and writer
+  does not imply owner.
+- The duplication is of the *call*, never of the *rule*. Every one of these
+  sites delegates to the issuer SDK's own `has_minimum_role`; none
+  re-implements the ordering and none consults `is_superuser`. Should the
+  import path for that predicate change, the layering decision here is
+  unaffected.
 
 ## Portable quality guidance
 
