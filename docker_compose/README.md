@@ -2,12 +2,22 @@
 
 Local development stacks for `reparto-docente-m8`.
 
-The first stack is `dev_reparto_m8/` — a local-first Postgres + Redis +
-fa-auth + reparto_service stack fronted by Traefik for LAN HTTPS.
+The first stack is [`dev_reparto_m8/`](dev_reparto_m8/) — a local-first stack of
+Postgres, Redis, fa-auth and reparto_service, fronted by Traefik for LAN HTTPS.
+Its README is the reference for the env-file layout, the **database reset** (both
+`db_data/` and the generated `shared_migrations/` revisions), the
+`SEED_EXAMPLE_DATA` worked example and LAN exposure.
+
+It serves the API only. The browser surface is the optional `astro-reparto-m8`
+plugin mounted by an Astro host; `fa-ui-m8`'s `dev_local_full_ui_m8` stack runs
+this service alongside the auth, media and prompt services for that purpose.
 
 The shared infrastructure (Traefik cert init, db init, security
 preflight) lives under `shared/` and is consumed by every example via
 `init.sh`.
+
+Every runtime `*.env` is git-ignored; only the `*.example` templates are tracked,
+and `bash init.sh` copies each missing one into place on first run.
 
 ## Adapting this for production
 

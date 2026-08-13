@@ -107,15 +107,25 @@ new schema is generated from the models by the same bootstrap.
 Run from `docker_compose/dev_reparto_m8`:
 
 ```bash
-docker compose down
-sudo rm -rf ./db_data                      # bind-mounted PostgreSQL data
+bash init.sh --reset-db --yes              # stops the stack, deletes ./db_data
 rm -f ./shared_migrations/reparto_docentes/versions/*.py
 docker compose up -d
 ```
 
-Clear both together. Dropping the revisions while keeping `db_data` leaves tables
-that no revision records. The same PostgreSQL instance backs the `fa-auth-m8`
-issuer, so a reset also clears its users.
+Clear both together. `shared_migrations/` is a separate bind mount and survives
+`--reset-db`, so revisions left behind replay an old schema onto the new
+database; dropping the revisions while keeping `db_data` leaves tables that no
+revision records. The same PostgreSQL instance backs the `fa-auth-m8` issuer, so
+a reset also clears its users — the bootstrap superuser is recreated from
+`auth.env` on the next boot.
+
+If PostgreSQL owns `db_data/` as the container uid, `--reset-db` stops with a
+permission error; remove it with `sudo rm -rf ./db_data` or from a throwaway
+root container (`docker run --rm -v "$(pwd):/work" alpine rm -rf /work/db_data`)
+and continue.
+
+Booting a second time must autogenerate **no** further revision. If it does, the
+declared models and the applied schema have drifted.
 
 To check the schema the bootstrap will generate — without generating it — run
 `pytest tests/test_schema_migration_gate.py`, and see
