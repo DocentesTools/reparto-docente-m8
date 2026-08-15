@@ -24,6 +24,10 @@ The API prefix defaults to `/reparto`; OpenAPI documentation is enabled when
 - Consume `fa-auth-m8` through its authentication contract from `fastapi-m8`. Do not own its
   database or private signing keys, and do not directly depend on other services
   beyond that contract.
+- `auth-sdk-m8` is never imported directly in service code — only `fastapi-m8`
+  and its re-exports are. `ruff.toml` enforces this with a `TID251`
+  banned-api rule (`auth_sdk_m8`); `ruff check .` fails on any direct import
+  outside `tests/`.
 - Keep domain logic in `controllers/` and `services/`, separate from FastAPI
   route transport; see `docs/ARCHITECTURE.md`.
 - Do not hand-author Alembic revisions; use the repository's existing Compose
