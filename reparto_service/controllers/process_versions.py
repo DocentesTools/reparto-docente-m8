@@ -21,9 +21,8 @@ from __future__ import annotations
 import uuid
 
 from fastapi import HTTPException, status
+from fastapi_m8 import UserModel
 from sqlmodel import Session, col, func, select
-
-from auth_sdk_m8.schemas.user import UserModel
 
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.process_versions import (

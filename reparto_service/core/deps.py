@@ -19,9 +19,8 @@ import uuid
 from functools import partial
 from typing import Annotated
 
-from auth_sdk_m8.schemas.user import UserModel
 from fastapi import Depends, Request
-from fastapi_m8 import AuthDeps, DbEngine, build_auth_deps, create_db_engine
+from fastapi_m8 import AuthDeps, DbEngine, UserModel, build_auth_deps, create_db_engine
 from sqlmodel import Session
 
 from reparto_service.db_models.assignment_processes import AssignmentProcess

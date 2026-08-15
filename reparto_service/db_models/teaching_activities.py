@@ -39,7 +39,7 @@ import uuid
 from datetime import datetime
 from typing import Literal, Optional
 
-from auth_sdk_m8.models.shared import TimestampMixin
+from fastapi_m8 import TimestampMixin
 from pydantic import Field
 from sqlalchemy import DateTime, Index, UniqueConstraint, text
 from sqlmodel import Column, SQLModel

@@ -49,8 +49,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
-from auth_sdk_m8.schemas.user import UserModel
 from fastapi import HTTPException, status
+from fastapi_m8 import UserModel
 from sqlmodel import Session, select
 
 from reparto_service.core.decimals import quantize_hours

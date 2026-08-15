@@ -46,9 +46,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
+from fastapi_m8 import UserModel
 from sqlmodel import Session, col, select
-
-from auth_sdk_m8.schemas.user import UserModel
 
 from reparto_service.controllers.base import DomainController
 from reparto_service.controllers.teaching_plans import TeachingPlanController

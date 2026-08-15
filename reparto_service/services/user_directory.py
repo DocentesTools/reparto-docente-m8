@@ -28,8 +28,7 @@ import uuid
 from collections.abc import Callable
 
 import httpx
-from auth_sdk_m8.schemas.base import RoleType
-from fastapi_m8 import ConsumerServiceSettings
+from fastapi_m8 import ConsumerServiceSettings, RoleType
 
 # ``INTROSPECTION_URL`` points at ``…/private/v1/jti-status``; the user lookup
 # lives at ``…/users/get/{user_id}/`` on the same host and API prefix. Mirrors

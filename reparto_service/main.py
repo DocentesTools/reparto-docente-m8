@@ -38,7 +38,7 @@ api_router = APIRouter(prefix=settings.API_PREFIX)
 api_router.include_router(domain_router)
 
 if settings.METRICS_ENABLED:  # pragma: no cover
-    from auth_sdk_m8.observability.metrics import render as _render_metrics  # noqa: PLC0415
+    from fastapi_m8 import render_metrics as _render_metrics  # noqa: PLC0415
 
     @api_router.get("/metrics", include_in_schema=False)  # pragma: no cover
     def metrics_endpoint() -> Response:  # pragma: no cover

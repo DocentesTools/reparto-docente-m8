@@ -6,11 +6,11 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from fastapi_m8 import TimestampMixin
 from pydantic import Field
 from sqlalchemy import Column, Text
 from sqlmodel import Field as SQLField, SQLModel
 
-from auth_sdk_m8.models.shared import TimestampMixin
 from reparto_service.core.db_models import (
     UUIDString,
     enum_column_type,

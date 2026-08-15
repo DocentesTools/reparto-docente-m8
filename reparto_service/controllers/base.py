@@ -6,11 +6,8 @@ import logging
 import uuid
 from typing import Any
 
-from auth_sdk_m8.authorization import has_minimum_role
-from auth_sdk_m8.controllers.base import BaseController
-from auth_sdk_m8.schemas.base import RoleType
-from auth_sdk_m8.schemas.user import UserModel
 from fastapi import HTTPException, status
+from fastapi_m8 import BaseController, RoleType, UserModel, has_minimum_role
 from sqlmodel import Session, SQLModel, select
 
 from reparto_service.db_models.assignment_processes import AssignmentProcess
@@ -40,7 +37,7 @@ _IMMUTABLE_PROCESS_STATUSES: frozenset[AssignmentProcessStatus] = frozenset(
 
 
 class DomainController(BaseController):
-    """Common domain helpers layered on top of ``auth_sdk_m8``'s ``BaseController``.
+    """Common domain helpers layered on top of ``fastapi_m8``'s ``BaseController``.
 
     Provides:
 

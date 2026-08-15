@@ -28,9 +28,8 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import HTTPException, status
+from fastapi_m8 import UserModel
 from sqlmodel import Session, col, select
-
-from auth_sdk_m8.schemas.user import UserModel
 
 from reparto_service.controllers.assignment_processes import AssignmentProcessController
 from reparto_service.controllers.base import DomainController

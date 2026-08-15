@@ -28,8 +28,8 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from auth_sdk_m8.schemas.user import UserModel
 from fastapi import HTTPException, status
+from fastapi_m8 import UserModel
 from sqlmodel import Session, col, select
 
 from reparto_service.controllers.base import DomainController

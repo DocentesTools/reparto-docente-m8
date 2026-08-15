@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import uuid
 
-from auth_sdk_m8.authorization import has_minimum_role
-from auth_sdk_m8.schemas.base import RoleType
-from auth_sdk_m8.schemas.user import UserModel
 from fastapi import HTTPException, status
+from fastapi_m8 import RoleType, UserModel, has_minimum_role
 from sqlmodel import Session, col, func, select
 
 from reparto_service.controllers.base import DomainController
