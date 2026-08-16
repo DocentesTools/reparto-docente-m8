@@ -15,6 +15,7 @@ import pytest
 from auth_sdk_m8.schemas.user import UserModel
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from fastapi_m8 import audit_api_key_routes
 from sqlmodel import Session
 
 from reparto_service.db_models.assignment_processes import AssignmentProcess
@@ -544,3 +545,18 @@ def test_no_bare_current_user_alias_is_exported() -> None:
     assert not hasattr(deps, "CurrentUser")
     assert not hasattr(app_deps, "CurrentUser")
     assert "CurrentUser" not in app_deps.__all__
+
+
+def test_no_route_depends_on_bare_api_key_principal() -> None:
+    """Wave 7 / A22 wiring lock (§3.3.1, APIKEY-CAP-01).
+
+    reparto-docente-m8 does not wire any API-key routes today —
+    API_KEY_INTROSPECTION_ENABLED is unset, so `deps.auth.get_current_api_key_principal`
+    is `None` and this is a no-op audit. It stays load-bearing: the day a route is
+    added on the bare principal instead of `get_current_api_key_reader`/`_writer`,
+    this assertion is what catches it.
+    """
+    findings = audit_api_key_routes(
+        app, bare_dependency=deps.auth.get_current_api_key_principal
+    )
+    assert findings == []
