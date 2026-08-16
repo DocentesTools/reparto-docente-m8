@@ -4,7 +4,7 @@ Demonstrates: DB session, metrics, health checks, auth deps, lifespan teardown.
 All wiring is handled by ``create_app``; this file only imports and connects.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 from sqlmodel import select
 
@@ -14,6 +14,7 @@ from fastapi_m8 import (
     HealthConfig,
     HealthStatus,
     create_app,
+    make_scrape_credential_guard,
 )
 
 from .app.main import api_router as domain_router
@@ -34,23 +35,45 @@ async def check_db() -> HealthCheckResult:
         )
 
 
-api_router = APIRouter(prefix=settings.API_PREFIX)
-api_router.include_router(domain_router)
+def _register_metrics_endpoint(
+    router: APIRouter,
+    *,
+    enabled: bool,
+    credential: str | None = None,
+) -> None:
+    """Expose Prometheus metrics when enabled.
 
-if settings.METRICS_ENABLED:  # pragma: no cover
+    When ``credential`` is set, callers must present
+    ``Authorization: Bearer <credential>``. When unset, the network boundary is
+    the control, matching the full-consumer pattern used by media-service-m8.
+    """
+    if not enabled:
+        return
+
     from fastapi_m8 import render_metrics as _render_metrics  # noqa: PLC0415
 
-    @api_router.get("/metrics", include_in_schema=False)  # pragma: no cover
-    def metrics_endpoint() -> Response:  # pragma: no cover
+    guard = make_scrape_credential_guard(credential)
+
+    @router.get("/metrics", include_in_schema=False, dependencies=[Depends(guard)])
+    def metrics_endpoint() -> Response:
         data, content_type = _render_metrics()
         return Response(content=data, media_type=content_type)
 
+
+api_router = APIRouter(prefix=settings.API_PREFIX)
+api_router.include_router(domain_router)
+_credential = settings.METRICS_SCRAPE_CREDENTIAL
+_register_metrics_endpoint(
+    api_router,
+    enabled=settings.METRICS_ENABLED,
+    credential=_credential.get_secret_value() if _credential else None,
+)
 
 app = create_app(
     settings,
     api_router,
     service_name=settings.PROJECT_NAME,
-    service_version="1.0.0",
+    service_version=settings.SERVICE_VERSION,
     health=HealthConfig(checks=[check_db]),
     lifecycle=AppLifecycle(
         auth_deps=auth,
