@@ -38,6 +38,18 @@ RUN groupadd --gid 1000 appuser && \
 WORKDIR /opt
 
 COPY --from=builder /install /usr/local
+
+# Strip installer tooling from the runtime image. This image starts the
+# service with Uvicorn (and runs Alembic during startup); it never installs
+# packages at runtime, so pip, setuptools and wheel are unnecessary attack
+# surface. Keep this after the builder copy so that layer cannot reintroduce
+# them, and uninstall pip last because it performs the earlier removals.
+# The import probe makes the build fail if the runtime graph actually relies
+# on setuptools/pkg_resources.
+RUN python -m pip uninstall -y setuptools wheel && \
+    python -m pip uninstall -y pip && \
+    python -c "import alembic, asyncpg, bcrypt, email_validator, fastapi, fastapi_m8, google.auth, gunicorn, itsdangerous, jinja2, multipart, prometheus_client, psycopg, pydantic, pydantic_settings, redis, slugify, sqlalchemy, sqlmodel, tenacity, uvicorn"
+
 COPY --chown=appuser:appuser ./reparto_service ./reparto_service
 
 RUN find /opt/reparto_service/scripts -name "*.sh" -exec sed -i 's/\r$//' {} + && \
