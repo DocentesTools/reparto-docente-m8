@@ -46,6 +46,18 @@ from .export_artifacts import (
     ExportArtifactPublic,
     ExportArtifactsPublic,
 )
+from .feasibility_witnesses import (
+    FeasibilityEvaluationPublic,
+    FeasibilityWitness,
+    FeasibilityWitnessEntryPublic,
+    FeasibilityWitnessPublic,
+)
+from .department_hour_allocation_revisions import (
+    DepartmentHourAllocationRevision,
+    DepartmentHourAllocationRevisionCreate,
+    DepartmentHourAllocationRevisionPublic,
+    DepartmentHourAllocationRevisionsPublic,
+)
 from .departments import (
     Department,
     DepartmentCreate,
@@ -54,12 +66,24 @@ from .departments import (
     DepartmentsPublic,
     DepartmentUpdate,
 )
+from .group_subjects import (
+    GroupSubject,
+    GroupSubjectCreate,
+    GroupSubjectPublic,
+    GroupSubjectsPublic,
+    GroupSubjectUpdate,
+)
 from .hour_requirements import (
     HourRequirement,
-    HourRequirementCreate,
     HourRequirementPublic,
     HourRequirementsPublic,
-    HourRequirementUpdate,
+    RequirementConflictDetail,
+    RequirementGenerationPreview,
+    RequirementGenerationResult,
+    RequirementReconcileRequest,
+    RequirementReconciliationPreview,
+    RequirementReconciliationResult,
+    RequirementSlotPlan,
 )
 from .meeting_sessions import (
     MeetingSession,
@@ -86,6 +110,7 @@ from .selection_turns import (
 from .process_teachers import (
     ProcessTeacher,
     ProcessTeacherCreate,
+    ProcessTeacherExtraHoursUpdate,
     ProcessTeacherPublic,
     ProcessTeachersPublic,
     ProcessTeacherUpdate,
@@ -112,6 +137,16 @@ from .teacher_profiles import (
     TeacherProfilesPublic,
     TeacherProfileUpdate,
 )
+from .teaching_activities import (
+    MainMaterializationResult,
+    TeachingActivitiesPublic,
+    TeachingActivity,
+    TeachingActivityCreate,
+    TeachingActivityGroup,
+    TeachingActivityGroupPublic,
+    TeachingActivityPublic,
+    TeachingActivityUpdate,
+)
 from .teaching_groups import (
     TeachingGroup,
     TeachingGroupBulkCreate,
@@ -119,6 +154,11 @@ from .teaching_groups import (
     TeachingGroupPublic,
     TeachingGroupsPublic,
     TeachingGroupUpdate,
+)
+from .teaching_plans import (
+    TeachingPlan,
+    TeachingPlanPublic,
+    TeachingPlansPublic,
 )
 
 __all__ = [
@@ -151,17 +191,35 @@ __all__ = [
     "ExportArtifactCreate",
     "ExportArtifactPublic",
     "ExportArtifactsPublic",
+    "FeasibilityEvaluationPublic",
+    "FeasibilityWitness",
+    "FeasibilityWitnessEntryPublic",
+    "FeasibilityWitnessPublic",
     "Department",
     "DepartmentCreate",
     "DepartmentGenerators",
+    "DepartmentHourAllocationRevision",
+    "DepartmentHourAllocationRevisionCreate",
+    "DepartmentHourAllocationRevisionPublic",
+    "DepartmentHourAllocationRevisionsPublic",
     "DepartmentPublic",
     "DepartmentUpdate",
     "DepartmentsPublic",
+    "GroupSubject",
+    "GroupSubjectCreate",
+    "GroupSubjectPublic",
+    "GroupSubjectUpdate",
+    "GroupSubjectsPublic",
     "HourRequirement",
-    "HourRequirementCreate",
     "HourRequirementPublic",
-    "HourRequirementUpdate",
     "HourRequirementsPublic",
+    "RequirementConflictDetail",
+    "RequirementGenerationPreview",
+    "RequirementGenerationResult",
+    "RequirementReconcileRequest",
+    "RequirementReconciliationPreview",
+    "RequirementReconciliationResult",
+    "RequirementSlotPlan",
     "MeetingSession",
     "MeetingSessionCreate",
     "MeetingSessionPublic",
@@ -171,6 +229,7 @@ __all__ = [
     "ProcessReopenRequest",
     "ProcessTeacher",
     "ProcessTeacherCreate",
+    "ProcessTeacherExtraHoursUpdate",
     "ProcessTeacherPublic",
     "ProcessTeacherUpdate",
     "ProcessTeachersPublic",
@@ -201,11 +260,22 @@ __all__ = [
     "TeacherProfilePublic",
     "TeacherProfileUpdate",
     "TeacherProfilesPublic",
+    "MainMaterializationResult",
+    "TeachingActivitiesPublic",
+    "TeachingActivity",
+    "TeachingActivityCreate",
+    "TeachingActivityGroup",
+    "TeachingActivityGroupPublic",
+    "TeachingActivityPublic",
+    "TeachingActivityUpdate",
     "TeachingGroup",
     "TeachingGroupBulkCreate",
     "TeachingGroupCreate",
     "TeachingGroupPublic",
     "TeachingGroupUpdate",
     "TeachingGroupsPublic",
+    "TeachingPlan",
+    "TeachingPlanPublic",
+    "TeachingPlansPublic",
     "VersionComparison",
 ]

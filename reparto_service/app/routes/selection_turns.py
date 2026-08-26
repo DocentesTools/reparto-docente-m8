@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep
+from reparto_service.app.deps import (
+    CurrentAdmin,
+    CurrentWriter,
+    SessionDep,
+    require_visible_process,
+)
 from reparto_service.controllers.selection_turns import SelectionTurnController
 from reparto_service.db_models.selection_turns import (
     SelectionTurnAction,
@@ -20,6 +25,10 @@ router = APIRouter(
         "/assignment-processes/{process_id}/meeting-sessions/{meeting_session_id}/turns"
     ),
     tags=["selection-turns"],
+    # Read scope (plan §21.4): every route under this process — read and
+    # mutation alike — is refused with 404 when the process lies outside the
+    # caller's departments.
+    dependencies=[Depends(require_visible_process)],
 )
 
 
@@ -35,11 +44,10 @@ def list_turns(
 @router.post("/initialize", response_model=SelectionTurnsPublic, status_code=201)
 def initialize_turns(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     meeting_session_id: uuid.UUID,
 ) -> SelectionTurnsPublic:
-    SelectionTurnController.require_process_writer(session, current_user, process_id)
     return SelectionTurnController.initialize_turns(
         session, process_id, meeting_session_id
     )
@@ -48,12 +56,14 @@ def initialize_turns(
 @router.post("/{turn_id}/start", response_model=SelectionTurnPublic)
 def start_turn(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentWriter,
     process_id: uuid.UUID,
     meeting_session_id: uuid.UUID,
     turn_id: uuid.UUID,
 ) -> SelectionTurnPublic:
-    SelectionTurnController.require_process_writer(session, current_user, process_id)
+    SelectionTurnController.require_turn_actor(
+        session, current_user, process_id, meeting_session_id, turn_id
+    )
     return SelectionTurnController.start_turn(
         session, process_id, meeting_session_id, turn_id, current_user
     )
@@ -62,13 +72,15 @@ def start_turn(
 @router.post("/{turn_id}/complete", response_model=SelectionTurnPublic)
 def complete_turn(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentWriter,
     process_id: uuid.UUID,
     meeting_session_id: uuid.UUID,
     turn_id: uuid.UUID,
     payload: SelectionTurnComplete,
 ) -> SelectionTurnPublic:
-    SelectionTurnController.require_process_writer(session, current_user, process_id)
+    SelectionTurnController.require_turn_actor(
+        session, current_user, process_id, meeting_session_id, turn_id
+    )
     return SelectionTurnController.complete_turn(
         session, process_id, meeting_session_id, turn_id, current_user, payload
     )
@@ -77,13 +89,15 @@ def complete_turn(
 @router.post("/{turn_id}/skip", response_model=SelectionTurnPublic)
 def skip_turn(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentWriter,
     process_id: uuid.UUID,
     meeting_session_id: uuid.UUID,
     turn_id: uuid.UUID,
     payload: SelectionTurnAction,
 ) -> SelectionTurnPublic:
-    SelectionTurnController.require_process_writer(session, current_user, process_id)
+    SelectionTurnController.require_turn_actor(
+        session, current_user, process_id, meeting_session_id, turn_id
+    )
     return SelectionTurnController.skip_turn(
         session, process_id, meeting_session_id, turn_id, current_user, payload
     )
@@ -92,13 +106,12 @@ def skip_turn(
 @router.post("/{turn_id}/override", response_model=SelectionTurnPublic)
 def override_turn(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     meeting_session_id: uuid.UUID,
     turn_id: uuid.UUID,
     payload: SelectionTurnAction,
 ) -> SelectionTurnPublic:
-    SelectionTurnController.require_process_writer(session, current_user, process_id)
     return SelectionTurnController.override_turn(
         session, process_id, meeting_session_id, turn_id, current_user, payload
     )

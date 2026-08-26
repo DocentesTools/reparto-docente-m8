@@ -10,14 +10,36 @@ Local-first FastAPI service for the Docentes teaching-assignment domain. It is
 an authenticated consumer of `fa-auth-m8`: it validates access tokens over the
 auth contract and owns no auth-service database or private signing keys.
 
+## The three stages
+
+The service models teaching allocation as three ordered stages:
+
+1. **Configuration** — school, academic year, department, participants and their
+   base/extra hours, subjects, teaching groups and the group-subject matrix.
+2. **Department teaching-load planning** — the leadership group-hour allocation,
+   materialized main-subject activities, optional secondary activities (tutoring,
+   co-teaching, department-level work), two independent hour balances, and the
+   generated indivisible teacher-position slots.
+3. **Assignment to teachers** — manual department-head assignment, the ordered
+   meeting, LAN direct selection, versions, exports and final closure.
+
+Stage 2 keeps **two** hour totals that are related but not equal: group teaching
+hours against the leadership allocation, and teacher workload against the
+participant target total. A co-teaching plan of 120 group hours and 124
+teacher-load hours is correct on both axes, so the two are reported separately and
+never summed. Stage 3 assigns *indivisible* slots: one teacher takes one whole
+slot, or nobody does. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the
+full invariant set.
+
 ## What it provides
 
 - School, academic-year, department, teacher-profile, classroom-stage, and
   assignment-process administration.
-- Per-process teachers, subjects, teaching groups, hour requirements, and
-  capacity-enforced assignments.
+- Per-process teachers, subjects, teaching groups, generated hour-requirement
+  slots, and capacity-enforced assignments.
 - Process lifecycle transitions, reopening, draft restoration, summaries,
-  dashboards, audit events, and a server-sent event stream.
+  dashboards, audit events, and a server-sent event stream with role-projected
+  payloads.
 - LAN teacher read access, meeting sessions, ordered selection turns, and
   direct assignment choices.
 - Process versions, previous-year comparison, and export artifact endpoints.
@@ -25,15 +47,24 @@ auth contract and owns no auth-service database or private signing keys.
 The API prefix defaults to `/reparto`. Interactive OpenAPI documentation is
 available when `SET_DOCS=true` in the service environment.
 
-## Quick start (Windows)
+## Quick start
 
-Use the repository's required conda environment:
+Activate the Python 3.12+ environment you use for this repository — any
+interpreter isolated from the system Python works; do not install into a global
+interpreter.
+
+```bash
+pip install -r reparto_service/requirements_dev.txt
+cp reparto_service/.example_env reparto_service/.env
+# Replace every changethis value in reparto_service/.env.
+
+PYTHONPATH=. pytest --cov --cov-fail-under=100
+uvicorn reparto_service.main:app --reload --port 9000
+```
+
+On Windows PowerShell the same steps read:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-. C:\Users\mexse\anaconda3\shell\condabin\conda-hook.ps1
-conda activate fa_auth_m8
-
 pip install -r reparto_service\requirements_dev.txt
 Copy-Item reparto_service\.example_env reparto_service\.env
 # Replace every changethis value in reparto_service\.env.
@@ -43,9 +74,9 @@ pytest --cov --cov-fail-under=100
 uvicorn reparto_service.main:app --reload --port 9000
 ```
 
-The application validates its configuration at startup. Do not use global
-Python or manually author Alembic revisions; the Compose workflow generates
-and applies schema migrations from the models.
+The application validates its configuration at startup. Never manually author
+Alembic revisions; the Compose workflow generates and applies schema migrations
+from the models.
 
 ## Docker development stack
 
@@ -63,25 +94,300 @@ and Traefik. It is localhost-only by default; follow
 [the stack guide](docker_compose/dev_reparto_m8/README.md) before exposing it
 to a LAN.
 
+### Development database reset
+
+The three-stage schema is a deliberate destructive change and there is no
+backward data migration: current development records are test data only, and the
+obsolete two-stage assignment semantics (per-assignment hours, shared
+assignments, partial requirement coverage, over-assignment overrides) were removed
+outright rather than kept behind a compatibility layer. Reset a development
+database through this Compose initialization flow; the migration describing the
+new schema is generated from the models by the same bootstrap.
+
+Run from `docker_compose/dev_reparto_m8`:
+
+```bash
+bash init.sh --reset-db --yes              # stops the stack, deletes ./db_data
+rm -f ./shared_migrations/reparto_docentes/versions/*.py
+docker compose up -d
+```
+
+Clear both together. `shared_migrations/` is a separate bind mount and survives
+`--reset-db`, so revisions left behind replay an old schema onto the new
+database; dropping the revisions while keeping `db_data` leaves tables that no
+revision records. The same PostgreSQL instance backs the `fa-auth-m8` issuer, so
+a reset also clears its users — the bootstrap superuser is recreated from
+`auth.env` on the next boot.
+
+If PostgreSQL owns `db_data/` as the container uid, `--reset-db` stops with a
+permission error; remove it with `sudo rm -rf ./db_data` or from a throwaway
+root container (`docker run --rm -v "$(pwd):/work" alpine rm -rf /work/db_data`)
+and continue.
+
+Booting a second time must autogenerate **no** further revision. If it does, the
+declared models and the applied schema have drifted.
+
+To check the schema the bootstrap will generate — without generating it — run
+`pytest tests/test_schema_migration_gate.py`, and see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §3.3 for the PostgreSQL variant.
+
+### Example data
+
+A reset database comes up empty, which is right for a deployment and unhelpful
+for a walk-through. Set `SEED_EXAMPLE_DATA=true` in `reparto.env` before
+`docker compose up` and the bootstrap inserts one worked department: 17 teaching
+groups, a realistic main and secondary subject set including tutoring and
+co-teaching, the group-subject matrix, six participants and the 120 h leadership
+allocation.
+
+Only the configuration stage is seeded. Materialising the main activities and
+adding the three secondary ones is the walk-through, and doing so balances the
+plan exactly — 120 group hours against the 120 allocated, and 124 teacher hours
+against the participants' 124. Both numbers are correct at once and are never
+summed.
+
+Seeding is skipped unless the domain holds no assignment process at all, so it
+never touches existing data and a restart is a no-op. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §3.2a.
+
 ## API map
+
+Every endpoint in this table requires an authenticated caller holding at least
+the `READER` role — reads, exports and mutations alike. The floor is mounted
+once on the domain router aggregator, so an unauthenticated request is answered
+`401` and a `USER`-role request `403` before any handler runs; mutations then
+add their own check on top: process and planning data requires the
+department-head role (`ADMIN` or `SUPERADMIN`), platform reference data requires
+the same, and a `WRITER` may mutate only records that identify them as the owner
+— their own profile, their own direct choice, their own turn. Only the
+framework's `/health`, `/meta` and `/ping` endpoints sit outside the floor.
+
+Reads are scoped to the caller's own departments: a `READER` or `WRITER` sees
+the schools, departments, processes and colleagues of the departments they
+participate in, and nothing else — an out-of-scope row answers `404`, never
+`403`. `ADMIN` and `SUPERADMIN` see the whole deployment. Membership is derived
+from participation rather than stored, so it follows a teacher automatically;
+academic years and classroom stages stay deployment-wide.
+
+`Department.department_head_user_id` records who heads a department for
+attribution and UI defaults; it grants no permission. Authorization is always
+the caller's own role. Because the field is read as a statement of fact, it is
+still checked against the identity service when set: an account it does not know
+or that holds a role below `ADMIN` is refused (`400`), and an identity service
+that cannot be reached is a `503` that leaves the recorded head unchanged. That
+lookup uses the issuer's own user endpoint with the caller's token, so it
+requires `INTROSPECTION_URL` to be configured; clearing the field never needs a
+lookup.
 
 | Area | Base path |
 | --- | --- |
 | Reference administration | `/reparto/academic-years`, `/schools`, `/classroom-stages`, `/departments`, `/teacher-profiles` |
 | Assignment process | `/reparto/assignment-processes` |
 | Per-process resources | `/reparto/assignment-processes/{process_id}/teachers`, `/subjects`, `/groups`, `/requirements`, `/assignments` |
+| Teaching-load planning | `/reparto/assignment-processes/{process_id}/allocation-revisions`, `/teaching-plan`, `/teaching-plan/summary`, `/teaching-plan/validations`, `/teaching-plan/materialize-main`, `/group-subjects` (+ `/{id}/sync-preview`, `/{id}/sync-apply`, `/{id}/retire`), `/teaching-activities` (+ `/{id}/retire`) |
+| Planning exchange | `/reparto/assignment-processes/{process_id}/exports/planning-draft`, `/exports/planning-provisional`, `/exports/planning-final`, `/imports/planning` |
 | Lifecycle and read models | `/transition`, `/reopen`, `/copy-previous-year`, `/summary`, `/dashboard`, `/lan/me`, `/events` under an assignment process |
 | Audit and history | `/audit-events`, `/versions`, `/compare-previous-year`, `/exports`, `/restore-draft` under an assignment process |
 | Meeting turns | `/reparto/assignment-processes/{process_id}/meeting-sessions/{meeting_session_id}/turns` |
 
-Assignment endpoints include `POST /assignments/direct-choice`. Selection-turn
+The `/requirements` `GET` endpoints are read-only: requirement rows are
+generated, indivisible teacher-position slots derived from teaching activities
+(one slot per required teacher position), never manually created or edited. They
+are produced by the generation flow — `POST /requirements/generation-preview`
+dry-runs the next generation (create/preserve/retire diff plus any assigned-slot
+conflicts) and `POST /requirements/generate` applies it: one slot per teacher
+position of every live activity, unchanged slots keep their id and assignment
+while removed unassigned slots retire, the plan advances to
+`REQUIREMENTS_GENERATED` at the next generation number, and a change that would
+touch an already-assigned slot is refused (409) so it routes through
+reconciliation rather than silently dropping an assignment. Both require a locked
+(or stale, for regeneration) plan. `POST /requirements/reconciliation-preview`
+dry-runs that resolution — it reports each conflicting assigned slot (whether its
+hours changed or its position was removed, the assignment that would be released
+and, for a value change, the replacement slot) — and `POST /requirements/reconcile`
+applies it: on a stale or reconciliation-required plan it releases (soft-cancels,
+audited) the affected assignments, retires the old slots, links a value-changed
+slot to its fresh replacement via `superseded_by_requirement_id`, and returns the
+plan to `REQUIREMENTS_GENERATED`. It requires a `reason` and an
+`expected_conflict_count` confirmation, so an assignment is never silently
+deleted. An assignment
+binds one teacher to one complete, indivisible slot: create with just
+`{hour_requirement_id, process_teacher_id}` (no hour or share input), and the
+requirement's activity is denormalised server-side so the database enforces one
+active assignment per slot and a distinct teacher per activity. `DELETE`
+is a reason-required compatibility alias for explicit
+`POST /assignments/{assignment_id}/undo`; both soft-cancel the assignment, free
+its slot, restore a completed participant to the live turn queue and recompute
+the sole current turn by stable position. Department-head
+`POST /assignments/{assignment_id}/reassign` atomically cancels the old row and
+occupies the same slot with a replacement participant after rechecking active
+eligibility, capacity, distinct-teacher, cheap feasibility and witness-repair
+guards under row locks. Both actions require a reason and write audit events.
+Assignment endpoints also include `POST /assignments/direct-choice` for teacher
+LAN selection. Selection-turn
 endpoints support initialization plus start, complete, skip, and override
-actions. Consult the OpenAPI schema for request and response models.
+actions; completing a turn may carry the department head's manual slot choice,
+which is recorded through the same complete-slot service (identical
+availability, distinct-teacher and exact-target rules — no separate assignment
+logic). Group-subject endpoints include `POST /group-subjects/bulk-preview` and
+`POST /group-subjects/bulk-apply` for filtered create/update/upsert matrix
+operations with a confirmed affected-row count. Teaching-activity endpoints
+manage manual secondary planning items and their multi-group links.
+`POST /teaching-plan/materialize-main` deterministically generates the
+main-subject activities: one single-group `MAIN_GENERATED` activity per active
+main group-subject cell (hours inherited from the cell, then the subject
+default). It is idempotent — cells already materialised are skipped, never
+duplicated — and requires an unlocked plan.
+Editing a materialized main group-subject cell marks its activity `OUT_OF_SYNC`
+without overwriting it. `POST /group-subjects/{id}/sync-preview` returns the
+resolved source values, current activity values, deterministic differences and
+assigned-slot impact. `POST /group-subjects/{id}/sync-apply` requires the preview
+fingerprint; assigned value/count changes move their slots onto the explicit
+requirement-reconciliation path. Inactive sources are refused here and remain
+owned by the guarded-retirement flow. There are no `DELETE` routes for
+group-subjects or teaching activities: `POST /group-subjects/{id}/retire` keeps
+the source row inactive and refuses a live downstream activity;
+`POST /teaching-activities/{id}/retire` timestamps the activity and routes live
+unassigned/assigned requirements through regeneration/reconciliation without
+removing history.
+`GET /teaching-plan/summary` returns the plan's two independent balances — group
+teaching hours against the current leadership allocation, and teacher workload
+against the participant target total. They are reported on separate axes and are
+never summed: a co-teaching plan of 120 group hours and 124 teacher-load hours is
+correct on both. `GET /teaching-plan/validations` returns the plan's blocking and
+warning findings (missing allocation, group/teacher-load imbalance, unmaterialised
+main subjects, invalid activity/group links, ungenerated or stale requirements);
+it is read-only and never triggers a feasibility solve. `GET /assignments/validations`
+is its assignment-stage twin: it reports the blocking findings that stop final
+closure (unassigned indivisible slots, participants assigned above their exact
+target, and active participants still below target) plus the authorized-overload
+warning, and is likewise read-only and solver-free. Assignment creation enforces
+the exact target directly — an indivisible slot cannot be assigned if it would
+push a participant above `target_weekly_hours`; there is no override, so an
+overload must first be authorized by raising extra hours. Process
+teachers carry `base_weekly_hours` and department-head authorized
+`extra_weekly_hours`; their sum is the exposed `target_weekly_hours`, and a
+non-zero extra flags `is_overloaded`. Extra hours change only through the audited
+`POST /teachers/{process_teacher_id}/extra-hours` action (reason required, blocked
+below already-assigned hours), never through the generic teacher `PATCH`.
+The process read models report the two stages side by side rather than one
+aggregate balance. `GET /dashboard` returns a planning section (both balances and
+the planning validations) and an assignment section (the per-participant slot
+occupancy view and the assignment validations), plus the coarse plan readiness,
+the current turn and the blocking count across both. A process that has not
+entered planning yet reports an empty planning section rather than an error.
+`GET /summary` is the same payload without the message lists or the participant
+rows. `GET /lan/me` is the teacher's own view: the aggregate, identifier-free plan
+balances, **only the caller's own** participation row (base, extra, target,
+assigned and remaining hours — never another teacher's figures), the available
+slot count, the current turn, and whether selection is blocked. Readiness on all
+three comes from the same lifecycle-gate status sets the write path consults, so
+what a viewer is shown can never disagree with what the gates let them do.
+Meeting and assignment operations are gated on plan readiness: opening a meeting
+requires a balanced, locked and generated plan (`REQUIREMENTS_GENERATED`) — an
+inexact, unlocked, un-generated or missing plan is refused with `409` — and new
+assignment operations (manual, direct selection and meeting-turn choices) are
+refused while an allocation change leaves the plan `STALE` or
+`RECONCILIATION_REQUIRED`, so an assignment is never taken against a plan pending
+reconciliation. Planning artifacts can be exported and imported while the plan is
+still invalid: `POST /exports/planning-draft` and `POST /exports/planning-provisional`
+render a self-describing artifact — both balance states plus the full blocking and
+warning validation report and the live activities — and are **never blocked** by an
+inexact, unbalanced or stale plan, whereas `POST /exports/planning-final` retains
+the strict gate and is refused (`400`) while any blocking validation remains.
+`POST /imports/planning` ingests activities as `IMPORTED` teaching activities:
+every referenced subject and group-subject cell is validated against the target
+process, every hour must be a canonical decimal string (a binary float or a
+value with more than two decimal places is rejected), and an import never creates
+or activates an assignment.
+`POST /copy-from/{source_process_id}` seeds a fresh draft process from a previous
+year: it always copies the configuration structure — subjects and their defaults,
+teaching groups, group-subject cells and participants (base hours carried, but the
+extra-hour approvals dropped) — and never activates the previous leadership
+allocation, nor copies assignments, meetings, turns or extra-hour approvals. Pass
+`copy_activities: true` to additionally copy the source plan's live
+secondary-activity templates into a fresh draft teaching plan (main-generated and
+retired activities are excluded). `POST /versions` captures an immutable three-stage
+snapshot of the whole process — the allocation revisions and current allocation,
+the teaching-plan status and generation, both independent balances, the
+per-participant assignment summary (base/extra/target hours), the group-subject
+matrix, the live activities with their linked group cells and the generated
+requirement slots — and `GET /versions` lists them. `GET /versions/{left}/compare/{right}`
+and `GET /compare-previous-year` diff two snapshots along the plan §10.3
+dimensions: whether the allocation, group hours, teacher load, subject category,
+activities, group links, teacher-position count, participant targets or
+requirement generation changed, plus signed hour and count deltas (hours as
+canonical decimal strings). `POST /exports` generates an export artifact (JSON or
+CSV); a `backup` artifact carries the complete restorable three-stage domain —
+process settings, allocation revisions, teaching plan, subjects, groups,
+group-subject matrix, teaching activities and their links, the generated
+indivisible requirement slots and the assignments — plus the version list, while a
+`final` artifact is refused (`400`) while any blocking validation remains and
+archives the process on success. `POST /restore-draft` rebuilds a backup into an
+empty draft process: it remaps every id, always restores the configuration,
+allocation history, plan and activities, and restores the generated requirement
+slots and their assignments only when `restore_assignments` is set (the restore
+mode). A restore never re-enables live LAN/direct access, never carries auth-user
+attribution and always recomputes feasibility — a stored feasibility result is
+never trusted — and it validates the backup's generation and reconciliation
+consistency (generations within the plan, supersession links, and one active
+assignment per slot / one teacher per activity) before writing anything.
+`GET /audit-events` returns the process's mutation trail oldest first. Every
+three-stage mutation is recorded with a canonical event type drawn from a single
+registry (`AuditEventType`) — allocation revisions (`allocation.revised`), the
+group-subject matrix including one row-detailed event per bulk apply
+(`group_subject.bulk_applied`), teaching-plan creation and staleness, activity
+creation/materialisation/import, requirement generation and reconciliation
+(`requirements.generated`, `requirements.reconciled`), audited extra-hour changes
+(`process_teacher.extra_hours_updated`) and every assignment and selection-turn
+action — each carrying the actor, role, before/after payloads and an optional
+reason. The trail can be narrowed with the optional `event_type` (validated
+against the registry; an unknown value is rejected with `422`) and `entity_type`
+query parameters.
+`GET /events` is a Server-Sent Events stream of that same process's changes, for
+LAN clients and the shared meeting screen. It opens with a `stream.opened` frame
+carrying the current plan readiness (so a client needs no separate fetch) and
+then relays `allocation.revised`, `teaching_plan.updated`, `teaching_plan.stale`,
+`requirements.generated`, `requirements.reconciled` and
+`participant.extra_hours_updated`, plus a keep-alive comment while idle. Every
+payload is projected to the viewer's role: a department head or administrator
+receives the full payload; a teacher receives the plan readiness, whether
+selection is blocked, and hour figures **only for their own participation** —
+never another teacher's target; the shared screen receives readiness alone
+(`ready` / `not_ready` / `recalculation_required`) with no identifiers. A caller
+may request a *less* privileged tier with `?audience=teacher|shared_screen` (a
+projection screen should), but requesting a more privileged tier than the role
+grants is refused with `403`. The stream is best-effort — the database remains
+authoritative — so a subscriber that falls behind receives a `stream.gap` frame
+telling it to refetch rather than silently missing a change.
+Consult the OpenAPI schema for request and response models.
+
+### Published route surface
+
+[`docs/served-api-surface.json`](docs/served-api-surface.json) lists every
+`METHOD path` this service serves, with the contract name, version and API
+prefix they are served under. It is generated from the app's own OpenAPI
+document and regenerated and compared on every test run by
+`tests/test_served_api_surface.py`, so a route added, removed or re-verbed fails
+the suite until the artifact is refreshed:
+
+```bash
+REPARTO_WRITE_API_SURFACE=1 pytest tests/test_served_api_surface.py
+```
+
+The artifact exists for consumers. The optional `astro-reparto-m8` plugin
+declares the method and path of every endpoint it calls; until this file
+existed, nothing compared that declaration with what is served, and the plugin
+shipped `DELETE` calls against two endpoints this service had already replaced
+with the guarded `retire` action. A document that only exists on a running
+instance cannot gate a consumer's pull request — a tracked one can. Refreshing
+it is deliberate and leaves a reviewable diff, which is what makes it worth
+trusting.
 
 ## Quality gates
 
-Run these commands from the repository root in the `fa_auth_m8` conda
-environment:
+Run these commands from the repository root in the repository's Python
+environment; each must report zero issues:
 
 ```bash
 ruff format .

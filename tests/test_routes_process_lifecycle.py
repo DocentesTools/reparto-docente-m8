@@ -2,7 +2,7 @@
 
 Covers the state machine (``POST /transition``, ``POST /reopen``) and
 the copy-from-previous-year endpoint (``POST /copy-from/{source_id}``)
-introduced for the Phase 1 state machine (plan §8.4, §10.2, §14.1).
+introduced for the Phase 1 state machine (plan §8.4, §10.2, §10.1).
 """
 
 from __future__ import annotations
@@ -14,9 +14,26 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from reparto_service.db_models.assignment_processes import AssignmentProcess
-from reparto_service.db_models.hour_requirements import HourRequirement
+from reparto_service.db_models.department_hour_allocation_revisions import (
+    DepartmentHourAllocationRevision,
+)
+from reparto_service.db_models.group_subjects import GroupSubject
+from reparto_service.db_models.process_teachers import ProcessTeacher
+from reparto_service.db_models.subjects import Subject
 from reparto_service.db_models.teacher_profiles import TeacherProfile
-from reparto_service.enums import AssignmentProcessStatus
+from reparto_service.db_models.teaching_activities import (
+    TeachingActivity,
+    TeachingActivityGroup,
+)
+from reparto_service.db_models.teaching_plans import TeachingPlan
+from reparto_service.enums import (
+    ActivityType,
+    AssignmentProcessStatus,
+    SubjectAllocationCategory,
+    TeachingActivitySource,
+    TeachingPlanStatus,
+)
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 from tests import factories
 
 
@@ -44,6 +61,10 @@ def test_transition_to_final_records_close_metadata(
     process = factories.make_assignment_process(
         session, status=AssignmentProcessStatus.INTERNAL_REVISION
     )
+    factories.make_teaching_plan(
+        session, process, status=TeachingPlanStatus.REQUIREMENTS_GENERATED
+    )
+    FeasibilityWitnessService.evaluate(session, process.id)
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/transition",
         json={"target_status": "final", "reason": "approved by leadership"},
@@ -53,6 +74,28 @@ def test_transition_to_final_records_close_metadata(
     assert body["status"] == "final"
     assert body["closed_at"] is not None
     assert body["closed_by_user_id"] == str(current_user.id)
+
+
+def test_transition_to_final_fails_closed_without_current_feasibility(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(
+        session, status=AssignmentProcessStatus.INTERNAL_REVISION
+    )
+    factories.make_teaching_plan(
+        session, process, status=TeachingPlanStatus.REQUIREMENTS_GENERATED
+    )
+
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/transition",
+        json={"target_status": "final"},
+    )
+
+    assert resp.status_code == 409
+    assert "feasibility" in resp.json()["detail"]
+    session.refresh(process)
+    assert process.status == AssignmentProcessStatus.INTERNAL_REVISION
+    assert process.closed_at is None
 
 
 def test_transition_draft_to_final_is_rejected(
@@ -178,41 +221,78 @@ def test_reopen_requires_reason(client: TestClient, session: Session) -> None:
     assert resp.status_code == 422  # pydantic min_length=1
 
 
-# ── Copy from previous year (plan §14.1) ─────────────────────────────────────
+# ── Copy from previous year (plan §10.1) ─────────────────────────────────────
 
 
 def _populate_source_process(
     session: Session,
+    *,
+    with_plan: bool = False,
 ) -> tuple[AssignmentProcess, TeacherProfile, TeacherProfile]:
+    """Seed a FINAL source process with the three-stage configuration.
+
+    Always creates two participants (one with an approved extra-hour block),
+    a subject, a teaching group, a group-subject cell and an immutable
+    leadership allocation revision. When ``with_plan`` is set it also creates a
+    teaching plan carrying a live SECONDARY_MANUAL activity linked to the cell,
+    a retired secondary activity and a MAIN_GENERATED activity — the latter two
+    must never be copied as templates.
+    """
     source = factories.make_assignment_process(
         session, status=AssignmentProcessStatus.FINAL
     )
     profile_a = factories.make_teacher_profile(session, display_name="Alice")
     profile_b = factories.make_teacher_profile(session, display_name="Bob")
-    pt_alice = factories.make_process_teacher(
+    factories.make_process_teacher(
         session,
         source,
         profile_a,
-        available_hours=18,
+        base_weekly_hours=18,
+        extra_weekly_hours=3,
         selection_position=1,
     )
     factories.make_process_teacher(
-        session, source, profile_b, available_hours=20, selection_position=2
+        session, source, profile_b, base_weekly_hours=20, selection_position=2
     )
     subject = factories.make_subject(session, source, name="Mathematics")
     group = factories.make_teaching_group(
         session, source, stage="ESO", grade=1, group_code="A", label="1 ESO A"
     )
-    requirement = factories.make_hour_requirement(
-        session, source, group, subject, required_hours=4
+    factories.make_group_subject(
+        session, source, group, subject, group_weekly_hours=4.0
     )
-    factories.make_assignment(
-        session,
-        source,
-        requirement,
-        pt_alice,
-        assigned_hours=4,
+    # A leadership allocation revision that must never be re-activated on copy.
+    factories.make_allocation_revision(
+        session, source, allocated_group_weekly_hours=120.0
     )
+    if with_plan:
+        cell = session.exec(
+            select(GroupSubject).where(GroupSubject.assignment_process_id == source.id)
+        ).one()
+        plan = factories.make_teaching_plan(session, source)
+        factories.make_teaching_activity(
+            session,
+            plan,
+            subject,
+            allocation_category=SubjectAllocationCategory.SECONDARY,
+            activity_type=ActivityType.CO_TEACHING,
+            group_weekly_hours_per_group=2.0,
+            teacher_weekly_hours_per_position=2.0,
+            required_teacher_count=2,
+            group_subjects=[cell],
+        )
+        # A retired secondary activity — excluded from the template copy.
+        retired = factories.make_teaching_activity(session, plan, subject)
+        retired.retired_at = datetime.now(tz=timezone.utc)
+        session.add(retired)
+        # A main-generated activity — re-materialised, never copied.
+        factories.make_teaching_activity(
+            session,
+            plan,
+            subject,
+            source=TeachingActivitySource.MAIN_GENERATED,
+        )
+        session.commit()
     return source, profile_a, profile_b
 
 
@@ -244,7 +324,7 @@ def _make_target_in_same_school(
     )
 
 
-def test_copy_from_copies_structure_only_by_default(
+def test_copy_from_copies_configuration_only_by_default(
     client: TestClient, session: Session
 ) -> None:
     source, profile_a, profile_b = _populate_source_process(session)
@@ -253,47 +333,69 @@ def test_copy_from_copies_structure_only_by_default(
     )
     resp = client.post(
         f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
-        json={"copy_assignments": False},
+        json={"copy_activities": False},
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["created_from_process_id"] == str(source.id)
-    # Subject, group, two teachers and one requirement copied; no assignments.
+    # Subject, group, group-subject cell and both teachers copied.
     resp = client.get(f"/reparto/assignment-processes/{target.id}/subjects/")
     assert resp.json()["count"] == 1
     resp = client.get(f"/reparto/assignment-processes/{target.id}/groups/")
     assert resp.json()["count"] == 1
+    resp = client.get(f"/reparto/assignment-processes/{target.id}/group-subjects/")
+    assert resp.json()["count"] == 1
     resp = client.get(f"/reparto/assignment-processes/{target.id}/teachers/")
-    body = resp.json()
-    assert body["count"] == 2
-    assert {t["teacher_profile_id"] for t in body["data"]} == {
+    tbody = resp.json()
+    assert tbody["count"] == 2
+    assert {t["teacher_profile_id"] for t in tbody["data"]} == {
         str(profile_a.id),
         str(profile_b.id),
     }
-    # Available hours reset to 0 on copy.
-    assert all(t["available_hours"] == 0 for t in body["data"])
     # Selection-order fields preserved from the source.
-    positions = sorted(t["selection_position"] for t in body["data"])
+    positions = sorted(t["selection_position"] for t in tbody["data"])
     assert positions == [1, 2]
-    resp = client.get(f"/reparto/assignment-processes/{target.id}/requirements/")
-    assert resp.json()["count"] == 1
-    source_requirement = session.exec(
-        select(HourRequirement).where(
-            HourRequirement.assignment_process_id == source.id
-        )
-    ).one()
-    target_requirement = session.exec(
-        select(HourRequirement).where(
-            HourRequirement.assignment_process_id == target.id
-        )
-    ).one()
-    assert target_requirement.subject_id != source_requirement.subject_id
-    assert target_requirement.teaching_group_id != source_requirement.teaching_group_id
-    resp = client.get(f"/reparto/assignment-processes/{target.id}/assignments/")
-    assert resp.json()["count"] == 0
+    # No teaching plan is created for a structure-only copy.
+    assert (
+        session.exec(
+            select(TeachingPlan).where(TeachingPlan.assignment_process_id == target.id)
+        ).first()
+        is None
+    )
 
 
-def test_copy_from_with_assignments_copies_assignments(
+def test_copy_from_preserves_base_hours_but_drops_extra_approvals(
+    client: TestClient, session: Session
+) -> None:
+    source, profile_a, profile_b = _populate_source_process(session)
+    target = _make_target_in_same_school(
+        session, source, status=AssignmentProcessStatus.DRAFT
+    )
+    resp = client.post(
+        f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
+        json={"copy_activities": False},
+    )
+    assert resp.status_code == 200
+    copied = {
+        pt.teacher_profile_id: pt
+        for pt in session.exec(
+            select(ProcessTeacher).where(
+                ProcessTeacher.assignment_process_id == target.id
+            )
+        ).all()
+    }
+    # Base hours carried; extra-hour approval dropped and audit pointer cleared.
+    alice = copied[profile_a.id]
+    assert alice.base_weekly_hours == 18
+    assert alice.extra_weekly_hours == 0
+    assert alice.target_weekly_hours == 18
+    assert alice.extra_hours_reason is None
+    assert alice.extra_hours_updated_by_user_id is None
+    assert alice.extra_hours_updated_at is None
+    assert copied[profile_b.id].base_weekly_hours == 20
+
+
+def test_copy_from_does_not_activate_previous_allocation(
     client: TestClient, session: Session
 ) -> None:
     source, _, _ = _populate_source_process(session)
@@ -302,17 +404,145 @@ def test_copy_from_with_assignments_copies_assignments(
     )
     resp = client.post(
         f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
-        json={"copy_assignments": True},
+        json={"copy_activities": False},
     )
     assert resp.status_code == 200
-    resp = client.get(f"/reparto/assignment-processes/{target.id}/assignments/")
-    body = resp.json()
-    assert body["count"] == 1
-    # Copied assignments come back as DRAFT with SYSTEM_COPY source.
-    assert body["data"][0]["status"] == "draft"
-    assert body["data"][0]["source"] == "system_copy"
-    assert body["data"][0]["chosen_by_user_id"] is None
-    assert body["data"][0]["override_reason"] is None
+    # The previous leadership allocation is never copied as a revision.
+    assert (
+        session.exec(
+            select(DepartmentHourAllocationRevision).where(
+                DepartmentHourAllocationRevision.assignment_process_id == target.id
+            )
+        ).first()
+        is None
+    )
+
+
+def test_copy_from_preserves_subject_planning_fields(
+    client: TestClient, session: Session
+) -> None:
+    source, _, _ = _populate_source_process(session)
+    # A secondary co-teaching subject with non-default planning defaults.
+    factories.make_subject(
+        session,
+        source,
+        name="Co-teaching support",
+        allocation_category=SubjectAllocationCategory.SECONDARY,
+        activity_type=ActivityType.CO_TEACHING,
+        default_group_weekly_hours=2.0,
+        default_teacher_weekly_hours_per_position=2.0,
+        default_required_teacher_count=2,
+        allows_multiple_groups=True,
+        allows_zero_groups=True,
+    )
+    target = _make_target_in_same_school(
+        session, source, status=AssignmentProcessStatus.DRAFT
+    )
+    resp = client.post(
+        f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
+        json={"copy_activities": False},
+    )
+    assert resp.status_code == 200
+    copied = session.exec(
+        select(Subject).where(
+            Subject.assignment_process_id == target.id,
+            Subject.name == "Co-teaching support",
+        )
+    ).one()
+    assert copied.allocation_category == SubjectAllocationCategory.SECONDARY
+    assert copied.activity_type == ActivityType.CO_TEACHING
+    assert copied.default_group_weekly_hours == 2.0
+    assert copied.default_teacher_weekly_hours_per_position == 2.0
+    assert copied.default_required_teacher_count == 2
+    assert copied.allows_multiple_groups is True
+    assert copied.allows_zero_groups is True
+
+
+def test_copy_from_preserves_group_subject_cell_values(
+    client: TestClient, session: Session
+) -> None:
+    source, _, _ = _populate_source_process(session)
+    target = _make_target_in_same_school(
+        session, source, status=AssignmentProcessStatus.DRAFT
+    )
+    resp = client.post(
+        f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
+        json={"copy_activities": False},
+    )
+    assert resp.status_code == 200
+    source_cell = session.exec(
+        select(GroupSubject).where(GroupSubject.assignment_process_id == source.id)
+    ).one()
+    target_cell = session.exec(
+        select(GroupSubject).where(GroupSubject.assignment_process_id == target.id)
+    ).one()
+    assert target_cell.group_weekly_hours == 4.0
+    # The cell references the freshly-copied group and subject, not the source.
+    assert target_cell.teaching_group_id != source_cell.teaching_group_id
+    assert target_cell.subject_id != source_cell.subject_id
+
+
+def test_copy_activities_copies_secondary_templates_into_fresh_plan(
+    client: TestClient, session: Session
+) -> None:
+    source, _, _ = _populate_source_process(session, with_plan=True)
+    target = _make_target_in_same_school(
+        session, source, status=AssignmentProcessStatus.DRAFT
+    )
+    resp = client.post(
+        f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
+        json={"copy_activities": True},
+    )
+    assert resp.status_code == 200
+    target_plan = session.exec(
+        select(TeachingPlan).where(TeachingPlan.assignment_process_id == target.id)
+    ).one()
+    # Fresh draft plan: generation 0, no allocation, no lock.
+    assert target_plan.status.value == "draft"
+    assert target_plan.current_generation_number == 0
+    assert target_plan.allocation_revision_id is None
+    # Only the live SECONDARY_MANUAL activity is copied (main + retired skipped).
+    activities = session.exec(
+        select(TeachingActivity).where(
+            TeachingActivity.teaching_plan_id == target_plan.id
+        )
+    ).all()
+    assert len(activities) == 1
+    copied = activities[0]
+    assert copied.source == TeachingActivitySource.SECONDARY_MANUAL
+    assert copied.required_teacher_count == 2
+    assert copied.retired_at is None
+    # Its group link was remapped onto the target's copied cell.
+    target_cell = session.exec(
+        select(GroupSubject).where(GroupSubject.assignment_process_id == target.id)
+    ).one()
+    link = session.exec(
+        select(TeachingActivityGroup).where(
+            TeachingActivityGroup.teaching_activity_id == copied.id
+        )
+    ).one()
+    assert link.group_subject_id == target_cell.id
+
+
+def test_copy_activities_noop_when_source_has_no_plan(
+    client: TestClient, session: Session
+) -> None:
+    source, _, _ = _populate_source_process(session)  # no plan
+    target = _make_target_in_same_school(
+        session, source, status=AssignmentProcessStatus.DRAFT
+    )
+    resp = client.post(
+        f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
+        json={"copy_activities": True},
+    )
+    assert resp.status_code == 200
+    # No source plan → no target plan is created.
+    assert (
+        session.exec(
+            select(TeachingPlan).where(TeachingPlan.assignment_process_id == target.id)
+        ).first()
+        is None
+    )
 
 
 def test_copy_from_rejects_non_draft_target(
@@ -324,13 +554,13 @@ def test_copy_from_rejects_non_draft_target(
     )
     resp = client.post(
         f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
-        json={"copy_assignments": False},
+        json={"copy_activities": False},
     )
     assert resp.status_code == 400
     assert "draft" in resp.json()["detail"]
 
 
-def test_copy_from_rejects_target_with_existing_data(
+def test_copy_from_rejects_target_with_existing_subjects(
     client: TestClient, session: Session
 ) -> None:
     source, _, _ = _populate_source_process(session)
@@ -340,7 +570,7 @@ def test_copy_from_rejects_target_with_existing_data(
     factories.make_subject(session, target, name="Pre-existing")
     resp = client.post(
         f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
-        json={"copy_assignments": False},
+        json={"copy_activities": False},
     )
     assert resp.status_code == 400
     assert "subjects" in resp.json()["detail"]
@@ -357,10 +587,67 @@ def test_copy_from_rejects_target_with_existing_teachers(
     factories.make_process_teacher(session, target, profile)
     resp = client.post(
         f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
-        json={"copy_assignments": False},
+        json={"copy_activities": False},
     )
     assert resp.status_code == 400
     assert "teachers" in resp.json()["detail"]
+
+
+def test_copy_from_rejects_target_with_existing_groups(
+    client: TestClient, session: Session
+) -> None:
+    source, _, _ = _populate_source_process(session)
+    target = _make_target_in_same_school(
+        session, source, status=AssignmentProcessStatus.DRAFT
+    )
+    factories.make_teaching_group(session, target, group_code="Z")
+    resp = client.post(
+        f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
+        json={"copy_activities": False},
+    )
+    assert resp.status_code == 400
+    assert "teaching groups" in resp.json()["detail"]
+
+
+def test_copy_from_rejects_target_with_existing_group_subjects(
+    client: TestClient, session: Session
+) -> None:
+    source, _, _ = _populate_source_process(session)
+    target = _make_target_in_same_school(
+        session, source, status=AssignmentProcessStatus.DRAFT
+    )
+    # A bare group-subject cell (no subject/group rows) so the earlier
+    # emptiness checks pass and the group-subject branch is reached.
+    session.add(
+        GroupSubject(
+            assignment_process_id=target.id,
+            teaching_group_id=uuid.uuid4(),
+            subject_id=uuid.uuid4(),
+        )
+    )
+    session.commit()
+    resp = client.post(
+        f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
+        json={"copy_activities": False},
+    )
+    assert resp.status_code == 400
+    assert "group-subject" in resp.json()["detail"]
+
+
+def test_copy_from_rejects_target_with_existing_plan(
+    client: TestClient, session: Session
+) -> None:
+    source, _, _ = _populate_source_process(session)
+    target = _make_target_in_same_school(
+        session, source, status=AssignmentProcessStatus.DRAFT
+    )
+    factories.make_teaching_plan(session, target)
+    resp = client.post(
+        f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
+        json={"copy_activities": False},
+    )
+    assert resp.status_code == 400
+    assert "teaching plan" in resp.json()["detail"]
 
 
 def test_copy_from_rejects_self_target(client: TestClient, session: Session) -> None:
@@ -369,7 +656,7 @@ def test_copy_from_rejects_self_target(client: TestClient, session: Session) -> 
     )
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/copy-from/{process.id}",
-        json={"copy_assignments": False},
+        json={"copy_activities": False},
     )
     assert resp.status_code == 400
 
@@ -398,7 +685,7 @@ def test_copy_from_rejects_different_schools(
     )
     resp = client.post(
         f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
-        json={"copy_assignments": False},
+        json={"copy_activities": False},
     )
     assert resp.status_code == 400
     assert "school" in resp.json()["detail"].lower()
@@ -410,7 +697,7 @@ def test_copy_from_404_for_missing_source(client: TestClient, session: Session) 
     )
     resp = client.post(
         f"/reparto/assignment-processes/{target.id}/copy-from/{uuid.uuid4()}",
-        json={"copy_assignments": False},
+        json={"copy_activities": False},
     )
     assert resp.status_code == 404
 
@@ -422,38 +709,9 @@ def test_copy_from_blocks_reader(session: Session, reader_client: TestClient) ->
     )
     resp = reader_client.post(
         f"/reparto/assignment-processes/{target.id}/copy-from/{source.id}",
-        json={"copy_assignments": False},
+        json={"copy_activities": False},
     )
     assert resp.status_code == 403
-
-
-# ── Final-close blocks assignment mutations (plan §8.4) ──────────────────────
-
-
-def test_cannot_mutate_assignments_on_final_process(
-    client: TestClient, session: Session
-) -> None:
-    process = factories.make_assignment_process(
-        session, status=AssignmentProcessStatus.FINAL
-    )
-    profile = factories.make_teacher_profile(session)
-    pt = factories.make_process_teacher(session, process, profile)
-    subject = factories.make_subject(session, process)
-    group = factories.make_teaching_group(session, process)
-    requirement = factories.make_hour_requirement(
-        session, process, group, subject, required_hours=4
-    )
-    resp = client.post(
-        f"/reparto/assignment-processes/{process.id}/assignments/",
-        json={
-            "assignment_process_id": str(process.id),
-            "hour_requirement_id": str(requirement.id),
-            "process_teacher_id": str(pt.id),
-            "assigned_hours": 4,
-        },
-    )
-    assert resp.status_code == 400
-    assert "final" in resp.json()["detail"].lower()
 
 
 # ── Process mutability guard (plan §8.4) ──────────────────────────────────────
@@ -471,7 +729,7 @@ def test_cannot_add_teacher_to_final_process(
         json={
             "assignment_process_id": str(process.id),
             "teacher_profile_id": str(profile.id),
-            "available_hours": 18,
+            "base_weekly_hours": 18,
         },
     )
     assert resp.status_code == 400
@@ -507,29 +765,6 @@ def test_cannot_add_group_to_final_process(
             "grade": 1,
             "group_code": "A",
             "label": "1 ESO A",
-        },
-    )
-    assert resp.status_code == 400
-    assert "final" in resp.json()["detail"].lower()
-
-
-def test_cannot_add_requirement_to_final_process(
-    client: TestClient, session: Session
-) -> None:
-    process = factories.make_assignment_process(
-        session, status=AssignmentProcessStatus.FINAL
-    )
-    subject = factories.make_subject(session, process, name="Math")
-    group = factories.make_teaching_group(
-        session, process, stage="ESO", grade=1, group_code="A", label="1 ESO A"
-    )
-    resp = client.post(
-        f"/reparto/assignment-processes/{process.id}/requirements/",
-        json={
-            "assignment_process_id": str(process.id),
-            "subject_id": str(subject.id),
-            "teaching_group_id": str(group.id),
-            "required_hours": 4,
         },
     )
     assert resp.status_code == 400

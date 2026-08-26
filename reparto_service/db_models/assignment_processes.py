@@ -12,12 +12,16 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from fastapi_m8 import TimestampMixin
 from pydantic import Field
 from sqlmodel import Column, Field as SQLField, SQLModel
 from sqlalchemy import DateTime
 
-from auth_sdk_m8.models.shared import TimestampMixin
-from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.core.db_models import (
+    UUIDString,
+    enum_column_type,
+    prefixed_tables,
+)
 from reparto_service.enums import (
     AssignmentProcessStatus,
     SelectionOrderMode,
@@ -35,8 +39,11 @@ class AssignmentProcessBase(SQLModel):
     department_id: uuid.UUID = Field(
         description="Owning department ID inside the school."
     )
-    status: AssignmentProcessStatus = Field(
+    status: AssignmentProcessStatus = SQLField(
         default=AssignmentProcessStatus.DRAFT,
+        sa_column=Column(
+            "status", enum_column_type(AssignmentProcessStatus), nullable=False
+        ),
         description="Lifecycle status (plan 8.4).",
     )
     default_teacher_hours_reference: Optional[float] = Field(
@@ -51,8 +58,11 @@ class AssignmentProcessBase(SQLModel):
         default=False,
         description="Whether the process configures a turn order.",
     )
-    selection_order_mode: SelectionOrderMode = Field(
+    selection_order_mode: SelectionOrderMode = SQLField(
         default=SelectionOrderMode.NONE,
+        sa_column=Column(
+            "selection_order_mode", enum_column_type(SelectionOrderMode), nullable=False
+        ),
         description="How the configured turn order is enforced during a meeting.",
     )
     direct_teacher_selection_enabled: bool = Field(
@@ -203,15 +213,23 @@ class ProcessCopyRequest(SQLModel):
     The receiving process is the URL ``{id}``; the source process is the
     URL ``{source_id}``. The target process must exist, belong to the
     same school, and currently be in a state that has not yet been
-    populated (plan §14.1: copy *structure* is the default, assignments
-    require an explicit flag).
+    populated (plan §10.1).
+
+    Copy always carries the configuration structure — subjects and their
+    defaults, teaching groups, group-subject cells and participants
+    (with their extra-hour approvals dropped, plan §10.1). It NEVER copies
+    the leadership allocation as an active revision, assignments, meetings,
+    turns or extra-hour approvals. Optional secondary-activity templates are
+    copied only when ``copy_activities`` is explicitly requested.
     """
 
-    copy_assignments: bool = Field(
+    copy_activities: bool = Field(
         default=False,
         description=(
-            "When ``True``, copy the source's existing assignments to the "
-            "target process. Default is ``False``: only the structure "
-            "(teachers, subjects, groups, hour requirements) is copied."
+            "When ``True``, also copy the source plan's live secondary-activity "
+            "templates into a fresh draft teaching plan on the target (plan "
+            "§10.1, 'optional activity templates when explicitly selected'). "
+            "Default ``False``: only the configuration structure is copied. "
+            "Generated requirements and assignments are never copied."
         ),
     )

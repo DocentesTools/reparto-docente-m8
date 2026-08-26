@@ -12,12 +12,16 @@ import uuid
 from datetime import date, datetime
 from typing import Optional
 
+from fastapi_m8 import TimestampMixin
 from pydantic import Field
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Column, Field as SQLField, SQLModel
 
-from auth_sdk_m8.models.shared import TimestampMixin
-from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.core.db_models import (
+    UUIDString,
+    enum_column_type,
+    prefixed_tables,
+)
 from reparto_service.enums import AcademicYearStatus
 
 
@@ -34,8 +38,11 @@ class AcademicYearBase(SQLModel):
     )
     start_date: date = Field(description="First day of the academic year.")
     end_date: date = Field(description="Last day of the academic year.")
-    status: AcademicYearStatus = Field(
+    status: AcademicYearStatus = SQLField(
         default=AcademicYearStatus.ACTIVE,
+        sa_column=Column(
+            "status", enum_column_type(AcademicYearStatus), nullable=False
+        ),
         description="Lifecycle status of the academic year record.",
     )
     previous_academic_year_id: Optional[uuid.UUID] = Field(

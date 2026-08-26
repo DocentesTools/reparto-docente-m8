@@ -20,22 +20,23 @@ from reparto_service.db_models.departments import Department
 def _make_user(
     role: RoleType | str,
     *,
-    superuser: bool = False,
     user_id: uuid.UUID | None = None,
 ) -> UserModel:
+    """Build a user whose privilege claims satisfy the auth-sdk invariant.
+
+    ``is_superuser`` is derived from the role instead of being passed in:
+    ``auth_sdk_m8`` rejects any pair where the two claims disagree
+    (``SUPERADMIN`` pairs with ``is_superuser=True``, every other role with
+    ``False``), so an inconsistent pair cannot be built here either.
+    """
     role_value = role.value if isinstance(role, RoleType) else role
     return UserModel(
         id=str(user_id or uuid.uuid4()),
         email="t@example.com",
         is_active=True,
-        is_superuser=superuser,
+        is_superuser=role_value == RoleType.SUPERADMIN.value,
         role=role_value,
     )
-
-
-def test_require_writer_passes_for_superuser() -> None:
-    user = _make_user("user", superuser=True)
-    DomainController.require_writer(user)  # should not raise
 
 
 def test_require_writer_passes_for_writer_role() -> None:
@@ -48,8 +49,10 @@ def test_require_writer_passes_for_admin_role() -> None:
     DomainController.require_writer(user)
 
 
-def test_require_writer_passes_for_superadmin_role() -> None:
+def test_require_writer_passes_for_canonical_superadmin() -> None:
+    """A ``SUPERADMIN`` (necessarily ``is_superuser``) clears the writer gate."""
     user = _make_user("superadmin")
+    assert user.is_superuser is True
     DomainController.require_writer(user)
 
 
@@ -72,9 +75,28 @@ def test_require_writer_accepts_role_enum() -> None:
     DomainController.require_writer(user)
 
 
-def test_require_process_writer_passes_for_department_head_binding(
+@pytest.mark.parametrize("role", ["admin", "superadmin"])
+def test_require_department_head_passes_for_admin_and_above(role: str) -> None:
+    DomainController.require_department_head(_make_user(role))
+
+
+@pytest.mark.parametrize("role", ["writer", "reader", "user"])
+def test_require_department_head_blocks_everything_below_admin(role: str) -> None:
+    with pytest.raises(HTTPException) as exc:
+        DomainController.require_department_head(_make_user(role))
+    assert exc.value.status_code == 403
+
+
+def test_a_department_head_binding_no_longer_authorizes_anything(
     session: Session,
 ) -> None:
+    """§21.2: ``department_head_user_id`` is attribution, not authorization.
+
+    This is the behaviour change the section exists for. The bound account is
+    the department's recorded head and still holds a sub-``ADMIN`` role, and it
+    is now refused — a binding is not a credential, and cannot be revoked by
+    demoting the account.
+    """
     head_user_id = uuid.uuid4()
     process = __import__(
         "tests.factories", fromlist=["make_assignment_process"]
@@ -84,19 +106,10 @@ def test_require_process_writer_passes_for_department_head_binding(
     department.department_head_user_id = head_user_id
     session.add(department)
     session.commit()
-    user = _make_user("user", user_id=head_user_id)
-
-    DomainController.require_process_writer(session, user, process.id)
-
-
-def test_require_process_writer_blocks_unbound_user(session: Session) -> None:
-    process = __import__(
-        "tests.factories", fromlist=["make_assignment_process"]
-    ).make_assignment_process(session)
-    user = _make_user("user")
+    user = _make_user("writer", user_id=head_user_id)
 
     with pytest.raises(HTTPException) as exc:
-        DomainController.require_process_writer(session, user, process.id)
+        DomainController.require_department_head(user)
     assert exc.value.status_code == 403
 
 

@@ -6,9 +6,9 @@ all inherited via the base class.
 """
 
 from pathlib import Path
+from typing import ClassVar
 
-from auth_sdk_m8.utils.paths import find_dotenv
-from fastapi_m8 import ConsumerServiceSettings
+from fastapi_m8 import ConsumerServiceSettings, find_dotenv
 from pydantic_settings import SettingsConfigDict
 
 from .. import __version__
@@ -24,11 +24,17 @@ class Settings(ConsumerServiceSettings):
     package/env.
     """
 
-    ENV_FILE_DIR: Path = Path(__file__).resolve().parent.parent
+    ENV_FILE_DIR: ClassVar[Path] = Path(__file__).resolve().parent.parent
 
     SERVICE_VERSION: str = __version__
-    CONTRACT_VERSION: str = "0.9"
-    CONTRACT_RANGE: str = ">=1.0.0 <2.0.0"
+    CONTRACT_NAME: str = "reparto-docente-m8"
+    CONTRACT_VERSION: str = "2.0.0"
+    CONTRACT_RANGE: str = ">=2.0.0 <3.0.0"
+
+    #: Insert the worked configuration example (``reparto_service.initial_data``)
+    #: when the domain is empty. Off by default: a fresh Compose database is
+    #: expected to come up empty, and a deployment must never invent rows.
+    SEED_EXAMPLE_DATA: bool = False
 
     # Vault/`_FILE` source ordering is handled by the inherited
     # CommonSettings.settings_customise_sources classmethod — no override needed.

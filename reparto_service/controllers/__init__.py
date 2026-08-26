@@ -12,13 +12,18 @@ from .assignment_processes import AssignmentProcessController
 from .assignments import AssignmentController
 from .base import DomainController
 from .dashboard import DashboardController
+from .department_hour_allocation_revisions import (
+    DepartmentHourAllocationRevisionController,
+)
 from .departments import DepartmentController
 from .hour_requirements import HourRequirementController
 from .process_teachers import ProcessTeacherController
+from .process_versions import ProcessVersionController
 from .schools import SchoolController
 from .subjects import SubjectController
 from .teacher_profiles import TeacherProfileController
 from .teaching_groups import TeachingGroupController
+from .teaching_plans import TeachingPlanController
 
 __all__ = [
     "AcademicYearController",
@@ -26,11 +31,14 @@ __all__ = [
     "AssignmentProcessController",
     "DashboardController",
     "DepartmentController",
+    "DepartmentHourAllocationRevisionController",
     "DomainController",
     "HourRequirementController",
     "ProcessTeacherController",
+    "ProcessVersionController",
     "SchoolController",
     "SubjectController",
     "TeacherProfileController",
     "TeachingGroupController",
+    "TeachingPlanController",
 ]

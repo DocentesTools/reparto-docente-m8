@@ -6,9 +6,8 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
+from fastapi_m8 import UserModel
 from sqlmodel import Session, col, select
-
-from auth_sdk_m8.schemas.user import UserModel
 
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.assignment_processes import AssignmentProcess
@@ -23,6 +22,7 @@ from reparto_service.enums import (
     AssignmentProcessStatus,
     MeetingSessionStatus,
 )
+from reparto_service.services.lifecycle_gates import PlanReadinessGate
 
 _ACTIVE_SESSION_STATUSES: frozenset[MeetingSessionStatus] = frozenset(
     {
@@ -89,6 +89,11 @@ class MeetingSessionController(DomainController):
         meeting_session = MeetingSession.model_validate(meeting_session_in.model_dump())
         now = datetime.now(tz=timezone.utc)
         if meeting_session.status in _STARTED_SESSION_STATUSES:
+            # Opening a meeting is a stage-entry operation (plan §3.10): refuse it
+            # unless the plan is balanced, locked and generated.
+            PlanReadinessGate.ensure_ready_for_assignment_stage(
+                session, process_id, operation="open a meeting"
+            )
             meeting_session.started_at = now
             meeting_session.started_by_user_id = uuid.UUID(str(current_user.id))
             process.status = AssignmentProcessStatus.MEETING_OPEN
@@ -134,6 +139,11 @@ class MeetingSessionController(DomainController):
             meeting_session.status in _STARTED_SESSION_STATUSES
             and meeting_session.started_at is None
         ):
+            # Opening a meeting is a stage-entry operation (plan §3.10): refuse it
+            # unless the plan is balanced, locked and generated.
+            PlanReadinessGate.ensure_ready_for_assignment_stage(
+                session, process_id, operation="open a meeting"
+            )
             meeting_session.started_at = now
             meeting_session.started_by_user_id = uuid.UUID(str(current_user.id))
             process.status = AssignmentProcessStatus.MEETING_OPEN

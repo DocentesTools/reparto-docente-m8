@@ -1,23 +1,38 @@
-"""HourRequirement routes (nested under an assignment process)."""
+"""HourRequirement routes (nested under an assignment process).
+
+Requirement slots are generated, never manually mutated (plan §5.9, §20.12): the
+``GET`` endpoints are read-only, and the plan §7.5 ``generation-preview`` /
+``generate`` actions produce and retire slots through the generation flow. The
+``reconciliation-preview`` / ``reconcile`` endpoints (plan §7.5, §9) resolve the
+assigned-slot conflicts a plain generation refuses, releasing assignments
+explicitly (with a reason) so none is ever silently dropped.
+"""
 
 from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep
+from reparto_service.app.deps import CurrentAdmin, SessionDep, require_visible_process
 from reparto_service.controllers.hour_requirements import HourRequirementController
 from reparto_service.db_models.hour_requirements import (
-    HourRequirementCreate,
     HourRequirementPublic,
     HourRequirementsPublic,
-    HourRequirementUpdate,
+    RequirementGenerationPreview,
+    RequirementGenerationResult,
+    RequirementReconcileRequest,
+    RequirementReconciliationPreview,
+    RequirementReconciliationResult,
 )
 
 router = APIRouter(
     prefix="/assignment-processes/{process_id}/requirements",
     tags=["hour-requirements"],
+    # Read scope (plan §21.4): every route under this process — read and
+    # mutation alike — is refused with 404 when the process lies outside the
+    # caller's departments.
+    dependencies=[Depends(require_visible_process)],
 )
 
 
@@ -28,16 +43,42 @@ def list_requirements(
     return HourRequirementController.list_requirements(session, process_id)
 
 
-@router.post("/", response_model=HourRequirementPublic, status_code=201)
-def create_requirement(
+@router.post("/generation-preview", response_model=RequirementGenerationPreview)
+def preview_requirement_generation(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
-    requirement_in: HourRequirementCreate,
-) -> HourRequirementPublic:
-    HourRequirementController.require_process_writer(session, current_user, process_id)
-    return HourRequirementController.create_requirement(
-        session, process_id, requirement_in, current_user
+) -> RequirementGenerationPreview:
+    return HourRequirementController.generation_preview(session, process_id)
+
+
+@router.post("/generate", response_model=RequirementGenerationResult)
+def generate_requirements(
+    session: SessionDep,
+    current_user: CurrentAdmin,
+    process_id: uuid.UUID,
+) -> RequirementGenerationResult:
+    return HourRequirementController.generate(session, process_id, current_user)
+
+
+@router.post("/reconciliation-preview", response_model=RequirementReconciliationPreview)
+def preview_requirement_reconciliation(
+    session: SessionDep,
+    current_user: CurrentAdmin,
+    process_id: uuid.UUID,
+) -> RequirementReconciliationPreview:
+    return HourRequirementController.reconciliation_preview(session, process_id)
+
+
+@router.post("/reconcile", response_model=RequirementReconciliationResult)
+def reconcile_requirements(
+    session: SessionDep,
+    current_user: CurrentAdmin,
+    process_id: uuid.UUID,
+    request: RequirementReconcileRequest,
+) -> RequirementReconciliationResult:
+    return HourRequirementController.reconcile(
+        session, process_id, current_user, request
     )
 
 
@@ -47,31 +88,4 @@ def get_requirement(
 ) -> HourRequirementPublic:
     return HourRequirementController.get_requirement(
         session, process_id, requirement_id
-    )
-
-
-@router.patch("/{requirement_id}", response_model=HourRequirementPublic)
-def update_requirement(
-    session: SessionDep,
-    current_user: CurrentUser,
-    process_id: uuid.UUID,
-    requirement_id: uuid.UUID,
-    requirement_in: HourRequirementUpdate,
-) -> HourRequirementPublic:
-    HourRequirementController.require_process_writer(session, current_user, process_id)
-    return HourRequirementController.update_requirement(
-        session, process_id, requirement_id, requirement_in, current_user
-    )
-
-
-@router.delete("/{requirement_id}", response_model=HourRequirementPublic)
-def delete_requirement(
-    session: SessionDep,
-    current_user: CurrentUser,
-    process_id: uuid.UUID,
-    requirement_id: uuid.UUID,
-) -> HourRequirementPublic:
-    HourRequirementController.require_process_writer(session, current_user, process_id)
-    return HourRequirementController.delete_requirement(
-        session, process_id, requirement_id, current_user
     )

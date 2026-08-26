@@ -19,8 +19,9 @@ from alembic.autogenerate.api import AutogenContext
 from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
-from reparto_service.core.config import settings
 import reparto_service.db_models  # noqa: F401
+from reparto_service.core.autogenerate import make_include_object
+from reparto_service.core.config import settings
 
 # ---------------------------------------------------------------------
 # PYTHONPATH (Docker / monorepo safe)
@@ -41,6 +42,11 @@ target_metadata = SQLModel.metadata
 VERSION_TABLE = config.get_main_option("version_table")
 VERSION_LOCATIONS = [config.get_main_option("version_locations")]
 
+if VERSION_TABLE is None:
+    # The filter below keys the service's own tables off this name, so an
+    # undeclared version table would silently mis-scope every comparison.
+    raise RuntimeError("alembic.ini must declare a version_table.")
+
 
 # ---------------------------------------------------------------------
 # DATABASE URL
@@ -53,22 +59,9 @@ def get_url() -> str:
 # ---------------------------------------------------------------------
 # INCLUDE OBJECT FILTER
 # ---------------------------------------------------------------------
-def include_object(
-    object,  # noqa: A002
-    name: str,
-    type_: str,
-    reflected: bool,
-    compare_to: object,
-) -> bool:
-    """
-    Filter database objects included in migrations.
-    """
-    if type_ == "table":
-        if name == VERSION_TABLE:
-            return True
-        return not reflected
-
-    return True
+# Owned by reparto_service.core.autogenerate so tests/test_schema_migration_gate
+# asserts the comparison this bootstrap actually performs.
+include_object = make_include_object(VERSION_TABLE, target_metadata)
 
 
 # ---------------------------------------------------------------------

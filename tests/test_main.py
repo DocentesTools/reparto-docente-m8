@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from fastapi import APIRouter
 from fastapi.testclient import TestClient
 
 
@@ -42,3 +43,23 @@ def test_app_routes_count_minimum(client: TestClient) -> None:
     """Sanity check: at least 25 routes registered (the documented set)."""
     schema = client.get("/reparto/openapi.json").json()
     assert len(schema["paths"]) >= 25
+
+
+def test_metrics_endpoint_registration(monkeypatch) -> None:
+    """``_register_metrics_endpoint`` is a no-op when disabled and guards the
+    route with ``make_scrape_credential_guard`` when enabled, mirroring the
+    media-service-m8 / prompt-engine-m8 pattern (A2/A25)."""
+    import reparto_service.main as main
+
+    router = APIRouter()
+    main._register_metrics_endpoint(router, enabled=False)
+    assert not router.routes
+
+    monkeypatch.setattr(
+        "fastapi_m8.render_metrics",
+        lambda: (b"metrics", "text/plain"),
+    )
+    main._register_metrics_endpoint(router, enabled=True, credential=None)
+    assert router.routes
+    response = router.routes[-1].endpoint()
+    assert response.body == b"metrics"

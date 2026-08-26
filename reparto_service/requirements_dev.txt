@@ -1,7 +1,7 @@
 -r requirements_base.txt
 
 # Testing
-pytest>=9.0.3
+pytest>=9.1.1
 pytest-cov>=7.1.0
 coverage>=7.15.1
 
@@ -9,11 +9,15 @@ coverage>=7.15.1
 debugpy>=1.8.20
 
 # Linting / formatting / security
-ruff>=0.15.15
+# ruff pinned exactly (A27): unpinned floors let CI resolve whatever ruff
+# publishes that day, and 0.16.x enables a materially broader default rule
+# set than 0.15.x, making `ruff check .` non-reproducible across two runs.
+# Matches fa-auth-m8's exact-pin convention.
+ruff==0.15.18
 bandit>=1.9.4
-mypy>=2.1.0
+mypy>=2.3.0
 
 # Build tools (optional but OK in dev)
-setuptools>=82.0.1
+setuptools>=83.0.0
 wheel>=0.47.0
-build>=1.5.1
+build>=1.5.0

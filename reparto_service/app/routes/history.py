@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from reparto_service.app.deps import CurrentUser, SessionDep
+from reparto_service.app.deps import CurrentAdmin, SessionDep, require_visible_process
 from reparto_service.controllers.history import HistoryController
+from reparto_service.controllers.process_versions import ProcessVersionController
 from reparto_service.db_models.assignment_processes import AssignmentProcessPublic
 from reparto_service.db_models.export_artifacts import (
     ExportBackupRestoreRequest,
@@ -25,23 +26,28 @@ from reparto_service.db_models.process_versions import (
 router = APIRouter(
     prefix="/assignment-processes/{process_id}",
     tags=["history"],
+    # Read scope (plan §21.4): every route under this process — read and
+    # mutation alike — is refused with 404 when the process lies outside the
+    # caller's departments.
+    dependencies=[Depends(require_visible_process)],
 )
 
 
 @router.get("/versions", response_model=ProcessVersionsPublic)
 def list_versions(session: SessionDep, process_id: uuid.UUID) -> ProcessVersionsPublic:
-    return HistoryController.list_versions(session, process_id)
+    return ProcessVersionController.list_versions(session, process_id)
 
 
 @router.post("/versions", response_model=ProcessVersionPublic, status_code=201)
 def create_version(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     payload: ProcessVersionCreate,
 ) -> ProcessVersionPublic:
-    HistoryController.require_process_writer(session, current_user, process_id)
-    return HistoryController.create_version(session, process_id, current_user, payload)
+    return ProcessVersionController.create_version(
+        session, process_id, current_user, payload
+    )
 
 
 @router.get(
@@ -54,7 +60,7 @@ def compare_versions(
     left_version_id: uuid.UUID,
     right_version_id: uuid.UUID,
 ) -> VersionComparison:
-    return HistoryController.compare_versions(
+    return ProcessVersionController.compare_versions(
         session, process_id, left_version_id, right_version_id
     )
 
@@ -63,7 +69,7 @@ def compare_versions(
 def compare_previous_year(
     session: SessionDep, process_id: uuid.UUID
 ) -> VersionComparison:
-    return HistoryController.compare_previous_year(session, process_id)
+    return ProcessVersionController.compare_previous_year(session, process_id)
 
 
 @router.get("/exports", response_model=ExportArtifactsPublic)
@@ -74,22 +80,20 @@ def list_artifacts(session: SessionDep, process_id: uuid.UUID) -> ExportArtifact
 @router.post("/exports", response_model=ExportArtifactPublic, status_code=201)
 def create_artifact(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     payload: ExportArtifactCreate,
 ) -> ExportArtifactPublic:
-    HistoryController.require_process_writer(session, current_user, process_id)
     return HistoryController.create_artifact(session, process_id, current_user, payload)
 
 
 @router.post("/restore-draft", response_model=AssignmentProcessPublic, status_code=201)
 def restore_backup_to_draft(
     session: SessionDep,
-    current_user: CurrentUser,
+    current_user: CurrentAdmin,
     process_id: uuid.UUID,
     payload: ExportBackupRestoreRequest,
 ) -> AssignmentProcessPublic:
-    HistoryController.require_process_writer(session, current_user, process_id)
     return HistoryController.restore_backup_to_draft(
         session, process_id, current_user, payload
     )

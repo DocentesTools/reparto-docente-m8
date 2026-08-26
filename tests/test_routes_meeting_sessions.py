@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 
+from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
@@ -12,8 +13,22 @@ from reparto_service.enums import (
     AssignmentProcessStatus,
     MeetingSessionStatus,
     SelectionOrderMode,
+    TeachingPlanStatus,
 )
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 from tests import factories
+
+
+def _ready_plan(session: Session, process: AssignmentProcess) -> None:
+    """Attach a balanced/locked/generated plan so a meeting may be opened.
+
+    Opening a meeting is gated on plan readiness (plan §3.10); tests that
+    actually start a session need the plan in ``REQUIREMENTS_GENERATED``.
+    """
+    factories.make_teaching_plan(
+        session, process, status=TeachingPlanStatus.REQUIREMENTS_GENERATED
+    )
+    FeasibilityWitnessService.evaluate(session, process.id)
 
 
 def _session_payload(
@@ -51,6 +66,7 @@ def test_create_open_session_sets_start_metadata_and_process_flags(
     client: TestClient, session: Session, current_user
 ) -> None:
     process = factories.make_assignment_process(session)
+    _ready_plan(session, process)
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/meeting-sessions/",
         json=_session_payload(process, status="open", selection_mode="informative"),
@@ -63,6 +79,23 @@ def test_create_open_session_sets_start_metadata_and_process_flags(
     assert process.status == AssignmentProcessStatus.MEETING_OPEN
     assert process.lan_access_enabled is True
     assert process.selection_order_mode == SelectionOrderMode.INFORMATIVE
+
+
+def test_create_open_session_fails_closed_without_current_feasibility(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    factories.make_teaching_plan(
+        session, process, status=TeachingPlanStatus.REQUIREMENTS_GENERATED
+    )
+
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/meeting-sessions/",
+        json=_session_payload(process, status="open"),
+    )
+
+    assert resp.status_code == 409
+    assert "feasibility" in resp.json()["detail"]
 
 
 def test_create_session_rejects_payload_process_mismatch(
@@ -131,9 +164,10 @@ def test_create_paused_session_sets_pause_timestamp(
 
 
 def test_reader_can_list_and_get_sessions(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
     meeting_session = factories.make_meeting_session(session, process)
     resp = reader_client.get(
         f"/reparto/assignment-processes/{process.id}/meeting-sessions/"
@@ -149,9 +183,10 @@ def test_reader_can_list_and_get_sessions(
 
 
 def test_reader_cannot_create_session(
-    reader_client: TestClient, session: Session
+    reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
     process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
     resp = reader_client.post(
         f"/reparto/assignment-processes/{process.id}/meeting-sessions/",
         json=_session_payload(process),
@@ -163,6 +198,7 @@ def test_update_session_can_open_prepared_session(
     client: TestClient, session: Session
 ) -> None:
     process = factories.make_assignment_process(session)
+    _ready_plan(session, process)
     meeting_session = factories.make_meeting_session(session, process)
     resp = client.patch(
         f"/reparto/assignment-processes/{process.id}/meeting-sessions/"
@@ -284,3 +320,71 @@ def test_cannot_create_session_on_final_process(
     )
     assert resp.status_code == 400
     assert "final" in resp.json()["detail"].lower()
+
+
+# ── Plan-readiness gate on opening a meeting (plan §3.10) ─────────────────────
+
+
+def test_cannot_open_session_without_teaching_plan(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/meeting-sessions/",
+        json=_session_payload(process, status="open"),
+    )
+    assert resp.status_code == 409
+    assert "no teaching plan" in resp.json()["detail"]
+
+
+def test_cannot_open_session_when_plan_unbalanced(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    factories.make_teaching_plan(session, process, status=TeachingPlanStatus.UNBALANCED)
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/meeting-sessions/",
+        json=_session_payload(process, status="open"),
+    )
+    assert resp.status_code == 409
+    assert "unbalanced" in resp.json()["detail"]
+
+
+def test_cannot_open_session_when_plan_stale(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    factories.make_teaching_plan(session, process, status=TeachingPlanStatus.STALE)
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/meeting-sessions/",
+        json=_session_payload(process, status="open"),
+    )
+    assert resp.status_code == 409
+    assert "stale" in resp.json()["detail"]
+
+
+def test_cannot_open_prepared_session_via_update_without_ready_plan(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+    factories.make_teaching_plan(session, process, status=TeachingPlanStatus.LOCKED)
+    meeting_session = factories.make_meeting_session(session, process)
+    resp = client.patch(
+        f"/reparto/assignment-processes/{process.id}/meeting-sessions/"
+        f"{meeting_session.id}",
+        json={"status": "open"},
+    )
+    assert resp.status_code == 409
+    assert "locked" in resp.json()["detail"]
+
+
+def test_prepared_session_is_not_gated_on_plan(
+    client: TestClient, session: Session
+) -> None:
+    """A prepared (not yet started) session does not open the meeting → no gate."""
+    process = factories.make_assignment_process(session)
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/meeting-sessions/",
+        json=_session_payload(process, status="prepared"),
+    )
+    assert resp.status_code == 201

@@ -3,22 +3,29 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import HTTPException, status
+from fastapi_m8 import UserModel
 from sqlmodel import Session, select
 
-from auth_sdk_m8.schemas.user import UserModel
-
 from reparto_service.controllers.base import DomainController
+from reparto_service.core.decimals import quantize_hours
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.process_teachers import (
     ProcessTeacher,
     ProcessTeacherCreate,
+    ProcessTeacherExtraHoursUpdate,
     ProcessTeacherPublic,
     ProcessTeachersPublic,
     ProcessTeacherUpdate,
 )
 from reparto_service.db_models.teacher_profiles import TeacherProfile
+from reparto_service.enums import AuditEventType, SseEventType
+from reparto_service.services.calculations import AssignmentCalculationService
+from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
+from reparto_service.services.sse import hours_string
 
 
 class ProcessTeacherController(DomainController):
@@ -74,12 +81,13 @@ class ProcessTeacherController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="process_teacher.created",
+            event_type=AuditEventType.PROCESS_TEACHER_CREATED,
             entity_type="process_teacher",
             entity_id=process_teacher.id,
             before=None,
             after=process_teacher,
         )
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         try:
             session.commit()
         except Exception as exc:
@@ -92,6 +100,10 @@ class ProcessTeacherController(DomainController):
                 ),
             ) from exc
         session.refresh(process_teacher)
+        if invalidated:
+            ProcessTeacherController.publish_feasibility_invalidated(
+                session, process_id
+            )
         return ProcessTeacherPublic.model_validate(process_teacher)
 
     @staticmethod
@@ -115,14 +127,99 @@ class ProcessTeacherController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="process_teacher.updated",
+            event_type=AuditEventType.PROCESS_TEACHER_UPDATED,
             entity_type="process_teacher",
             entity_id=process_teacher.id,
             before=before,
             after=process_teacher,
         )
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(process_teacher)
+        if invalidated:
+            ProcessTeacherController.publish_feasibility_invalidated(
+                session, process_id
+            )
+        return ProcessTeacherPublic.model_validate(process_teacher)
+
+    @staticmethod
+    def update_extra_hours(
+        session: Session,
+        process_id: uuid.UUID,
+        process_teacher_id: uuid.UUID,
+        payload: ProcessTeacherExtraHoursUpdate,
+        current_user: UserModel,
+    ) -> ProcessTeacherPublic:
+        """Set authorized extra hours through the audited dedicated action.
+
+        Enforces plan §3.8: the change carries a mandatory reason and an
+        audit event, and a reduction is blocked when the new target would
+        fall below the hours already assigned to the participant.
+        """
+        process, process_teacher = ProcessTeacherController._get_for_update_or_404(
+            session, process_id, process_teacher_id
+        )
+        DomainController.ensure_process_mutable(process)
+        new_target = quantize_hours(
+            Decimal(str(process_teacher.base_weekly_hours))
+            + Decimal(str(payload.extra_weekly_hours))
+        )
+        assigned = AssignmentCalculationService.compute_participant_assigned_hours(
+            session, process_teacher
+        )
+        if new_target < assigned:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Cannot reduce extra hours below the hours already assigned: "
+                    f"new target {new_target} h < assigned {assigned} h."
+                ),
+            )
+        before = ProcessTeacher.model_validate(process_teacher.model_dump())
+        process_teacher.extra_weekly_hours = payload.extra_weekly_hours
+        process_teacher.extra_hours_reason = payload.reason
+        process_teacher.extra_hours_updated_by_user_id = uuid.UUID(str(current_user.id))
+        process_teacher.extra_hours_updated_at = datetime.now(tz=timezone.utc)
+        session.add(process_teacher)
+        ProcessTeacherController.record_audit_event(
+            session,
+            process_id=process_id,
+            current_user=current_user,
+            event_type=AuditEventType.PROCESS_TEACHER_EXTRA_HOURS_UPDATED,
+            entity_type="process_teacher",
+            entity_id=process_teacher.id,
+            before=before,
+            after=process_teacher,
+            reason=payload.reason,
+        )
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
+        session.commit()
+        session.refresh(process_teacher)
+        if invalidated:
+            ProcessTeacherController.publish_feasibility_invalidated(
+                session, process_id
+            )
+        # Participant-scoped: only this teacher (and the head) ever sees the
+        # figures — another teacher's target is never published (plan §20.25).
+        # ``reason`` is carried for the head's tier alone; the projection strips
+        # it from the teacher's own frame (plan §17), so it is safe to publish
+        # once here rather than building two payloads at the emit site.
+        ProcessTeacherController.publish_event(
+            session,
+            process_id=process_id,
+            event_type=SseEventType.PARTICIPANT_EXTRA_HOURS_UPDATED,
+            subject_process_teacher_id=process_teacher.id,
+            payload={
+                "process_teacher_id": str(process_teacher.id),
+                "base_weekly_hours": hours_string(process_teacher.base_weekly_hours),
+                "extra_weekly_hours": hours_string(process_teacher.extra_weekly_hours),
+                "target_weekly_hours": hours_string(
+                    process_teacher.target_weekly_hours
+                ),
+                "is_overloaded": process_teacher.extra_weekly_hours > 0,
+                "reason": process_teacher.extra_hours_reason,
+            },
+        )
         return ProcessTeacherPublic.model_validate(process_teacher)
 
     @staticmethod
@@ -142,13 +239,18 @@ class ProcessTeacherController(DomainController):
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="process_teacher.deleted",
+            event_type=AuditEventType.PROCESS_TEACHER_DELETED,
             entity_type="process_teacher",
             entity_id=process_teacher.id,
             before=before,
             after=None,
         )
+        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
+        if invalidated:
+            ProcessTeacherController.publish_feasibility_invalidated(
+                session, process_id
+            )
         return ProcessTeacherPublic.model_validate(process_teacher)
 
     # ── Internal helpers ─────────────────────────────────────────────────────

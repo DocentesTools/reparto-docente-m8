@@ -11,12 +11,12 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from fastapi_m8 import TimestampMixin
 from pydantic import Field, model_validator
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Column, Field as SQLField, SQLModel
 from slugify import slugify
 
-from auth_sdk_m8.models.shared import TimestampMixin
 from reparto_service.core.db_models import UUIDString, prefixed_tables
 
 

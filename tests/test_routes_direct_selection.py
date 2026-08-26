@@ -15,19 +15,25 @@ from reparto_service.db_models.meeting_sessions import MeetingSession
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.enums import (
     AssignmentSource,
+    AssignmentStatus,
+    HourRequirementStatus,
     MeetingSessionStatus,
     SelectionOrderMode,
     SelectionTurnStatus,
+    TeachingPlanStatus,
 )
 from tests import factories
 
 
 class DirectChoicePayload(TypedDict):
-    """Direct-choice request payload used by tests."""
+    """Direct-choice request payload used by tests.
+
+    A slot is indivisible, so the teacher only names the slot — there is no
+    ``assigned_hours`` to send (plan §5.10).
+    """
 
     meeting_session_id: str
     hour_requirement_id: str
-    assigned_hours: int
 
 
 def _direct_selection_data(
@@ -45,21 +51,24 @@ def _direct_selection_data(
         direct_teacher_selection_enabled=True,
         selection_mode=SelectionOrderMode.STRICT if strict else SelectionOrderMode.NONE,
     )
+    plan = factories.make_teaching_plan(
+        session, process, status=TeachingPlanStatus.REQUIREMENTS_GENERATED
+    )
     subject = factories.make_subject(session, process)
-    group = factories.make_teaching_group(session, process)
-    requirement = factories.make_hour_requirement(session, process, group, subject)
+    activity = factories.make_teaching_activity(session, plan, subject)
+    requirement = factories.make_hour_requirement(session, process, activity)
     path = f"/reparto/assignment-processes/{process.id}/assignments/direct-choice"
     payload: DirectChoicePayload = {
         "meeting_session_id": str(meeting.id),
         "hour_requirement_id": str(requirement.id),
-        "assigned_hours": 4,
     }
     return process, meeting, teacher, path, payload
 
 
-def test_direct_teacher_choice_creates_confirmed_assignment(
+def test_direct_teacher_choice_occupies_slot_in_full(
     client: TestClient, session: Session, current_user
 ) -> None:
+    """A teacher's own choice lands ACTIVE and self-confirmed (plan §7.7)."""
     _, _, teacher, path, payload = _direct_selection_data(
         session, uuid.UUID(str(current_user.id))
     )
@@ -70,9 +79,16 @@ def test_direct_teacher_choice_creates_confirmed_assignment(
     body = resp.json()
     assert body["process_teacher_id"] == str(teacher.id)
     assert body["source"] == "teacher_direct"
-    assert body["status"] == "confirmed"
+    assert body["status"] == AssignmentStatus.ACTIVE.value
+    # The teacher chose for themselves, so they are both chooser and confirmer.
+    assert body["chosen_by_user_id"] == str(current_user.id)
+    assert body["confirmed_by_user_id"] == str(current_user.id)
     assignment = session.exec(select(Assignment)).one()
     assert assignment.source == AssignmentSource.TEACHER_DIRECT
+    # The slot is occupied in full — no hours are carried on the assignment.
+    slot = session.get(HourRequirement, uuid.UUID(payload["hour_requirement_id"]))
+    assert slot is not None
+    assert slot.status == HourRequirementStatus.ASSIGNED
 
 
 def test_direct_teacher_choice_requires_enabled_session(
@@ -170,18 +186,22 @@ def test_strict_direct_choice_completes_active_turn(
     assert turn.completed_at is not None
 
 
-def test_direct_choice_rejects_covered_requirement(
+def test_direct_choice_rejects_already_assigned_slot(
     client: TestClient, session: Session, current_user
 ) -> None:
-    process, _, teacher, path, payload = _direct_selection_data(
+    """A taken slot cannot be shared or split, so the choice is refused (§5.10)."""
+    process, _, _, path, payload = _direct_selection_data(
         session, uuid.UUID(str(current_user.id))
     )
     requirement_id = uuid.UUID(payload["hour_requirement_id"])
-    covered = session.get(HourRequirement, requirement_id)
-    assert covered is not None
-    factories.make_assignment(session, process, covered, teacher, assigned_hours=4)
+    taken = session.get(HourRequirement, requirement_id)
+    assert taken is not None
+    # Another teacher already occupies the slot in full.
+    other_profile = factories.make_teacher_profile(session, display_name="Other")
+    other = factories.make_process_teacher(session, process, other_profile)
+    factories.make_assignment(session, process, taken, other)
 
     resp = client.post(path, json=payload)
 
     assert resp.status_code == 400
-    assert "above its required hours" in resp.json()["detail"]
+    assert "already assigned" in resp.json()["detail"]

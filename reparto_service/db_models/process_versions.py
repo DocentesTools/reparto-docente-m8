@@ -6,12 +6,16 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
+from fastapi_m8 import TimestampMixin
 from pydantic import Field
 from sqlalchemy import JSON, Column
 from sqlmodel import Field as SQLField, SQLModel
 
-from auth_sdk_m8.models.shared import TimestampMixin
-from reparto_service.core.db_models import UUIDString, prefixed_tables
+from reparto_service.core.db_models import (
+    UUIDString,
+    enum_column_type,
+    prefixed_tables,
+)
 from reparto_service.enums import AssignmentProcessStatus
 
 
@@ -20,7 +24,12 @@ class ProcessVersionBase(SQLModel):
 
     assignment_process_id: uuid.UUID = Field(description="Owning process ID.")
     version_number: int = Field(ge=1, description="Monotonic version number.")
-    status: AssignmentProcessStatus = Field(description="Process status snapshot.")
+    status: AssignmentProcessStatus = SQLField(
+        sa_column=Column(
+            "status", enum_column_type(AssignmentProcessStatus), nullable=False
+        ),
+        description="Process status snapshot.",
+    )
     reason: Optional[str] = Field(default=None, max_length=500)
     created_by_user_id: uuid.UUID = Field(description="Auth user that created it.")
     snapshot_json: dict[str, Any] = Field(description="Immutable process snapshot.")
@@ -70,13 +79,37 @@ class ProcessVersionsPublic(SQLModel):
 
 
 class VersionComparison(SQLModel):
-    """Small deterministic diff summary between two snapshots."""
+    """Deterministic diff summary between two three-stage snapshots (plan §10.3).
+
+    The comparison surfaces the plan §10.3 dimensions of the three-stage domain:
+    a changed leadership allocation, changed group / teacher balances, a changed
+    subject category, an added/removed activity or group link, a changed
+    teacher-position count, a changed participant base/extra target and a changed
+    requirement generation — plus a small set of signed count/hour deltas and the
+    names of the top-level snapshot sections that differ. Every hour delta is a
+    canonical two-place decimal string (plan §3.9); an allocation delta is
+    ``None`` when either side has no current allocation.
+    """
 
     left_version_id: uuid.UUID
     right_version_id: uuid.UUID
     changed_sections: list[str]
-    required_hours_delta: float
-    assigned_hours_delta: float
+    # ── plan §10.3 change flags ───────────────────────────────────────────────
+    allocation_changed: bool
+    group_hours_changed: bool
+    teacher_load_changed: bool
+    subject_category_changed: bool
+    activity_added_or_removed: bool
+    group_link_added_or_removed: bool
+    teacher_position_count_changed: bool
+    participant_target_changed: bool
+    requirement_generation_changed: bool
+    # ── signed deltas ─────────────────────────────────────────────────────────
+    allocation_delta: Optional[str]
+    group_load_delta: str
+    teacher_load_delta: str
+    participant_target_total_delta: str
+    generation_number_delta: int
     teacher_count_delta: int
+    activity_count_delta: int
     requirement_count_delta: int
-    assignment_count_delta: int

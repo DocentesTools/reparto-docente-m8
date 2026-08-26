@@ -4,11 +4,11 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from fastapi_m8 import TimestampMixin
 from pydantic import Field, field_validator, model_validator
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Column, Field as SQLField, Relationship, SQLModel
 
-from auth_sdk_m8.models.shared import TimestampMixin
 from reparto_service.core.db_models import UUIDString, prefixed_tables
 
 if TYPE_CHECKING:

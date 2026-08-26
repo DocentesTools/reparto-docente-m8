@@ -6,14 +6,13 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
+from fastapi_m8 import UserModel
 from sqlmodel import Session, col, select
-
-from auth_sdk_m8.schemas.user import UserModel
 
 from reparto_service.controllers.assignments import AssignmentController
 from reparto_service.controllers.base import DomainController
 from reparto_service.controllers.meeting_sessions import MeetingSessionController
-from reparto_service.db_models.assignments import Assignment, AssignmentCreate
+from reparto_service.db_models.assignments import AssignmentCreate
 from reparto_service.db_models.meeting_sessions import MeetingSession
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.selection_turns import (
@@ -24,8 +23,6 @@ from reparto_service.db_models.selection_turns import (
     SelectionTurnsPublic,
 )
 from reparto_service.enums import (
-    AssignmentSource,
-    AssignmentStatus,
     MeetingSessionStatus,
     ProcessTeacherStatus,
     SelectionTurnStatus,
@@ -34,6 +31,29 @@ from reparto_service.enums import (
 
 class SelectionTurnController(DomainController):
     """State transitions for turn-order meeting sessions."""
+
+    @staticmethod
+    def require_turn_actor(
+        session: Session,
+        current_user: UserModel,
+        process_id: uuid.UUID,
+        meeting_session_id: uuid.UUID,
+        turn_id: uuid.UUID,
+    ) -> None:
+        """Authorize a self-service turn action (plan §21.3).
+
+        ``start``/``complete``/``skip`` are the three actions a participant
+        performs on their *own* turn, so a department head may drive any turn
+        (they run the meeting) while anyone else must hold ``WRITER`` and own
+        the turn. Forcing somebody else's turn has its own route —
+        ``override`` — which stays department-head-only precisely so that
+        "acting for another participant" is always an explicit, reasoned and
+        separately audited act rather than a side effect of this one.
+        """
+        turn = SelectionTurnController._get_or_404(session, meeting_session_id, turn_id)
+        SelectionTurnController.require_own_process_teacher(
+            session, current_user, process_id, turn.process_teacher_id
+        )
 
     @staticmethod
     def list_turns(
@@ -229,38 +249,31 @@ class SelectionTurnController(DomainController):
         turn: SelectionTurn,
         assignment_in: AssignmentCreate,
     ) -> None:
+        """Record the department head's manual choice for the active turn.
+
+        The meeting turn-completion flow is a department-head manual
+        assignment, so it goes through the **same** shared complete-slot
+        service as the standalone ``POST /assignments`` route and the teacher
+        LAN direct choice — no separate assignment business logic lives here
+        (plan §7.7). The only turn-specific rule is that the slot must be
+        recorded for the teacher whose turn is active; the complete-slot
+        invariants (slot availability, distinct teacher, exact target) are
+        enforced inside ``create_manual_assignment``. It records the
+        ``assignment.created`` audit event but does not commit — the enclosing
+        ``complete_turn`` owns the transaction.
+        """
         if assignment_in.process_teacher_id != turn.process_teacher_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Turn assignment must target the active turn teacher.",
             )
-        process = AssignmentController._ensure_open(
-            session, process_id, assignment_in.assignment_process_id
-        )
-        AssignmentController._validate_assignment_creation(
-            session, process_id, assignment_in, process
-        )
-        assignment = Assignment.model_validate(
-            assignment_in.model_dump(),
-            update={
-                "source": AssignmentSource.DEPARTMENT_HEAD,
-                "status": AssignmentStatus.CONFIRMED,
-                "chosen_by_user_id": uuid.UUID(str(current_user.id)),
-                "confirmed_by_user_id": uuid.UUID(str(current_user.id)),
-            },
-        )
-        session.add(assignment)
-        session.flush()
-        SelectionTurnController.record_audit_event(
+        AssignmentController.create_manual_assignment(
             session,
             process_id=process_id,
             current_user=current_user,
-            event_type="assignment.created",
-            entity_type="assignment",
-            entity_id=assignment.id,
-            before=None,
-            after=assignment,
-            reason=assignment.override_reason,
+            hour_requirement_id=assignment_in.hour_requirement_id,
+            process_teacher_id=assignment_in.process_teacher_id,
+            notes=assignment_in.notes,
         )
 
     @staticmethod

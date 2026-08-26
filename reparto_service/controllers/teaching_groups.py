@@ -5,10 +5,9 @@ from __future__ import annotations
 import uuid
 
 from fastapi import HTTPException, status
+from fastapi_m8 import UserModel
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
-
-from auth_sdk_m8.schemas.user import UserModel
 
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.classroom_stages import (

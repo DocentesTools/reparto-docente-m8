@@ -11,13 +11,18 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import Optional
 
+from auth_sdk_m8.schemas.user import UserModel
 from sqlmodel import Session, select
 
 from reparto_service.db_models.academic_years import AcademicYear
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.assignments import Assignment
 from reparto_service.db_models.classroom_stages import ClassroomStage
+from reparto_service.db_models.department_hour_allocation_revisions import (
+    DepartmentHourAllocationRevision,
+)
 from reparto_service.db_models.departments import Department
+from reparto_service.db_models.group_subjects import GroupSubject
 from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.meeting_sessions import MeetingSession
 from reparto_service.db_models.process_teachers import ProcessTeacher
@@ -25,18 +30,29 @@ from reparto_service.db_models.selection_turns import SelectionTurn
 from reparto_service.db_models.schools import School
 from reparto_service.db_models.subjects import Subject
 from reparto_service.db_models.teacher_profiles import TeacherProfile
+from reparto_service.db_models.teaching_activities import (
+    TeachingActivity,
+    TeachingActivityGroup,
+)
 from reparto_service.db_models.teaching_groups import TeachingGroup
+from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
     AcademicYearStatus,
+    ActivityType,
     AssignmentProcessStatus,
     AssignmentSource,
     AssignmentStatus,
-    AssignmentType,
+    DepartmentHourAllocationSource,
+    FeasibilityStatus,
+    HourRequirementStatus,
     MeetingSessionStatus,
     ProcessTeacherStatus,
-    RequirementType,
     SelectionOrderMode,
     SelectionTurnStatus,
+    SubjectAllocationCategory,
+    TeachingActivitySource,
+    TeachingActivitySyncState,
+    TeachingPlanStatus,
 )
 
 
@@ -125,6 +141,58 @@ def make_assignment_process(
     return process
 
 
+def make_allocation_revision(
+    session: Session,
+    process: AssignmentProcess,
+    *,
+    revision_number: int = 1,
+    allocated_group_weekly_hours: float = 120.0,
+    reason: str = "Initial leadership allocation",
+    source: DepartmentHourAllocationSource = (
+        DepartmentHourAllocationSource.MANUAL_TRANSCRIPTION
+    ),
+    source_reference: Optional[str] = None,
+    superseded_at: Optional[datetime] = None,
+    creator_id: Optional[uuid.UUID] = None,
+) -> DepartmentHourAllocationRevision:
+    revision = DepartmentHourAllocationRevision(
+        assignment_process_id=process.id,
+        revision_number=revision_number,
+        allocated_group_weekly_hours=allocated_group_weekly_hours,
+        reason=reason,
+        source=source,
+        source_reference=source_reference,
+        superseded_at=superseded_at,
+        created_by_user_id=creator_id or uuid.uuid4(),
+    )
+    session.add(revision)
+    session.commit()
+    session.refresh(revision)
+    return revision
+
+
+def make_teaching_plan(
+    session: Session,
+    process: AssignmentProcess,
+    *,
+    status: TeachingPlanStatus = TeachingPlanStatus.DRAFT,
+    current_generation_number: int = 0,
+    feasibility_status: FeasibilityStatus = FeasibilityStatus.NOT_EVALUATED,
+    stale_reason: Optional[str] = None,
+) -> TeachingPlan:
+    plan = TeachingPlan(
+        assignment_process_id=process.id,
+        status=status,
+        current_generation_number=current_generation_number,
+        feasibility_status=feasibility_status,
+        stale_reason=stale_reason,
+    )
+    session.add(plan)
+    session.commit()
+    session.refresh(plan)
+    return plan
+
+
 def make_teacher_profile(
     session: Session,
     *,
@@ -147,7 +215,8 @@ def make_process_teacher(
     process: AssignmentProcess,
     profile: TeacherProfile,
     *,
-    available_hours: float = 18.0,
+    base_weekly_hours: float = 18.0,
+    extra_weekly_hours: float = 0.0,
     status: ProcessTeacherStatus = ProcessTeacherStatus.ACTIVE,
     selection_position: Optional[int] = None,
     selection_points: Optional[float] = None,
@@ -159,7 +228,8 @@ def make_process_teacher(
     pt = ProcessTeacher(
         assignment_process_id=process.id,
         teacher_profile_id=profile.id,
-        available_hours=available_hours,
+        base_weekly_hours=base_weekly_hours,
+        extra_weekly_hours=extra_weekly_hours,
         status=status,
         selection_position=selection_position,
         selection_points=selection_points,
@@ -179,10 +249,26 @@ def make_subject(
     process: AssignmentProcess,
     *,
     name: str = "Mathematics",
+    allocation_category: SubjectAllocationCategory = SubjectAllocationCategory.MAIN,
+    activity_type: ActivityType = ActivityType.ORDINARY,
+    default_group_weekly_hours: float | None = None,
+    default_teacher_weekly_hours_per_position: float | None = None,
+    default_required_teacher_count: int = 1,
+    allows_multiple_groups: bool = False,
+    allows_zero_groups: bool = False,
 ) -> Subject:
     subject = Subject(
         assignment_process_id=process.id,
         name=name,
+        allocation_category=allocation_category,
+        activity_type=activity_type,
+        default_group_weekly_hours=default_group_weekly_hours,
+        default_teacher_weekly_hours_per_position=(
+            default_teacher_weekly_hours_per_position
+        ),
+        default_required_teacher_count=default_required_teacher_count,
+        allows_multiple_groups=allows_multiple_groups,
+        allows_zero_groups=allows_zero_groups,
     )
     session.add(subject)
     session.commit()
@@ -220,6 +306,86 @@ def make_teaching_group(
     return group
 
 
+def make_group_subject(
+    session: Session,
+    process: AssignmentProcess,
+    group: TeachingGroup,
+    subject: Subject,
+    *,
+    group_weekly_hours: float | None = None,
+    teacher_weekly_hours_per_position: float | None = None,
+    required_teacher_count: int = 1,
+    active: bool = True,
+    notes: Optional[str] = None,
+) -> GroupSubject:
+    group_subject = GroupSubject(
+        assignment_process_id=process.id,
+        teaching_group_id=group.id,
+        subject_id=subject.id,
+        group_weekly_hours=group_weekly_hours,
+        teacher_weekly_hours_per_position=teacher_weekly_hours_per_position,
+        required_teacher_count=required_teacher_count,
+        active=active,
+        notes=notes,
+    )
+    session.add(group_subject)
+    session.commit()
+    session.refresh(group_subject)
+    return group_subject
+
+
+def make_teaching_activity(
+    session: Session,
+    plan: TeachingPlan,
+    subject: Subject,
+    *,
+    allocation_category: SubjectAllocationCategory = SubjectAllocationCategory.SECONDARY,
+    activity_type: ActivityType = ActivityType.ORDINARY,
+    group_weekly_hours_per_group: float = 2.0,
+    teacher_weekly_hours_per_position: float = 2.0,
+    required_teacher_count: int = 1,
+    source: TeachingActivitySource = TeachingActivitySource.SECONDARY_MANUAL,
+    source_group_subject_id: Optional[uuid.UUID] = None,
+    sync_state: TeachingActivitySyncState = TeachingActivitySyncState.IN_SYNC,
+    notes: Optional[str] = None,
+    group_subjects: Optional[list[GroupSubject]] = None,
+) -> TeachingActivity:
+    activity = TeachingActivity(
+        teaching_plan_id=plan.id,
+        subject_id=subject.id,
+        allocation_category=allocation_category,
+        activity_type=activity_type,
+        group_weekly_hours_per_group=group_weekly_hours_per_group,
+        teacher_weekly_hours_per_position=teacher_weekly_hours_per_position,
+        required_teacher_count=required_teacher_count,
+        source=source,
+        source_group_subject_id=source_group_subject_id,
+        sync_state=sync_state,
+        notes=notes,
+    )
+    session.add(activity)
+    session.commit()
+    session.refresh(activity)
+    for cell in group_subjects or []:
+        make_teaching_activity_group(session, activity, cell)
+    return activity
+
+
+def make_teaching_activity_group(
+    session: Session,
+    activity: TeachingActivity,
+    group_subject: GroupSubject,
+) -> TeachingActivityGroup:
+    link = TeachingActivityGroup(
+        teaching_activity_id=activity.id,
+        group_subject_id=group_subject.id,
+    )
+    session.add(link)
+    session.commit()
+    session.refresh(link)
+    return link
+
+
 def make_classroom_stage(
     session: Session,
     *,
@@ -249,18 +415,27 @@ def make_classroom_stage(
 def make_hour_requirement(
     session: Session,
     process: AssignmentProcess,
-    group: TeachingGroup,
-    subject: Subject,
+    activity: TeachingActivity,
     *,
-    required_hours: float = 4.0,
-    requirement_type: RequirementType = RequirementType.ORDINARY,
+    position_index: int = 0,
+    required_teacher_hours: float = 4.0,
+    created_generation: int = 1,
+    last_validated_generation: int = 1,
+    retired_generation: Optional[int] = None,
+    superseded_by_requirement_id: Optional[uuid.UUID] = None,
+    status: HourRequirementStatus = HourRequirementStatus.AVAILABLE,
 ) -> HourRequirement:
+    """Insert one generated teacher-position slot (plan §5.9, §20.8)."""
     requirement = HourRequirement(
         assignment_process_id=process.id,
-        teaching_group_id=group.id,
-        subject_id=subject.id,
-        required_hours=required_hours,
-        requirement_type=requirement_type,
+        teaching_activity_id=activity.id,
+        position_index=position_index,
+        required_teacher_hours=required_teacher_hours,
+        created_generation=created_generation,
+        last_validated_generation=last_validated_generation,
+        retired_generation=retired_generation,
+        superseded_by_requirement_id=superseded_by_requirement_id,
+        status=status,
     )
     session.add(requirement)
     session.commit()
@@ -274,23 +449,27 @@ def make_assignment(
     requirement: HourRequirement,
     process_teacher: ProcessTeacher,
     *,
-    assigned_hours: float = 4.0,
-    assignment_type: AssignmentType = AssignmentType.MAIN,
     source: AssignmentSource = AssignmentSource.DEPARTMENT_HEAD,
-    status: AssignmentStatus = AssignmentStatus.CONFIRMED,
+    status: AssignmentStatus = AssignmentStatus.ACTIVE,
     chosen_by_user_id: Optional[uuid.UUID] = None,
-    override_reason: Optional[str] = None,
+    confirmed_by_user_id: Optional[uuid.UUID] = None,
+    notes: Optional[str] = None,
 ) -> Assignment:
+    """Insert one complete-slot assignment (plan §5.10, §20.9).
+
+    ``teaching_activity_id`` is denormalised from the requirement, matching the
+    controller and the composite FK / active partial-unique indexes.
+    """
     assignment = Assignment(
         assignment_process_id=process.id,
         hour_requirement_id=requirement.id,
+        teaching_activity_id=requirement.teaching_activity_id,
         process_teacher_id=process_teacher.id,
-        assigned_hours=assigned_hours,
-        assignment_type=assignment_type,
         source=source,
         status=status,
         chosen_by_user_id=chosen_by_user_id or uuid.uuid4(),
-        override_reason=override_reason,
+        confirmed_by_user_id=confirmed_by_user_id,
+        notes=notes,
     )
     session.add(assignment)
     session.commit()
@@ -338,3 +517,23 @@ def make_selection_turn(
     session.commit()
     session.refresh(turn)
     return turn
+
+
+def enrol(
+    session: Session,
+    process: AssignmentProcess,
+    user: UserModel,
+    *,
+    display_name: str = "Scoped Teacher",
+) -> ProcessTeacher:
+    """Give *user* read scope on *process* by making them a participant.
+
+    Read scope is derived from participation (plan §21.4), so a `READER` or
+    `WRITER` sees nothing at all until they belong somewhere. Tests that mean
+    to assert "the right role is refused" call this first, so the refusal they
+    observe is the role gate and not the scope gate — the stronger claim.
+    """
+    profile = make_teacher_profile(
+        session, display_name=display_name, user_id=uuid.UUID(str(user.id))
+    )
+    return make_process_teacher(session, process, profile)
