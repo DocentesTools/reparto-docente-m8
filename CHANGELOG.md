@@ -38,6 +38,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   request schemas. Per the Compose bootstrap policy the revision is produced
   from these models on a deployment's first start-up against a clean database.
 
+- **`GET /assignment-processes/{id}/summary` reports balanced, pending and
+  overloaded participant counts** (remediation `W1.6`).
+  `balanced_participant_count`, `pending_participant_count` and
+  `overloaded_participant_count` are read off the same per-participant `state`
+  the department-head dashboard's assignment summary already computes
+  (plan §6.2), never re-derived from raw hours, so the two views can never
+  disagree. All three are nameless aggregate counts, keeping `/summary` safe
+  for a projected shared screen (plan §8.7, `RBAC-07`). No contract-version
+  bump: the fields are purely additive.
+
 ### Changed
 
 - **A participant edit invalidates feasibility only when it moves a solver

@@ -142,6 +142,12 @@ class ProcessSummary(BaseModel):
 
     The dashboard without the message lists and the per-participant rows: the
     balances, the counts and the turn. Suited to a header or a poll.
+
+    ``balanced_participant_count``, ``pending_participant_count`` and
+    ``overloaded_participant_count`` are computed from the same per-participant
+    ``state`` the head's dashboard uses (plan §6.2) — never derived separately.
+    All three are nameless aggregate counts, so this payload stays safe for the
+    projected shared screen (plan §8.7, ``RBAC-07``).
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -163,6 +169,16 @@ class ProcessSummary(BaseModel):
     total_slots: int = Field(ge=0, description="Live requirement slots.")
     assigned_slots: int = Field(ge=0, description="Live slots with an active teacher.")
     available_slots: int = Field(ge=0, description="Live slots still unassigned.")
+    balanced_participant_count: int = Field(
+        ge=0, description="Participants at BALANCED state (plan §6.2)."
+    )
+    pending_participant_count: int = Field(
+        ge=0, description="Participants at PENDING state (plan §6.2)."
+    )
+    overloaded_participant_count: int = Field(
+        ge=0,
+        description="Participants at OVERLOADED_AUTHORIZED state (plan §6.2).",
+    )
     current_turn: Optional[CurrentTurnSummary] = Field(default=None)
     blocking_validation_count: int = Field(
         ge=0, description="Blocking findings across both stages."
