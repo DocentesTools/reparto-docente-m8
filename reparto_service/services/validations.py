@@ -540,7 +540,7 @@ class AssignmentValidationService:
                         ValidationSeverity.BLOCKING,
                         CODE_PARTICIPANT_OVER_TARGET,
                         (
-                            f"Participant {teacher.id} is assigned "
+                            f"Participant {participant.display_name} is assigned "
                             f"{participant.assigned_weekly_hours} hours, above the "
                             f"target of {participant.target_weekly_hours}; increase "
                             "authorized extra hours to allow the overload."
@@ -554,8 +554,9 @@ class AssignmentValidationService:
                         ValidationSeverity.BLOCKING,
                         CODE_PARTICIPANT_BELOW_TARGET,
                         (
-                            f"Participant {teacher.id} is {remaining} hours below "
-                            f"the target of {participant.target_weekly_hours}."
+                            f"Participant {participant.display_name} is {remaining} "
+                            f"hours below the target of "
+                            f"{participant.target_weekly_hours}."
                         ),
                     )
                 )
@@ -566,8 +567,8 @@ class AssignmentValidationService:
                         ValidationSeverity.WARNING,
                         CODE_PARTICIPANT_OVERLOADED,
                         (
-                            f"Participant {teacher.id} has authorized extra hours "
-                            f"({participant.extra_weekly_hours})."
+                            f"Participant {participant.display_name} has authorized "
+                            f"extra hours ({participant.extra_weekly_hours})."
                         ),
                     )
                 )
