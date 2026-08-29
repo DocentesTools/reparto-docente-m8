@@ -5,7 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2026-08-29
+
+`2.0.0` was prepared on 2026-08-25 and never published — `1.1.0` is still the
+newest release on `origin`. The remediation batch below therefore rides this
+same unreleased number rather than taking one of its own, so its breaking role
+changes reach consumers inside the `1.1.0` → `2.0.0` step they already have to
+take. It releases together with `@mano8/astro-reparto-m8@2.0.0`: a `1.x` client
+cannot drive this contract, and a client below `2.0.0` does not gate the
+administrator read floors this version introduces.
 
 ### Added
 
@@ -47,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   disagree. All three are nameless aggregate counts, keeping `/summary` safe
   for a projected shared screen (plan §8.7, `RBAC-07`). No contract-version
   bump: the fields are purely additive.
+- Add the three-stage planning, requirements, assignment, feasibility, audit,
+  versioning, import/export, and role-safe event-stream workflows.
+- Publish the served API surface and the `reparto-docente-m8@2.0.0` contract
+  metadata for client compatibility checks.
 
 ### Changed
 
@@ -155,17 +167,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **This changes the schema.** Per the Compose bootstrap policy the revision is
   produced from these models on a deployment's first start-up against a clean
   database, so it must land before that start-up.
-
-## [2.0.0] - 2026-08-25
-
-### Added
-
-- Add the three-stage planning, requirements, assignment, feasibility, audit,
-  versioning, import/export, and role-safe event-stream workflows.
-- Publish the served API surface and the `reparto-docente-m8@2.0.0` contract
-  metadata for client compatibility checks.
-
-### Changed
 
 - Adopt the `USER < READER < WRITER < ADMIN < SUPERADMIN` role tiers from
   `fa-auth-m8`, including a mounted `READER` floor and explicit route-level
