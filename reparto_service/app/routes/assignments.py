@@ -68,8 +68,18 @@ def create_direct_choice(
 
 @router.get("/validations", response_model=AssignmentValidationReport)
 def get_assignment_validations(
-    session: SessionDep, process_id: uuid.UUID
+    session: SessionDep, current_user: CurrentAdmin, process_id: uuid.UUID
 ) -> AssignmentValidationReport:
+    """Expose the assignment findings only to an administrator (`W7.1`).
+
+    Since `W5.1` every §6.3/§6.4 finding names the participant it is about by
+    display name and carries their hour figures, so the report is the
+    department-head tier in list form — the same tier
+    :mod:`reparto_service.services.sse` withholds from a teacher even on an
+    event about themselves. A participant who needs to know whether the stage
+    is ready asks ``GET .../teaching-plan/summary``, which is nameless and
+    stays at the reader floor.
+    """
     return AssignmentController.get_validations(session, process_id)
 
 

@@ -826,6 +826,34 @@ request a *less* privileged tier with `?audience=teacher|shared_screen` — a
 projection screen should — but asking for a more privileged tier than the role
 grants is refused with `403`.
 
+#### The tier holds after the fact, too (`W7.1`)
+
+`W5.3` moved the two *live* department-head reads and left the rest for one
+decision rather than seven. That decision is taken: a read that carries the
+department-head tier declares `CurrentAdmin` **whenever it is asked**, not only
+while the meeting is running. Seven more reads moved with `W7.1`:
+
+| Read | Why it is the head's tier |
+| --- | --- |
+| `GET …/assignments/validations` | Since `W5.1` every §6.3/§6.4 finding names the participant it is about and quotes their hours |
+| `GET …/teaching-plan/validations` | Its twin, and the same messages |
+| `GET …/audit-events/` | The extra-hours event is stored with `reason` beside that participant's base, extra and target hours — the one key the SSE teacher tier withholds even about the viewer themselves |
+| `GET …/versions` | A snapshot is a whole-process dump; `extra_hours_reason` is restored out of one |
+| `GET …/versions/{left}/compare/{right}` | Reads two snapshots |
+| `GET …/compare-previous-year` | Same payload, one side implied |
+| `GET …/exports` | The inventory of the artefacts built from all of it |
+
+The alternative — projecting each payload down to the teacher tier the way
+`services/sse.py` does — was considered and rejected.
+`DEPARTMENT_HEAD_ONLY_PAYLOAD_KEYS` is a key filter over a flat event payload,
+and none of these seven has that shape; a validation report projected to the
+teacher tier is its two counts, which `GET …/teaching-plan/summary` already
+serves at the reader floor. Nothing lost a source, and §21.4's ordering is
+unchanged: every one of the seven hangs off a router that already declares
+`require_visible_process`, which FastAPI resolves first, so an out-of-scope
+process is still `404` and the new `403` can never confirm that a process
+exists.
+
 The stream is best-effort; the database stays authoritative. A subscriber that
 falls behind receives a `stream.gap` frame telling it to refetch rather than
 silently missing a change.

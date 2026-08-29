@@ -358,6 +358,20 @@ ROLE_RANK: dict[str, int] = {
 #: participant cleared the scope check and was handed the head's payload. The
 #: teacher tier reads ``/lan/me`` and the shared screen reads ``/summary``, so
 #: no screen lost a source.
+#:
+#: `W7.1` finished that narrowing in one decision rather than seven. `W5.3`
+#: moved the two live reads and said so explicitly: the reader surface was not
+#: teacher-tier-clean afterwards. The same tier was still reachable *after the
+#: fact* — the two validation reports (whose messages name the participant a
+#: finding is about, since `W5.1`), the stored audit trail (whose extra-hours
+#: event carries ``reason`` beside the participant's hours), the version
+#: snapshots and their two comparison routes (a whole-process dump, including
+#: ``extra_hours_reason``), and the export inventory built from all of it.
+#: Projecting each payload down to the teacher tier was the alternative and was
+#: rejected: ``DEPARTMENT_HEAD_ONLY_PAYLOAD_KEYS`` is a key filter over a flat
+#: event payload, and none of these seven has that shape — a projected
+#: validation report is its two counts, which ``…/teaching-plan/summary``
+#: already serves at the reader floor.
 ADMIN_ONLY_READS: frozenset[tuple[str, str]] = frozenset(
     {
         (
@@ -383,6 +397,26 @@ ADMIN_ONLY_READS: frozenset[tuple[str, str]] = frozenset(
                 "/teachers/{process_teacher_id}"
             ),
         ),
+        # Remediation `W7.1` — the after-the-fact reads of the same tier.
+        (
+            "GET",
+            ("/reparto/assignment-processes/{process_id}/assignments/validations"),
+        ),
+        (
+            "GET",
+            ("/reparto/assignment-processes/{process_id}/teaching-plan/validations"),
+        ),
+        ("GET", "/reparto/assignment-processes/{process_id}/audit-events/"),
+        ("GET", "/reparto/assignment-processes/{process_id}/versions"),
+        (
+            "GET",
+            (
+                "/reparto/assignment-processes/{process_id}"
+                "/versions/{left_version_id}/compare/{right_version_id}"
+            ),
+        ),
+        ("GET", "/reparto/assignment-processes/{process_id}/compare-previous-year"),
+        ("GET", "/reparto/assignment-processes/{process_id}/exports"),
     }
 )
 

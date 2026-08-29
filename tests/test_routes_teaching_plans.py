@@ -395,13 +395,29 @@ def test_get_validations_process_not_found(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-def test_get_validations_reader_allowed(
+def test_get_validations_refused_to_a_participant(
     reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
+    """The planning report moved to the administrator floor with `W7.1`.
+
+    Its twin in ``test_routes_assignments.py`` moved for the same reason, and
+    ``summary`` below is the nameless read a participant keeps.
+    """
     process = factories.make_assignment_process(session)
     factories.enrol(session, process, reader)
     factories.make_teaching_plan(session, process)
     resp = reader_client.get(f"{_BASE}/{process.id}/teaching-plan/validations")
+    assert resp.status_code == 403
+
+
+def test_get_summary_stays_readable_by_a_participant(
+    reader_client: TestClient, session: Session, reader: UserModel
+) -> None:
+    """`W7.1` narrowed the report, not the readiness question behind it."""
+    process = factories.make_assignment_process(session)
+    factories.enrol(session, process, reader)
+    factories.make_teaching_plan(session, process)
+    resp = reader_client.get(f"{_BASE}/{process.id}/teaching-plan/summary")
     assert resp.status_code == 200
 
 

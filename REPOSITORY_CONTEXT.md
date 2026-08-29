@@ -82,6 +82,18 @@ ever produce a second, divergent answer.
   list. The teacher tier reads `…/lan/me` and the shared screen reads
   `…/summary`; both are at the reader floor because neither carries another
   participant's figures.
+- **The tier does not expire when the meeting ends.** The same rule governs the
+  after-the-fact reads: both validation reports, the stored audit trail, the
+  version list and its two comparison routes, and the export inventory are the
+  head's tier read later, and they sit at the administrator floor for that
+  reason alone. The alternative — a second redaction rule projecting each
+  payload down to the teacher tier — was considered and rejected: `sse.py`'s
+  `DEPARTMENT_HEAD_ONLY_PAYLOAD_KEYS` is a key filter over a flat event
+  payload, no report or snapshot has that shape, and a validation report
+  projected to the teacher tier is its two counts, which
+  `…/teaching-plan/summary` already serves at the reader floor. Adding a read
+  to `ADMIN_ONLY_READS` is how that decision is recorded; it is not a
+  per-endpoint judgement call.
 
 ### Controller-level role checks are kept on purpose
 

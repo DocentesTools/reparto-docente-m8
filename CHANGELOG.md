@@ -77,6 +77,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   role, so an out-of-scope or non-existent process is still a `404` and the new
   `403` cannot confirm that a process exists (§21.4).
 
+- **The department-head read tier holds after the fact as well** (remediation
+  `W7.1`). `W5.3` narrowed the two *live* reads and said in the same breath
+  that this did not make the reader surface teacher-tier-clean. It did not:
+  seven reads still served the same tier to any participant of the department,
+  and they are settled here as **one decision rather than seven**.
+
+  **Breaking for a `READER`/`WRITER` caller.** These now declare `CurrentAdmin`
+  and answer `403` below that floor, joining `ADMIN_ONLY_READS`:
+
+  | Read | Why it is the head's tier |
+  | --- | --- |
+  | `GET …/assignments/validations` | Since `W5.1` every §6.3/§6.4 finding names the participant it is about and quotes their hours |
+  | `GET …/teaching-plan/validations` | Its twin, and the same messages |
+  | `GET …/audit-events/` | The extra-hours event is stored with `reason` — the one key the SSE teacher tier withholds even about the viewer themselves — beside that participant's base, extra and target weekly hours |
+  | `GET …/versions` | A snapshot is a whole-process dump; `extra_hours_reason` is restored out of one |
+  | `GET …/versions/{left}/compare/{right}` | Reads two snapshots |
+  | `GET …/compare-previous-year` | The same `VersionComparison`, one side implied |
+  | `GET …/exports` | The inventory of the artefacts built from all of it |
+
+  The comparison-by-id route was not on the remediation's own list of six; it
+  returns the identical payload as `compare-previous-year` from the same
+  router, so leaving it behind would have been a hole rather than a decision.
+
+  The alternative — projecting each payload down to the teacher tier the way
+  `services/sse.py` does — was considered and rejected.
+  `DEPARTMENT_HEAD_ONLY_PAYLOAD_KEYS` is a key filter over a flat event
+  payload and none of these seven has that shape; a validation report projected
+  to the teacher tier is its two counts, which `GET …/teaching-plan/summary`
+  already serves at the reader floor and which stays there. Every one of the
+  seven already hangs off a router declaring `require_visible_process`, which
+  FastAPI resolves before the handler, so an out-of-scope or non-existent
+  process is still `404` and the new `403` cannot confirm that a process exists
+  (§21.4). `tests/test_read_scope.py` pins all seven for a `READER` *and* a
+  `WRITER` — the floor is confidentiality, not the verb.
+
+  No path was added, removed or re-verbed, so `docs/served-api-surface.json` is
+  unchanged; the role change itself is what makes the pending release breaking.
+
 - **A participant edit invalidates feasibility only when it moves a solver
   input** (remediation `W1.5`). `PATCH
   /assignment-processes/{id}/teachers/{teacher_id}` carries the selection order

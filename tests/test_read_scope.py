@@ -20,6 +20,7 @@ from sqlmodel import Session
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.services import read_scope
 from tests import factories
+from tests.conftest import identity_client as _identity_client
 from tests.conftest import make_user
 
 _PROCESSES = "/reparto/assignment-processes"
@@ -361,3 +362,113 @@ def test_the_department_head_floor_never_reveals_an_out_of_scope_process(
     assert (
         reader_client.get(f"{_PROCESSES}/{uuid.uuid4()}/dashboard").status_code == 404
     )
+
+
+# ── The after-the-fact reads of the same tier (remediation `W7.1`) ───────────
+
+
+#: The seven reads `W7.1` moved to the administrator floor, as templates over a
+#: process id. `W5.3` narrowed the two *live* department-head reads and said in
+#: the same breath that this did not leave the reader surface teacher-tier-clean;
+#: these are the rest, and they were taken as one decision rather than seven.
+_AFTER_THE_FACT_READS: tuple[str, ...] = (
+    "{process}/assignments/validations",
+    "{process}/teaching-plan/validations",
+    "{process}/audit-events/",
+    "{process}/versions",
+    "{process}/versions/{left}/compare/{right}",
+    "{process}/compare-previous-year",
+    "{process}/exports",
+)
+
+
+def _after_the_fact_paths(process_id: uuid.UUID) -> list[str]:
+    """Render the seven templates against one process."""
+    return [
+        template.format(
+            process=f"{_PROCESSES}/{process_id}",
+            left=uuid.uuid4(),
+            right=uuid.uuid4(),
+        )
+        for template in _AFTER_THE_FACT_READS
+    ]
+
+
+def test_a_participant_is_refused_the_tier_after_the_fact(
+    reader_client: TestClient, session: Session, reader: UserModel
+) -> None:
+    """Reviewing the record later is the same tier as watching it live.
+
+    Each of these carries what §20.25 calls the department-head tier. The two
+    validation reports name the participant a finding is about and quote their
+    hours (`W5.1`). The audit trail stores the extra-hours event with
+    ``reason`` — the key
+    :data:`reparto_service.services.sse.DEPARTMENT_HEAD_ONLY_PAYLOAD_KEYS`
+    withholds from a teacher on the live stream *even about themselves* —
+    beside that participant's base, extra and target weekly hours. A version
+    snapshot is a whole-process dump carrying the same field, and both
+    comparison routes read two of them; the export list inventories the
+    artefacts built from all of it.
+    """
+    process, _theirs = _two_departments(session)
+    factories.enrol(session, process, reader)
+
+    for path in _after_the_fact_paths(process.id):
+        assert reader_client.get(path).status_code == 403, path
+
+
+@pytest.mark.parametrize("role", ["reader", "writer"])
+def test_the_after_the_fact_floor_is_the_tier_not_the_verb(
+    session: Session, role: str
+) -> None:
+    """A ``WRITER`` is refused too: the floor is confidentiality, not mutation.
+
+    ``WRITER`` in this service means "may mutate my own records" (§21.3), which
+    says nothing about reading a colleague's figures. Pinning both roles keeps
+    the rule from decaying into "reads are for readers, writes are for writers".
+    """
+    user = make_user(role)
+    process, _theirs = _two_departments(session)
+    factories.enrol(session, process, user)
+
+    client = _identity_client(session, user)
+    for path in _after_the_fact_paths(process.id):
+        assert client.get(path).status_code == 403, path
+
+
+def test_the_after_the_fact_floor_never_reveals_an_out_of_scope_process(
+    reader_client: TestClient, session: Session, reader: UserModel
+) -> None:
+    """Scope still answers before the role, so the new 403 tells a stranger nothing.
+
+    Every one of the seven hangs off a router that already declares
+    ``require_visible_process``, and FastAPI resolves a route-level dependency
+    before the handler's own. A process in another department — or one that
+    does not exist — is 404 as it was, and §21.4's ordering holds.
+    """
+    mine, theirs = _two_departments(session)
+    factories.enrol(session, mine, reader)
+
+    for path in _after_the_fact_paths(theirs.id):
+        assert reader_client.get(path).status_code == 404, path
+    for path in _after_the_fact_paths(uuid.uuid4()):
+        assert reader_client.get(path).status_code == 404, path
+
+
+def test_the_nameless_readiness_reads_stay_at_the_reader_floor(
+    reader_client: TestClient, session: Session, reader: UserModel
+) -> None:
+    """Narrowing the reports cost no screen, because the counts have their own read.
+
+    ``…/teaching-plan/summary`` answers "is this plan balanced" without naming
+    anyone, which is the question a participant or a projected screen actually
+    asks of a validation report. That it stays readable is what makes the
+    narrowing above a tier decision rather than a loss of function.
+    """
+    process, _theirs = _two_departments(session)
+    factories.make_teaching_plan(session, process)
+    factories.enrol(session, process, reader)
+
+    summary = reader_client.get(f"{_PROCESSES}/{process.id}/teaching-plan/summary")
+    assert summary.status_code == 200
+    assert "messages" not in summary.json()
