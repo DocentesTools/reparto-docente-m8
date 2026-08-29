@@ -121,6 +121,8 @@
     "POST /reparto/departments/",
     "POST /reparto/schools/",
     "POST /reparto/teacher-profiles/",
+    "POST /reparto/teacher-profiles/claim",
+    "POST /reparto/teacher-profiles/{profile_id}/claim-code",
     "POST /reparto/teacher-profiles/{profile_id}/link-user"
   ]
 }

@@ -653,6 +653,36 @@ Mapping: `CurrentAdmin` for every process/planning mutation (the department
 head, §21.2) and all platform reference data; `CurrentWriter` for the three
 own-data actions; `CurrentReader` everywhere else.
 
+**One mutation is authorized by a credential rather than by a role.**
+`POST /teacher-profiles/claim` sits at the reader floor, and deliberately.
+Binding a profile to an account used to need the head to *know* the account's
+user id, and the accounts directory belongs to `fa-auth-m8`, which restricts it
+to superusers by its own design — so linking a colleague was a superuser act
+and the roster's *Link user* button could only ever link the head to
+themselves. Nothing here may widen that directory, so the direction is
+reversed: the head mints a single-use code
+(`POST /teacher-profiles/{id}/claim-code`, `CurrentAdmin`) and the teacher
+redeems it with their own token. Four properties carry the weight, and none of
+them is the role:
+
+* the request schema has no `user_id` at all, so the only account a claim can
+  bind is the caller's own, read from the token;
+* the code is ~98 bits from `secrets`, stored only as a SHA-256 digest
+  (`services/claim_codes.py`), so a database read cannot redeem anything and a
+  lost code is reissued rather than recovered;
+* it is single-use and expiring (`CLAIM_CODE_TTL_HOURS`), and minting again
+  replaces the outstanding code — which is how a code read out in the wrong
+  room is revoked;
+* the linkage itself goes through `TeacherProfileController.link_user`, so the
+  "one profile per account" `409` is the same rule the head's own action obeys,
+  not a second copy of it.
+
+The floor is `READER` and not `WRITER` because a read-only participant would
+otherwise never reach their own view: the linkage is what makes *My view*
+resolvable at all. Both halves are audited — `teacher_profile.claim_code_issued`
+and `teacher_profile.claimed` — once per process the profile participates in,
+because `AuditEvent` is process-scoped and that is where the trail is read.
+
 `DomainController` keeps only the checks a dependency cannot express, because
 they need the row:
 

@@ -15,6 +15,8 @@ from reparto_service.app.deps import (
 )
 from reparto_service.controllers.teacher_profiles import TeacherProfileController
 from reparto_service.db_models.teacher_profiles import (
+    TeacherProfileClaim,
+    TeacherProfileClaimCode,
     TeacherProfileCreate,
     TeacherProfileLinkUser,
     TeacherProfilePublic,
@@ -45,6 +47,31 @@ def create_profile(
     profile_in: TeacherProfileCreate,
 ) -> TeacherProfilePublic:
     return TeacherProfileController.create_profile(session, profile_in)
+
+
+@router.post("/claim", response_model=TeacherProfilePublic)
+def claim_profile(
+    session: SessionDep,
+    current_user: CurrentReader,
+    claim_in: TeacherProfileClaim,
+) -> TeacherProfilePublic:
+    """Redeem a claim code against the caller's **own** account (`W1.4`).
+
+    The one mutation in this service whose authorization is a credential rather
+    than a role, and deliberately so. The department head cannot look a
+    colleague's user id up — ``fa-auth-m8`` restricts its directory to
+    superusers by its own design — so the head issues a code instead and the
+    teacher presents it with their own token. The floor is therefore the
+    service's reader floor and no higher: requiring ``WRITER`` would leave a
+    read-only participant permanently unable to reach their own view, and
+    requiring more would put a superuser back on the path this whole flow
+    exists to remove. It stays safe because the caller's id comes from the
+    token (the schema has no ``user_id`` at all, so no payload can name another
+    account) and because the code is single-use, expiring and hashed at rest.
+
+    Declared above ``/{profile_id}`` so the literal path is never read as an id.
+    """
+    return TeacherProfileController.claim_profile(session, current_user, claim_in)
 
 
 @router.get("/{profile_id}", response_model=TeacherProfilePublic)
@@ -82,6 +109,25 @@ def link_profile_user(
     link_in: TeacherProfileLinkUser,
 ) -> TeacherProfilePublic:
     return TeacherProfileController.link_user(session, profile_id, link_in)
+
+
+@router.post(
+    "/{profile_id}/claim-code",
+    response_model=TeacherProfileClaimCode,
+    status_code=201,
+)
+def issue_profile_claim_code(
+    session: SessionDep,
+    current_user: CurrentAdmin,
+    profile_id: uuid.UUID,
+) -> TeacherProfileClaimCode:
+    """Mint the code a teacher redeems to claim *profile_id* (`W1.4`).
+
+    The response is the only time the code exists in readable form — it is
+    stored hashed — so a head who loses it issues another rather than reading
+    it back.
+    """
+    return TeacherProfileController.issue_claim_code(session, current_user, profile_id)
 
 
 @router.delete("/{profile_id}", response_model=TeacherProfilePublic)

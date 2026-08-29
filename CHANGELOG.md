@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A teacher binds their own profile with a claim code** (remediation `W1.4`).
+  Linking a profile to an account needed the head to know that account's user
+  id, and the accounts directory belongs to `fa-auth-m8`, which restricts it to
+  superusers by its own design — so naming a colleague was a superuser act and
+  nothing here may widen it. The direction is reversed instead:
+  `POST /teacher-profiles/{id}/claim-code` (`CurrentAdmin`, `201`) mints a
+  single-use code and returns it **once**, and `POST /teacher-profiles/claim`
+  takes that code and links the profile to the *caller's own* account, read
+  from the token. The claim schema carries no `user_id`, so no payload can name
+  another account; the code is ~98 bits from `secrets`, stored only as a
+  SHA-256 digest, expiring (`CLAIM_CODE_TTL_HOURS`, default 72) and consumed by
+  the redemption that succeeds; minting again replaces the outstanding code.
+  The linkage reuses `link_user`, so the "one profile per account" `409` is the
+  existing rule rather than a second copy of it, and a caller refused by it
+  leaves the code redeemable for the teacher it was meant for. Both halves
+  audit `teacher_profile.claim_code_issued` / `teacher_profile.claimed`, once
+  per process the profile participates in.
+
+  `POST /teacher-profiles/claim` is the service's only reader-floor mutation:
+  its authorization is the credential, not the role, and requiring `WRITER`
+  would leave a read-only participant permanently unable to reach their own
+  view. `tests/test_authorization_boundaries.py` classifies it explicitly
+  rather than by default, and asserts the absent `user_id`.
+
+  **This changes the schema** — `teacher_profile` gains `claim_code_hash` and
+  `claim_code_expires_at`, both nullable and on neither the public nor the
+  request schemas. Per the Compose bootstrap policy the revision is produced
+  from these models on a deployment's first start-up against a clean database.
+
 ### Changed
 
 - **Every stored hour value is now a `NUMERIC(8, 2)` column** (plan §3.9,
