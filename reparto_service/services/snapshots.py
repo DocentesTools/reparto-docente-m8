@@ -218,14 +218,10 @@ class SnapshotService:
                     "allocation_category": activity.allocation_category.value,
                     "activity_type": activity.activity_type.value,
                     "group_weekly_hours_per_group": str(
-                        quantize_hours(
-                            Decimal(str(activity.group_weekly_hours_per_group))
-                        )
+                        quantize_hours(activity.group_weekly_hours_per_group)
                     ),
                     "teacher_weekly_hours_per_position": str(
-                        quantize_hours(
-                            Decimal(str(activity.teacher_weekly_hours_per_position))
-                        )
+                        quantize_hours(activity.teacher_weekly_hours_per_position)
                     ),
                     "required_teacher_count": activity.required_teacher_count,
                     "source_group_subject_id": (
@@ -265,7 +261,7 @@ class SnapshotService:
                 "teaching_activity_id": str(row.teaching_activity_id),
                 "position_index": row.position_index,
                 "required_teacher_hours": str(
-                    quantize_hours(Decimal(str(row.required_teacher_hours)))
+                    quantize_hours(row.required_teacher_hours)
                 ),
                 "status": row.status.value,
                 "created_generation": row.created_generation,

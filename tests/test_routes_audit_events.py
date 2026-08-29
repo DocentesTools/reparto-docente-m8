@@ -40,7 +40,7 @@ def test_three_stage_mutations_are_audited_with_canonical_types(
         json={
             "assignment_process_id": str(process.id),
             "teacher_profile_id": str(profile.id),
-            "base_weekly_hours": 18,
+            "base_weekly_hours": "18.00",
         },
     )
     assert teacher_resp.status_code == 201
@@ -68,7 +68,7 @@ def test_three_stage_mutations_are_audited_with_canonical_types(
     # Stage 2 — department teaching-load planning.
     allocation_resp = client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
-        json={"allocated_group_weekly_hours": 120, "reason": "First allocation"},
+        json={"allocated_group_weekly_hours": "120.00", "reason": "First allocation"},
     )
     assert allocation_resp.status_code == 201
 
@@ -88,7 +88,7 @@ def test_three_stage_mutations_are_audited_with_canonical_types(
     # An audited extra-hours change (plan §3.8, §7.6).
     extra_resp = client.post(
         f"{_BASE}/{process.id}/teachers/{teacher_id}/extra-hours",
-        json={"extra_weekly_hours": 4, "reason": "Cover maternity leave"},
+        json={"extra_weekly_hours": "4.00", "reason": "Cover maternity leave"},
     )
     assert extra_resp.status_code == 200
 
@@ -137,17 +137,17 @@ def _seed_mixed_trail(client: TestClient, session: Session):
         json={
             "assignment_process_id": str(process.id),
             "teacher_profile_id": str(profile.id),
-            "base_weekly_hours": 10,
+            "base_weekly_hours": "10.00",
         },
     )
     teacher_id = teacher_resp.json()["id"]
     client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
-        json={"allocated_group_weekly_hours": 120, "reason": "First"},
+        json={"allocated_group_weekly_hours": "120.00", "reason": "First"},
     )
     client.post(
         f"{_BASE}/{process.id}/teachers/{teacher_id}/extra-hours",
-        json={"extra_weekly_hours": 2, "reason": "Extra load"},
+        json={"extra_weekly_hours": "2.00", "reason": "Extra load"},
     )
     return process
 

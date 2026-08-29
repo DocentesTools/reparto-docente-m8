@@ -276,7 +276,7 @@ def test_participant_mutation_endpoint_invalidates_cached_witness(
     admin_client.post(_path(process.id, "evaluate"))
     response = admin_client.patch(
         f"/reparto/assignment-processes/{process.id}/teachers/{teachers[0].id}",
-        json={"base_weekly_hours": 5.0},
+        json={"base_weekly_hours": "5.00"},
     )
     assert response.status_code == 200
     session.refresh(plan)
@@ -463,7 +463,7 @@ def test_diagnostics_fail_closed_after_invalidation(
 
     patch = admin_client.patch(
         f"/reparto/assignment-processes/{process.id}/teachers/{teachers[0].id}",
-        json={"base_weekly_hours": 6.0},
+        json={"base_weekly_hours": "6.00"},
     )
     assert patch.status_code == 200
 

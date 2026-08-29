@@ -770,8 +770,8 @@ class AssignmentController(DomainController):
         assigned = AssignmentCalculationService.compute_participant_assigned_hours(
             session, process_teacher
         )
-        slot_hours = quantize_hours(Decimal(str(requirement.required_teacher_hours)))
-        target = quantize_hours(Decimal(str(process_teacher.target_weekly_hours)))
+        slot_hours = requirement.required_teacher_hours
+        target = process_teacher.target_weekly_hours
         if quantize_hours(assigned + slot_hours) > target:
             remaining = quantize_hours(target - assigned)
             raise HTTPException(

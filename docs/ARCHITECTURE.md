@@ -430,11 +430,21 @@ input validator (rejecting binary floats, negatives and more than two decimal
 places), the canonical decimal-string API representation (`"2.50"`), and a
 `HoursNumeric` `NUMERIC(8, 2)` column type.
 
-The stored hour **columns are still `float`** today; the column-level migration
-onto `HoursNumeric` is a pending task. Until it lands, every value is lifted into
-a two-place `Decimal` **via its string form** before any arithmetic or comparison,
-so no binary-float representation reaches a domain decision. A balance is "exact"
-only when the quantized difference is exactly `Decimal("0.00")`.
+**Every stored hour column is `HoursNumeric`.** All eleven of them are
+enumerated from the metadata by `tests/test_hours_columns.py`, so a new hour
+column declared as anything else fails the suite. A stored value therefore
+arrives as a two-place `Decimal` already, so the string-form lifting the
+calculation services used to do is gone; they still quantize every result before
+a comparison. A balance is "exact" only when the quantized difference is exactly
+`Decimal("0.00")`. The lifts that remain read a stored JSON snapshot or validate
+a request body — their input really can be a number or a string.
+
+Hours cross the API as canonical decimal strings in **both** directions:
+`HoursDecimal`/`OptionalHoursDecimal` serialise `"2.50"` on every response and
+refuse a JSON number on every request, so a binary float never enters the
+service. `table=True` models skip Pydantic validation by design, so
+`HoursNumeric` is the second guard: whatever is bound to it — `int`, `str` or a
+stray `float` — is stored quantized.
 
 ### 8.3 Validation services
 
@@ -815,8 +825,6 @@ silently missing a change.
 These are tracked adaptation tasks, not oversights. Each has its schema or
 extension point already in place.
 
-* **Decimal hour columns** — `HoursNumeric` exists but no model uses it yet; hour
-  columns remain `float` and are lifted to `Decimal` in the services (§8.2).
 * **Authorization hardening** — complete (§9.5, §9.5.1): the read floor, the
   `WRITER`-owns-its-own-records rule, the `ADMIN`/`SUPERADMIN` department head,
   the issuer-checked `department_head_user_id`, per-department read scoping, and

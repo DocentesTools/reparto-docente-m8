@@ -139,10 +139,8 @@ class PlanningExchangeController(DomainController):
                 subject_id=subject.id,
                 allocation_category=item.allocation_category,
                 activity_type=item.activity_type,
-                group_weekly_hours_per_group=float(item.group_weekly_hours_per_group),
-                teacher_weekly_hours_per_position=float(
-                    item.teacher_weekly_hours_per_position
-                ),
+                group_weekly_hours_per_group=item.group_weekly_hours_per_group,
+                teacher_weekly_hours_per_position=item.teacher_weekly_hours_per_position,
                 required_teacher_count=item.required_teacher_count,
                 source=TeachingActivitySource.IMPORTED,
                 notes=item.notes,

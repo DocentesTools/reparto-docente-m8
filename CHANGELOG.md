@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Every stored hour value is now a `NUMERIC(8, 2)` column** (plan §3.9,
+  remediation `W6.2`). `HoursNumeric` was defined but unused; the eleven hour
+  columns across `assignment_process`, `department_hour_allocation_revision`,
+  `group_subject`, `hour_requirement`, `process_teacher`, `subject` and
+  `teaching_activity` are on it, and their Python type is `Decimal` rather than
+  `float`. `tests/test_hours_columns.py` enumerates them from the metadata, so a
+  new hour column declared as anything else fails the suite.
+- **Hour fields cross the API as canonical decimal strings in both directions.**
+  Responses already promised `"2.50"`; requests now require it, because the
+  entity schemas share `HoursDecimal` with the planning-import boundary, which
+  has refused binary floats since it was written. A client sending a JSON number
+  for an hour field receives `422` — `@mano8/astro-reparto-m8` has always sent
+  the canonical string, so this is a tightening of the contract rather than a
+  change to what the supported client does.
+
+  **This changes the schema.** Per the Compose bootstrap policy the revision is
+  produced from these models on a deployment's first start-up against a clean
+  database, so it must land before that start-up.
+
 ## [2.0.0] - 2026-08-25
 
 ### Added

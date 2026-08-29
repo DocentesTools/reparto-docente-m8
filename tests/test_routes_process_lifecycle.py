@@ -729,7 +729,7 @@ def test_cannot_add_teacher_to_final_process(
         json={
             "assignment_process_id": str(process.id),
             "teacher_profile_id": str(profile.id),
-            "base_weekly_hours": 18,
+            "base_weekly_hours": "18.00",
         },
     )
     assert resp.status_code == 400

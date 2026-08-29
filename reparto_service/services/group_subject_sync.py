@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from decimal import Decimal
 
 from sqlmodel import Session, col, select
 
@@ -35,14 +36,18 @@ from reparto_service.enums import (
 )
 
 
-def _resolved_hours(override: float | None, default: float | None) -> float:
+#: The canonical two-place zero an unset override/default resolves to.
+_ZERO_HOURS = Decimal("0.00")
+
+
+def _resolved_hours(override: Decimal | None, default: Decimal | None) -> Decimal:
     """Resolve a cell override, its subject default, or the materialized zero."""
 
     if override is not None:
         return override
     if default is not None:
         return default
-    return 0.0
+    return _ZERO_HOURS
 
 
 class GroupSubjectSyncService:
@@ -117,8 +122,8 @@ class GroupSubjectSyncService:
             differences.append(
                 MainActivitySyncDifference(
                     field=field_name,
-                    current_value=float(current_value),
-                    source_value=float(source_value),
+                    current_value=current_value,
+                    source_value=source_value,
                 )
             )
         return differences

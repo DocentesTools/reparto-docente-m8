@@ -23,14 +23,14 @@ def test_create_process_teacher(client: TestClient, session: Session) -> None:
         json={
             "assignment_process_id": str(process.id),
             "teacher_profile_id": str(profile.id),
-            "base_weekly_hours": 18,
+            "base_weekly_hours": "18.00",
         },
     )
     assert resp.status_code == 201
     body = resp.json()
-    assert body["base_weekly_hours"] == 18
-    assert body["extra_weekly_hours"] == 0
-    assert body["target_weekly_hours"] == 18
+    assert body["base_weekly_hours"] == "18.00"
+    assert body["extra_weekly_hours"] == "0.00"
+    assert body["target_weekly_hours"] == "18.00"
     assert body["is_overloaded"] is False
     assert body["status"] == "active"
 
@@ -67,12 +67,12 @@ def test_update_process_teacher(client: TestClient, session: Session) -> None:
     pt = factories.make_process_teacher(session, process, profile, base_weekly_hours=10)
     resp = client.patch(
         f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}",
-        json={"base_weekly_hours": 12},
+        json={"base_weekly_hours": "12.00"},
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["base_weekly_hours"] == 12
-    assert body["target_weekly_hours"] == 12
+    assert body["base_weekly_hours"] == "12.00"
+    assert body["target_weekly_hours"] == "12.00"
 
 
 def test_delete_process_teacher(client: TestClient, session: Session) -> None:
@@ -98,14 +98,14 @@ def test_generic_patch_cannot_change_extra_hours(
     pt = factories.make_process_teacher(session, process, profile, base_weekly_hours=10)
     resp = client.patch(
         f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}",
-        json={"base_weekly_hours": 12, "extra_weekly_hours": 5},
+        json={"base_weekly_hours": "12.00", "extra_weekly_hours": "5.00"},
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["base_weekly_hours"] == 12
+    assert body["base_weekly_hours"] == "12.00"
     # extra_weekly_hours is not part of the update schema: silently ignored.
-    assert body["extra_weekly_hours"] == 0
-    assert body["target_weekly_hours"] == 12
+    assert body["extra_weekly_hours"] == "0.00"
+    assert body["target_weekly_hours"] == "12.00"
     assert body["is_overloaded"] is False
 
 
@@ -117,13 +117,13 @@ def test_update_extra_hours_success_and_audited(
     pt = factories.make_process_teacher(session, process, profile, base_weekly_hours=10)
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
-        json={"extra_weekly_hours": 4, "reason": "Cover maternity leave"},
+        json={"extra_weekly_hours": "4.00", "reason": "Cover maternity leave"},
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["base_weekly_hours"] == 10
-    assert body["extra_weekly_hours"] == 4
-    assert body["target_weekly_hours"] == 14
+    assert body["base_weekly_hours"] == "10.00"
+    assert body["extra_weekly_hours"] == "4.00"
+    assert body["target_weekly_hours"] == "14.00"
     assert body["is_overloaded"] is True
     assert body["extra_hours_reason"] == "Cover maternity leave"
     assert body["extra_hours_updated_by_user_id"] is not None
@@ -149,12 +149,12 @@ def test_update_extra_hours_to_zero_clears_overload(
     )
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
-        json={"extra_weekly_hours": 0, "reason": "Overload no longer needed"},
+        json={"extra_weekly_hours": "0.00", "reason": "Overload no longer needed"},
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["extra_weekly_hours"] == 0
-    assert body["target_weekly_hours"] == 10
+    assert body["extra_weekly_hours"] == "0.00"
+    assert body["target_weekly_hours"] == "10.00"
     assert body["is_overloaded"] is False
 
 
@@ -166,12 +166,12 @@ def test_update_extra_hours_requires_reason(
     pt = factories.make_process_teacher(session, process, profile)
     missing = client.post(
         f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
-        json={"extra_weekly_hours": 4},
+        json={"extra_weekly_hours": "4.00"},
     )
     assert missing.status_code == 422
     empty = client.post(
         f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
-        json={"extra_weekly_hours": 4, "reason": ""},
+        json={"extra_weekly_hours": "4.00", "reason": ""},
     )
     assert empty.status_code == 422
 
@@ -199,14 +199,14 @@ def test_update_extra_hours_blocked_below_assigned(
 
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
-        json={"extra_weekly_hours": 0, "reason": "Try to drop below assigned"},
+        json={"extra_weekly_hours": "0.00", "reason": "Try to drop below assigned"},
     )
 
     assert resp.status_code == 400
     assert "assigned" in resp.json()["detail"].lower()
     # Value unchanged after the blocked attempt.
     current = client.get(f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}")
-    assert current.json()["extra_weekly_hours"] == 4
+    assert current.json()["extra_weekly_hours"] == "4.00"
 
 
 def test_update_extra_hours_ignores_cancelled_assignment(
@@ -232,12 +232,12 @@ def test_update_extra_hours_ignores_cancelled_assignment(
 
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
-        json={"extra_weekly_hours": 0, "reason": "Overload no longer needed"},
+        json={"extra_weekly_hours": "0.00", "reason": "Overload no longer needed"},
     )
 
     assert resp.status_code == 200
-    assert resp.json()["extra_weekly_hours"] == 0
-    assert resp.json()["target_weekly_hours"] == 10
+    assert resp.json()["extra_weekly_hours"] == "0.00"
+    assert resp.json()["target_weekly_hours"] == "10.00"
 
 
 def test_update_extra_hours_reader_forbidden(
@@ -249,7 +249,7 @@ def test_update_extra_hours_reader_forbidden(
     pt = factories.make_process_teacher(session, process, profile)
     resp = reader_client.post(
         f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
-        json={"extra_weekly_hours": 4, "reason": "Not allowed"},
+        json={"extra_weekly_hours": "4.00", "reason": "Not allowed"},
     )
     assert resp.status_code == 403
 
@@ -264,7 +264,7 @@ def test_update_extra_hours_final_process_blocked(
     pt = factories.make_process_teacher(session, process, profile)
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}/extra-hours",
-        json={"extra_weekly_hours": 4, "reason": "Process is final"},
+        json={"extra_weekly_hours": "4.00", "reason": "Process is final"},
     )
     assert resp.status_code == 400
     assert "final" in resp.json()["detail"].lower()
@@ -276,7 +276,7 @@ def test_update_extra_hours_teacher_not_found(
     process = factories.make_assignment_process(session)
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/teachers/{uuid.uuid4()}/extra-hours",
-        json={"extra_weekly_hours": 4, "reason": "No such teacher"},
+        json={"extra_weekly_hours": "4.00", "reason": "No such teacher"},
     )
     assert resp.status_code == 404
 
@@ -361,8 +361,8 @@ def test_create_subject_with_planning_fields(
             "name": "Co-teaching support",
             "allocation_category": "secondary",
             "activity_type": "co_teaching",
-            "default_group_weekly_hours": 2.0,
-            "default_teacher_weekly_hours_per_position": 2.0,
+            "default_group_weekly_hours": "2.00",
+            "default_teacher_weekly_hours_per_position": "2.00",
             "default_required_teacher_count": 2,
             "allows_multiple_groups": True,
             "allows_zero_groups": True,
@@ -372,8 +372,8 @@ def test_create_subject_with_planning_fields(
     body = resp.json()
     assert body["allocation_category"] == "secondary"
     assert body["activity_type"] == "co_teaching"
-    assert body["default_group_weekly_hours"] == 2.0
-    assert body["default_teacher_weekly_hours_per_position"] == 2.0
+    assert body["default_group_weekly_hours"] == "2.00"
+    assert body["default_teacher_weekly_hours_per_position"] == "2.00"
     assert body["default_required_teacher_count"] == 2
     assert body["allows_multiple_groups"] is True
     assert body["allows_zero_groups"] is True

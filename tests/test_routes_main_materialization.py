@@ -70,8 +70,8 @@ def test_materialize_creates_activity_per_main_cell(
     assert activity["allocation_category"] == SubjectAllocationCategory.MAIN.value
     assert activity["source_group_subject_id"] == str(cell.id)
     assert activity["teaching_plan_id"] == str(plan.id)
-    assert activity["group_weekly_hours_per_group"] == 3.0
-    assert activity["teacher_weekly_hours_per_position"] == 4.0
+    assert activity["group_weekly_hours_per_group"] == "3.00"
+    assert activity["teacher_weekly_hours_per_position"] == "4.00"
     assert activity["required_teacher_count"] == 2
     assert activity["group_subject_ids"] == [str(cell.id)]
     assert activity["linked_group_count"] == 1
@@ -95,8 +95,8 @@ def test_materialize_inherits_subject_defaults(
 
     body = client.post(_url(process.id)).json()
     (activity,) = body["created"]
-    assert activity["group_weekly_hours_per_group"] == 5.0
-    assert activity["teacher_weekly_hours_per_position"] == 6.0
+    assert activity["group_weekly_hours_per_group"] == "5.00"
+    assert activity["teacher_weekly_hours_per_position"] == "6.00"
 
 
 def test_materialize_defaults_to_zero_when_unset(
@@ -111,8 +111,8 @@ def test_materialize_defaults_to_zero_when_unset(
     factories.make_group_subject(session, process, group, subject)
 
     (activity,) = client.post(_url(process.id)).json()["created"]
-    assert activity["group_weekly_hours_per_group"] == 0.0
-    assert activity["teacher_weekly_hours_per_position"] == 0.0
+    assert activity["group_weekly_hours_per_group"] == "0.00"
+    assert activity["teacher_weekly_hours_per_position"] == "0.00"
 
 
 def test_materialize_multiple_cells_ordered_by_id(

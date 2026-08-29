@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from decimal import Decimal
 
 from fastapi import HTTPException, status
 from fastapi_m8 import UserModel
@@ -161,8 +160,7 @@ class ProcessTeacherController(DomainController):
         )
         DomainController.ensure_process_mutable(process)
         new_target = quantize_hours(
-            Decimal(str(process_teacher.base_weekly_hours))
-            + Decimal(str(payload.extra_weekly_hours))
+            process_teacher.base_weekly_hours + payload.extra_weekly_hours
         )
         assigned = AssignmentCalculationService.compute_participant_assigned_hours(
             session, process_teacher

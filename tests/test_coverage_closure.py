@@ -83,7 +83,7 @@ def test_get_update_delete_child_resources_not_found(
         (
             "patch",
             f"/reparto/assignment-processes/{process.id}/teachers/{missing}",
-            {"base_weekly_hours": 2},
+            {"base_weekly_hours": "2.00"},
         ),
     ]
 
@@ -250,7 +250,7 @@ def test_create_department_duplicate_and_process_teacher_duplicate(
         json={
             "assignment_process_id": str(process.id),
             "teacher_profile_id": str(profile.id),
-            "base_weekly_hours": 10,
+            "base_weekly_hours": "10.00",
         },
     )
 

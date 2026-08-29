@@ -18,10 +18,10 @@ Design rules honoured here:
 * **No controller-side arithmetic** (plan §6): controllers and routes call these
   methods; they never add hours themselves.
 * **Decimal, two-place, non-binary comparisons** (plan §3.9): the model hour
-  columns are still ``float`` today (the column sweep is a dedicated later task),
-  so every value is lifted into a two-place :class:`~decimal.Decimal` via its
-  string form before any arithmetic or equality check — a balance is "exact"
-  only when the quantized difference is exactly ``Decimal("0.00")``.
+  columns are ``NUMERIC(8, 2)``, so a stored value arrives as a two-place
+  :class:`~decimal.Decimal` already; every value is still quantized before an
+  arithmetic or equality check — a balance is "exact" only when the quantized
+  difference is exactly ``Decimal("0.00")``.
 * **Live rows only**: retired activities (``retired_at``) and retired requirement
   slots (``retired_generation``) are excluded from every total, and only
   ``ACTIVE`` assignments count (plan §5.10).
@@ -72,17 +72,6 @@ from reparto_service.schemas.planning import (
 _ZERO = Decimal("0.00")
 
 
-def _dec(value: float | int | Decimal) -> Decimal:
-    """Lift a stored (``float``) hour value into a two-place ``Decimal``.
-
-    Uses the string form so the binary-float representation never leaks into a
-    domain decision (plan §3.9); the column-level ``Decimal`` migration will make
-    this conversion a no-op. ``str(Decimal(...))`` is a safe round-trip, so a
-    value that is already a ``Decimal`` passes through unchanged too.
-    """
-    return quantize_hours(Decimal(str(value)))
-
-
 class PlanningCalculationService:
     """Planning-stage calculations (plan §6.1). All methods are pure of session state."""
 
@@ -94,15 +83,14 @@ class PlanningCalculationService:
     ) -> Decimal:
         """group_weekly_hours_per_group × linked_group_count (plan §3.4, §6.1)."""
         return quantize_hours(
-            _dec(activity.group_weekly_hours_per_group) * linked_group_count
+            activity.group_weekly_hours_per_group * linked_group_count
         )
 
     @staticmethod
     def compute_activity_teacher_load(activity: TeachingActivity) -> Decimal:
         """teacher_weekly_hours_per_position × required_teacher_count (plan §3.1)."""
         return quantize_hours(
-            _dec(activity.teacher_weekly_hours_per_position)
-            * activity.required_teacher_count
+            activity.teacher_weekly_hours_per_position * activity.required_teacher_count
         )
 
     # ── Plan-wide loads ──────────────────────────────────────────────────────
@@ -165,7 +153,7 @@ class PlanningCalculationService:
         ).first()
         if revision is None:
             return None
-        return _dec(revision.allocated_group_weekly_hours)
+        return quantize_hours(revision.allocated_group_weekly_hours)
 
     @staticmethod
     def compute_group_allocation_difference(
@@ -192,7 +180,7 @@ class PlanningCalculationService:
         ).all()
         total = _ZERO
         for teacher in teachers:
-            total += _dec(teacher.base_weekly_hours) + _dec(teacher.extra_weekly_hours)
+            total += teacher.base_weekly_hours + teacher.extra_weekly_hours
         return quantize_hours(total)
 
     @staticmethod
@@ -263,14 +251,14 @@ class AssignmentCalculationService:
         full ``required_teacher_hours`` (plan §3.6, §5.10).
         """
         rows = session.exec(
-            select(HourRequirement.required_teacher_hours)
+            select(col(HourRequirement.required_teacher_hours))
             .where(Assignment.process_teacher_id == process_teacher.id)
             .where(Assignment.status == AssignmentStatus.ACTIVE)
             .where(Assignment.hour_requirement_id == HourRequirement.id)
         ).all()
         total = _ZERO
         for hours in rows:
-            total += _dec(hours)
+            total += hours
         return quantize_hours(total)
 
     @staticmethod
@@ -281,7 +269,7 @@ class AssignmentCalculationService:
         assigned = AssignmentCalculationService.compute_participant_assigned_hours(
             session, process_teacher
         )
-        target = _dec(process_teacher.target_weekly_hours)
+        target = process_teacher.target_weekly_hours
         return quantize_hours(target - assigned)
 
     @staticmethod
@@ -298,7 +286,7 @@ class AssignmentCalculationService:
             return ParticipantBalanceState.INACTIVE
         if not process_teacher.participates_in_selection:
             return ParticipantBalanceState.NOT_PARTICIPATING
-        if _dec(process_teacher.extra_weekly_hours) > _ZERO:
+        if process_teacher.extra_weekly_hours > _ZERO:
             return ParticipantBalanceState.OVERLOADED_AUTHORIZED
         if quantize_hours(remaining) > _ZERO:
             return ParticipantBalanceState.PENDING
@@ -355,7 +343,8 @@ class AssignmentCalculationService:
         count_by_teacher: dict[uuid.UUID, int] = {}
         assignment_rows = session.exec(
             select(
-                Assignment.process_teacher_id, HourRequirement.required_teacher_hours
+                Assignment.process_teacher_id,
+                col(HourRequirement.required_teacher_hours),
             )
             .where(Assignment.assignment_process_id == process_id)
             .where(Assignment.status == AssignmentStatus.ACTIVE)
@@ -363,7 +352,7 @@ class AssignmentCalculationService:
         ).all()
         for teacher_id, hours in assignment_rows:
             assigned_by_teacher[teacher_id] = quantize_hours(
-                assigned_by_teacher.get(teacher_id, _ZERO) + _dec(hours)
+                assigned_by_teacher.get(teacher_id, _ZERO) + hours
             )
             count_by_teacher[teacher_id] = count_by_teacher.get(teacher_id, 0) + 1
 
@@ -371,7 +360,7 @@ class AssignmentCalculationService:
         total_target = _ZERO
         for process_teacher, profile in teacher_rows:
             assigned = assigned_by_teacher.get(process_teacher.id, _ZERO)
-            target = _dec(process_teacher.target_weekly_hours)
+            target = process_teacher.target_weekly_hours
             remaining = quantize_hours(target - assigned)
             if process_teacher.status == ProcessTeacherStatus.ACTIVE:
                 total_target += target
@@ -380,12 +369,12 @@ class AssignmentCalculationService:
                     process_teacher_id=process_teacher.id,
                     teacher_profile_id=profile.id,
                     display_name=profile.display_name,
-                    base_weekly_hours=_dec(process_teacher.base_weekly_hours),
-                    extra_weekly_hours=_dec(process_teacher.extra_weekly_hours),
+                    base_weekly_hours=process_teacher.base_weekly_hours,
+                    extra_weekly_hours=process_teacher.extra_weekly_hours,
                     target_weekly_hours=target,
                     assigned_weekly_hours=assigned,
                     remaining_weekly_hours=remaining,
-                    is_overloaded=_dec(process_teacher.extra_weekly_hours) > _ZERO,
+                    is_overloaded=process_teacher.extra_weekly_hours > _ZERO,
                     assignment_count=count_by_teacher.get(process_teacher.id, 0),
                     state=AssignmentCalculationService.compute_participant_state(
                         process_teacher, remaining

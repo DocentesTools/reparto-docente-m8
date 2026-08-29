@@ -29,8 +29,9 @@ New / DB-enforced invariants (plan §20.9):
   (plan §3.7, §20.9); the database is the final barrier against concurrent
   sibling-slot double assignment.
 
-Hour values elsewhere in the service stay ``float`` today; the fleet-wide
-``Decimal`` / ``NUMERIC(..., 2)`` sweep is a dedicated later task (plan §3.9).
+Hour values are ``Decimal``, stored in ``NUMERIC(8, 2)`` columns
+(``HoursNumeric``) and exchanged over the API as canonical decimal strings
+("2.50") — a binary float is refused on input (plan §3.9).
 """
 
 from __future__ import annotations

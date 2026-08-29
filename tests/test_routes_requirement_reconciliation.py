@@ -12,6 +12,7 @@ slot, and for a value change creates a fresh replacement slot linked via
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 import pytest
 from auth_sdk_m8.schemas.user import UserModel
@@ -216,8 +217,8 @@ def test_preview_reports_value_conflict(client: TestClient, session: Session) ->
     assert conflict["teaching_activity_id"] == str(activity.id)
     assert conflict["position_index"] == 0
     assert conflict["resolution"] == "value_changed"
-    assert conflict["current_required_teacher_hours"] == 2.0
-    assert conflict["new_required_teacher_hours"] == 5.0
+    assert conflict["current_required_teacher_hours"] == "2.00"
+    assert conflict["new_required_teacher_hours"] == "5.00"
     assert conflict["assignment_id"] == str(assignment.id)
     assert conflict["process_teacher_id"] == str(assignment.process_teacher_id)
     assert conflict["superseded_by_requirement_id"] is None
@@ -338,7 +339,7 @@ def test_reconcile_fails_closed_when_intended_state_is_infeasible(
     process, plan, _activity, slot, assignment = _stage_value_conflict(client, session)
     participant = session.get(ProcessTeacher, assignment.process_teacher_id)
     assert participant is not None
-    participant.base_weekly_hours += 1.0
+    participant.base_weekly_hours += Decimal("1.00")
     session.add(participant)
     session.commit()
 

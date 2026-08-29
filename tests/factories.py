@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import Optional
 
 from auth_sdk_m8.schemas.user import UserModel
 from sqlmodel import Session, select
 
+from reparto_service.core.decimals import quantize_hours
 from reparto_service.db_models.academic_years import AcademicYear
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.assignments import Assignment
@@ -54,6 +56,20 @@ from reparto_service.enums import (
     TeachingActivitySyncState,
     TeachingPlanStatus,
 )
+
+
+def _hours(value: "Decimal | float | int | str | None") -> Optional[Decimal]:
+    """Normalize a factory hour argument to the canonical two-place ``Decimal``.
+
+    Call sites pass plain numbers for readability. Since the §3.9 sweep the
+    columns are ``NUMERIC(8, 2)`` and every hour value in the service is a
+    ``Decimal``, so the lift happens once, here, rather than leaving a binary
+    float on a row that production code would never produce. The string form is
+    what keeps ``0.1`` from arriving as ``0.1000000000000000055511151231257827``.
+    """
+    if value is None:
+        return None
+    return quantize_hours(value if isinstance(value, Decimal) else Decimal(str(value)))
 
 
 def make_school(
@@ -146,7 +162,7 @@ def make_allocation_revision(
     process: AssignmentProcess,
     *,
     revision_number: int = 1,
-    allocated_group_weekly_hours: float = 120.0,
+    allocated_group_weekly_hours: Decimal | float | int | str = 120.0,
     reason: str = "Initial leadership allocation",
     source: DepartmentHourAllocationSource = (
         DepartmentHourAllocationSource.MANUAL_TRANSCRIPTION
@@ -158,7 +174,7 @@ def make_allocation_revision(
     revision = DepartmentHourAllocationRevision(
         assignment_process_id=process.id,
         revision_number=revision_number,
-        allocated_group_weekly_hours=allocated_group_weekly_hours,
+        allocated_group_weekly_hours=_hours(allocated_group_weekly_hours),
         reason=reason,
         source=source,
         source_reference=source_reference,
@@ -215,8 +231,8 @@ def make_process_teacher(
     process: AssignmentProcess,
     profile: TeacherProfile,
     *,
-    base_weekly_hours: float = 18.0,
-    extra_weekly_hours: float = 0.0,
+    base_weekly_hours: Decimal | float | int | str = 18.0,
+    extra_weekly_hours: Decimal | float | int | str = 0.0,
     status: ProcessTeacherStatus = ProcessTeacherStatus.ACTIVE,
     selection_position: Optional[int] = None,
     selection_points: Optional[float] = None,
@@ -228,8 +244,8 @@ def make_process_teacher(
     pt = ProcessTeacher(
         assignment_process_id=process.id,
         teacher_profile_id=profile.id,
-        base_weekly_hours=base_weekly_hours,
-        extra_weekly_hours=extra_weekly_hours,
+        base_weekly_hours=_hours(base_weekly_hours),
+        extra_weekly_hours=_hours(extra_weekly_hours),
         status=status,
         selection_position=selection_position,
         selection_points=selection_points,
@@ -251,8 +267,12 @@ def make_subject(
     name: str = "Mathematics",
     allocation_category: SubjectAllocationCategory = SubjectAllocationCategory.MAIN,
     activity_type: ActivityType = ActivityType.ORDINARY,
-    default_group_weekly_hours: float | None = None,
-    default_teacher_weekly_hours_per_position: float | None = None,
+    default_group_weekly_hours: Decimal | float | int | str | None = None,
+    default_teacher_weekly_hours_per_position: Decimal
+    | float
+    | int
+    | str
+    | None = None,
     default_required_teacher_count: int = 1,
     allows_multiple_groups: bool = False,
     allows_zero_groups: bool = False,
@@ -262,8 +282,8 @@ def make_subject(
         name=name,
         allocation_category=allocation_category,
         activity_type=activity_type,
-        default_group_weekly_hours=default_group_weekly_hours,
-        default_teacher_weekly_hours_per_position=(
+        default_group_weekly_hours=_hours(default_group_weekly_hours),
+        default_teacher_weekly_hours_per_position=_hours(
             default_teacher_weekly_hours_per_position
         ),
         default_required_teacher_count=default_required_teacher_count,
@@ -312,8 +332,8 @@ def make_group_subject(
     group: TeachingGroup,
     subject: Subject,
     *,
-    group_weekly_hours: float | None = None,
-    teacher_weekly_hours_per_position: float | None = None,
+    group_weekly_hours: Decimal | float | int | str | None = None,
+    teacher_weekly_hours_per_position: Decimal | float | int | str | None = None,
     required_teacher_count: int = 1,
     active: bool = True,
     notes: Optional[str] = None,
@@ -322,8 +342,8 @@ def make_group_subject(
         assignment_process_id=process.id,
         teaching_group_id=group.id,
         subject_id=subject.id,
-        group_weekly_hours=group_weekly_hours,
-        teacher_weekly_hours_per_position=teacher_weekly_hours_per_position,
+        group_weekly_hours=_hours(group_weekly_hours),
+        teacher_weekly_hours_per_position=_hours(teacher_weekly_hours_per_position),
         required_teacher_count=required_teacher_count,
         active=active,
         notes=notes,
@@ -341,8 +361,8 @@ def make_teaching_activity(
     *,
     allocation_category: SubjectAllocationCategory = SubjectAllocationCategory.SECONDARY,
     activity_type: ActivityType = ActivityType.ORDINARY,
-    group_weekly_hours_per_group: float = 2.0,
-    teacher_weekly_hours_per_position: float = 2.0,
+    group_weekly_hours_per_group: Decimal | float | int | str = 2.0,
+    teacher_weekly_hours_per_position: Decimal | float | int | str = 2.0,
     required_teacher_count: int = 1,
     source: TeachingActivitySource = TeachingActivitySource.SECONDARY_MANUAL,
     source_group_subject_id: Optional[uuid.UUID] = None,
@@ -355,8 +375,8 @@ def make_teaching_activity(
         subject_id=subject.id,
         allocation_category=allocation_category,
         activity_type=activity_type,
-        group_weekly_hours_per_group=group_weekly_hours_per_group,
-        teacher_weekly_hours_per_position=teacher_weekly_hours_per_position,
+        group_weekly_hours_per_group=_hours(group_weekly_hours_per_group),
+        teacher_weekly_hours_per_position=_hours(teacher_weekly_hours_per_position),
         required_teacher_count=required_teacher_count,
         source=source,
         source_group_subject_id=source_group_subject_id,
@@ -418,7 +438,7 @@ def make_hour_requirement(
     activity: TeachingActivity,
     *,
     position_index: int = 0,
-    required_teacher_hours: float = 4.0,
+    required_teacher_hours: Decimal | float | int | str = 4.0,
     created_generation: int = 1,
     last_validated_generation: int = 1,
     retired_generation: Optional[int] = None,
@@ -430,7 +450,7 @@ def make_hour_requirement(
         assignment_process_id=process.id,
         teaching_activity_id=activity.id,
         position_index=position_index,
-        required_teacher_hours=required_teacher_hours,
+        required_teacher_hours=_hours(required_teacher_hours),
         created_generation=created_generation,
         last_validated_generation=last_validated_generation,
         retired_generation=retired_generation,

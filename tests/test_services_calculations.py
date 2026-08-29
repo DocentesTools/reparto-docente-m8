@@ -25,7 +25,6 @@ from reparto_service.schemas.planning import GroupBalance, ParticipantBalance
 from reparto_service.services.calculations import (
     AssignmentCalculationService,
     PlanningCalculationService,
-    _dec,
 )
 from tests.factories import (
     make_allocation_revision,
@@ -490,11 +489,6 @@ def test_assignment_summary_totals_states_and_slots(session: Session):
 
 
 # ── schema serialisation (plan §3.9 canonical decimal strings) ──────────────────
-
-
-def test_dec_helper_normalizes_decimal_and_float():
-    assert _dec(2) == Decimal("2.00")
-    assert _dec(Decimal("2.5")) == Decimal("2.50")
 
 
 def test_hours_field_serialises_canonical_strings():

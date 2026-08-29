@@ -361,7 +361,7 @@ class PlanValidationService:
         overloaded = [
             teacher
             for teacher in teachers
-            if quantize_hours(Decimal(str(teacher.extra_weekly_hours))) > _ZERO
+            if quantize_hours(teacher.extra_weekly_hours) > _ZERO
         ]
         for teacher in sorted(overloaded, key=lambda t: str(t.id)):
             out.append(
@@ -371,7 +371,7 @@ class PlanValidationService:
                     message=(
                         "Participant "
                         f"{teacher.id} has authorized extra hours "
-                        f"({quantize_hours(Decimal(str(teacher.extra_weekly_hours)))})."
+                        f"({quantize_hours(teacher.extra_weekly_hours)})."
                     ),
                     entity_type="teacher",
                     entity_id=teacher.id,

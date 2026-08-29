@@ -17,6 +17,7 @@ from pydantic import Field
 from sqlmodel import Column, Field as SQLField, SQLModel
 from sqlalchemy import DateTime
 
+from reparto_service.core.decimals import HoursNumeric, OptionalHoursDecimal
 from reparto_service.core.db_models import (
     UUIDString,
     enum_column_type,
@@ -46,8 +47,9 @@ class AssignmentProcessBase(SQLModel):
         ),
         description="Lifecycle status (plan 8.4).",
     )
-    default_teacher_hours_reference: Optional[float] = Field(
+    default_teacher_hours_reference: OptionalHoursDecimal = SQLField(
         default=None,
+        sa_type=HoursNumeric,
         ge=0,
         description=(
             "Reference available hours per teacher for the meeting "
@@ -93,7 +95,7 @@ class AssignmentProcessUpdate(SQLModel):
     """Partial update schema — every field is optional."""
 
     status: Optional[AssignmentProcessStatus] = Field(default=None)
-    default_teacher_hours_reference: Optional[float] = Field(default=None, ge=0)
+    default_teacher_hours_reference: OptionalHoursDecimal = Field(default=None, ge=0)
     selection_order_enabled: Optional[bool] = Field(default=None)
     selection_order_mode: Optional[SelectionOrderMode] = Field(default=None)
     direct_teacher_selection_enabled: Optional[bool] = Field(default=None)

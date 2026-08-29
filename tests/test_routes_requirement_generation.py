@@ -118,7 +118,7 @@ def test_preview_fresh_generation(client: TestClient, session: Session) -> None:
     assert all(
         slot["teaching_activity_id"] == str(activity.id) for slot in body["to_create"]
     )
-    assert all(slot["required_teacher_hours"] == 2.0 for slot in body["to_create"])
+    assert all(slot["required_teacher_hours"] == "2.00" for slot in body["to_create"])
 
 
 def test_preview_does_not_mutate(client: TestClient, session: Session) -> None:
@@ -151,7 +151,7 @@ def test_generate_one_slot_per_position(client: TestClient, session: Session) ->
     assert body["retired_count"] == 0
     assert body["count"] == 2
     assert [s["position_index"] for s in body["data"]] == [0, 1]
-    assert all(s["required_teacher_hours"] == 2.0 for s in body["data"])
+    assert all(s["required_teacher_hours"] == "2.00" for s in body["data"])
     assert all(s["created_generation"] == 1 for s in body["data"])
     assert all(s["last_validated_generation"] == 1 for s in body["data"])
     assert all(
@@ -194,7 +194,7 @@ def test_generate_tutoring_slot_hours(client: TestClient, session: Session) -> N
     )
     body = client.post(_generate_url(process.id)).json()
     assert body["created_count"] == 1
-    assert body["data"][0]["required_teacher_hours"] == 2.0
+    assert body["data"][0]["required_teacher_hours"] == "2.00"
 
 
 def test_generate_multiple_activities_deterministic(

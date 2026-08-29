@@ -373,8 +373,10 @@ def test_import_rejects_float_hours(client: TestClient, session: Session) -> Non
         "activities": [
             {
                 "subject_id": str(subject.id),
+                # Deliberately JSON numbers: the point of this case is that a
+                # binary float is refused, so these must not be canonicalized.
                 "group_weekly_hours_per_group": 2.5,
-                "teacher_weekly_hours_per_position": "1.00",
+                "teacher_weekly_hours_per_position": 1.0,
                 "group_subject_ids": [],
             }
         ]
