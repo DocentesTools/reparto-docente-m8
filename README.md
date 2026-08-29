@@ -150,6 +150,33 @@ Seeding is skipped unless the domain holds no assignment process at all, so it
 never touches existing data and a restart is a no-op. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §3.2a.
 
+## Deploying this version
+
+Two schema changes are waiting on a first start-up against a clean database:
+eleven hour columns moved onto `HoursNumeric` (`Decimal` rather than `float`)
+and `teacher_profile` gained `claim_code_hash` / `claim_code_expires_at`. Per
+the Compose bootstrap policy above, no migration file for either change is
+generated or committed in this tree — `reparto_service/alembic/versions/`
+stays empty by design, and the revision that adds them is produced by
+`compose up`'s own `alembic check` → autogenerate → `alembic upgrade head`
+sequence the first time it runs. Do not look for a pre-written revision file;
+its absence is expected, not a missing step.
+
+That first start-up **must run against a clean database and must complete
+before any deployment carrying real data is pointed at this version.**
+Pointing a populated database at this version without first letting a clean
+boot generate and apply the revision leaves the applied schema behind the
+declared models — the same drift `tests/test_schema_migration_gate.py` and
+the "Booting a second time must autogenerate no further revision" rule above
+exist to catch in development.
+
+The hour-column change also tightens the request contract: every hour field
+must now cross the API as a canonical decimal string (`"2.50"`), where a JSON
+number previously round-tripped through responses only. `@mano8/astro-reparto-m8`
+has always sent the canonical string, so the supported client is unaffected;
+**any other caller sending a JSON number for an hour field breaks at this
+version**, receiving `422` instead of a saved value.
+
 ## API map
 
 Every endpoint in this table requires an authenticated caller holding at least
