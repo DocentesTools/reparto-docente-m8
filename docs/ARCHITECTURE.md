@@ -516,7 +516,13 @@ through the equally administrator-gated `GET .../feasibility/diagnostics`
 fingerprint- and generation-matching evaluation exists. Relevant participant,
 planning, allocation,
 generation, reconciliation and undo mutations immediately reset the plan to
-`NOT_EVALUATED` and delete the cached row. A valid assignment hot path loads the
+`NOT_EVALUATED` and delete the cached row. *Relevant* is decided by field on the
+one path that can miss: the generic participant `PATCH` carries the selection
+order and the display metadata alongside the hour columns, so it invalidates
+only when a value in `PARTICIPANT_FEASIBILITY_INPUT_FIELDS` — the status and the
+two hour columns behind the target, which is all a snapshot reads off the row —
+actually changed. Adding, removing and the audited extra-hours action move an
+input by construction and stay unconditional. A valid assignment hot path loads the
 matching row, performs bounded local repair, and persists the repaired mapping
 against the post-selection fingerprint in the same transaction. It never runs
 the full solver. Reassignment first validates the current witness, builds the

@@ -40,6 +40,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A participant edit invalidates feasibility only when it moves a solver
+  input** (remediation `W1.5`). `PATCH
+  /assignment-processes/{id}/teachers/{teacher_id}` carries the selection order
+  and the display metadata as well as the hour columns, and it dropped the
+  stored evaluation for all of them — so recording an agreed selection order
+  reset the plan to `NOT_EVALUATED` and pushed
+  `teaching_plan.feasibility_invalidated` to every subscriber, an alarm in the
+  middle of a meeting that nothing in the live assignment path was reacting to.
+  It now compares the three fields a snapshot actually reads off a participant
+  row — `status` and the `base_weekly_hours`/`extra_weekly_hours` pair behind
+  the target — and by value, so re-sending a participant's current hours is a
+  no-op too. The list is `PARTICIPANT_FEASIBILITY_INPUT_FIELDS`, read off
+  `_snapshot_from_slots` rather than guessed, and
+  `tests/test_feasibility_participant_fields.py` proves it by mutating every
+  column of the row against the real fingerprint, so a column that starts
+  feeding the solver fails the suite until it is named there. Adding a
+  participant, removing one and the audited `/extra-hours` action move an input
+  by construction and stay unconditional, as does undoing an assignment.
+
+  No contract change: no endpoint, schema or status code moves, a client simply
+  stops receiving invalidation frames it should never have been sent, and
+  `reparto-docente-m8@2.0.0` is unchanged.
 - **Every stored hour value is now a `NUMERIC(8, 2)` column** (plan §3.9,
   remediation `W6.2`). `HoursNumeric` was defined but unused; the eleven hour
   columns across `assignment_process`, `department_hour_allocation_revision`,

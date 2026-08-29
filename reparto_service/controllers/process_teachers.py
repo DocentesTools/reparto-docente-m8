@@ -23,7 +23,10 @@ from reparto_service.db_models.process_teachers import (
 from reparto_service.db_models.teacher_profiles import TeacherProfile
 from reparto_service.enums import AuditEventType, SseEventType
 from reparto_service.services.calculations import AssignmentCalculationService
-from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
+from reparto_service.services.feasibility_witnesses import (
+    FeasibilityWitnessService,
+    participant_change_affects_feasibility,
+)
 from reparto_service.services.sse import hours_string
 
 
@@ -132,7 +135,15 @@ class ProcessTeacherController(DomainController):
             before=before,
             after=process_teacher,
         )
-        invalidated = FeasibilityWitnessService.invalidate(session, process_id)
+        # The only participant path that can leave every solver input alone
+        # (plan §20.25): this PATCH also carries the selection order and the
+        # display metadata, and dropping a stored evaluation for those raised a
+        # false *Not evaluated* in the middle of a meeting. Creation, removal
+        # and the extra-hours action move an input by construction and stay
+        # unconditional.
+        invalidated = False
+        if participant_change_affects_feasibility(before, process_teacher):
+            invalidated = FeasibilityWitnessService.invalidate(session, process_id)
         session.commit()
         session.refresh(process_teacher)
         if invalidated:
