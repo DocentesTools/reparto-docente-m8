@@ -72,6 +72,16 @@ ever produce a second, divergent answer.
 - **`WRITER` mutates its own records only** — own teacher profile, own
   direct-choice, own selection turn — and ownership is proven against the row,
   never inferred from the role.
+- **Read scope is not a confidentiality tier.**
+  `services/read_scope.py` answers *which processes* a caller may read;
+  `services/sse.py`'s audience projection answers *which payload* they receive.
+  A read that carries the department-head tier — per-participant hours, the
+  validation findings that name them, `extra_hours_reason`, the feasibility
+  witness and diagnostics — declares `CurrentAdmin` however harmless a `GET`
+  looks, and `tests/test_authorization_boundaries.py::ADMIN_ONLY_READS` is the
+  list. The teacher tier reads `…/lan/me` and the shared screen reads
+  `…/summary`; both are at the reader floor because neither carries another
+  participant's figures.
 
 ### Controller-level role checks are kept on purpose
 

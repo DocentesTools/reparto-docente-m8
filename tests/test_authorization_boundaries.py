@@ -348,6 +348,16 @@ ROLE_RANK: dict[str, int] = {
 #: has chosen, so it is department-head-only however harmless a `GET` looks.
 #: The diagnostics name the concrete slots/activities a remediation must touch
 #: (§20.24), so they sit behind the same gate.
+#:
+#: The dashboard and the participant list joined them with remediation `W5.3`.
+#: Both carry the department-head tier of §20.25 — every participant's target,
+#: assigned and remaining hours, the validation findings that name them, and
+#: ``extra_hours_reason``, which :mod:`reparto_service.services.sse` withholds
+#: from a teacher even on an event about the viewer themselves. Read scope
+#: (§21.4) answers *which processes*, never *which tier*; before this, a
+#: participant cleared the scope check and was handed the head's payload. The
+#: teacher tier reads ``/lan/me`` and the shared screen reads ``/summary``, so
+#: no screen lost a source.
 ADMIN_ONLY_READS: frozenset[tuple[str, str]] = frozenset(
     {
         (
@@ -362,6 +372,15 @@ ADMIN_ONLY_READS: frozenset[tuple[str, str]] = frozenset(
             (
                 "/reparto/assignment-processes/{process_id}"
                 "/teaching-plan/feasibility/diagnostics"
+            ),
+        ),
+        ("GET", "/reparto/assignment-processes/{process_id}/dashboard"),
+        ("GET", "/reparto/assignment-processes/{process_id}/teachers/"),
+        (
+            "GET",
+            (
+                "/reparto/assignment-processes/{process_id}"
+                "/teachers/{process_teacher_id}"
             ),
         ),
     }

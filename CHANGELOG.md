@@ -50,6 +50,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The teacher read scope is reconciled with the SSE confidentiality tier**
+  (remediation `W5.3`). Two rules governed one question and disagreed.
+  `services/read_scope.py` grants a participant a department-wide read, while
+  `services/sse.py` projects the same process down to a teacher tier that
+  withholds every other participant's figures and withholds
+  `extra_hours_reason` even on an event about the viewer themselves. The
+  dashboard and the participant list sat at the reader floor and carried the
+  *department-head* tier through the gap: per-participant target, assigned and
+  remaining hours, the validation findings that now name the participant they
+  are about (`W5.1`), and the head's written extra-hours justification.
+
+  **Breaking for a `READER`/`WRITER` caller.** `GET
+  /assignment-processes/{id}/dashboard`, `GET
+  /assignment-processes/{id}/teachers/` and `GET
+  /assignment-processes/{id}/teachers/{teacher_id}` now declare `CurrentAdmin`
+  and answer `403` below that floor, joining the feasibility witness and
+  diagnostics in `ADMIN_ONLY_READS`. No path was added, removed or re-verbed,
+  so `docs/served-api-surface.json` is unchanged and the declared
+  `reparto-docente-m8@2.0.0` compatibility range still holds.
+
+  Nothing lost a source: the teacher tier already had `GET …/lan/me` (the
+  caller's own participation row plus identifier-free aggregate balances) and
+  the projected screen already had `GET …/summary` (nameless aggregate counts,
+  `RBAC-07`). Both stay at the reader floor. Scope still resolves *before* the
+  role, so an out-of-scope or non-existent process is still a `404` and the new
+  `403` cannot confirm that a process exists (§21.4).
+
 - **A participant edit invalidates feasibility only when it moves a solver
   input** (remediation `W1.5`). `PATCH
   /assignment-processes/{id}/teachers/{teacher_id}` carries the selection order

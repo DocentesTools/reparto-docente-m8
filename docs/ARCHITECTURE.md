@@ -796,8 +796,18 @@ no payload that binds a slot to somebody else.
 The same process state is exposed at three confidentiality tiers, projected
 server-side rather than filtered in the client:
 
-* `GET /dashboard` and `GET /summary` — full planning and assignment sections for
-  a department head or administrator.
+* `GET /dashboard` — the full planning and assignment sections, per-participant
+  rows and named validation findings included, for a department head or
+  administrator **only**: the route declares `CurrentAdmin`, like the
+  feasibility witness and diagnostics. Read scope (§21.4) decides which
+  *processes* a caller may read and never which *tier* they receive, so a
+  participant who cleared the scope check used to be handed this payload;
+  remediation `W5.3` closed that. `GET /assignment-processes/{id}/teachers`
+  carries the same tier — every participant's hours plus `extra_hours_reason` —
+  and sits at the same floor.
+* `GET /summary` — the same process as aggregates and nameless counts, at the
+  reader floor: it is what the projected shared screen reads (§8.7,
+  `RBAC-07`).
 * `GET /lan/me` — the teacher's own view: aggregate, identifier-free plan
   balances, **only the caller's own** participation row, the available slot count,
   the current turn, and whether selection is blocked. Another teacher's figures

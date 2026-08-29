@@ -280,3 +280,84 @@ def test_the_calendar_and_grade_vocabulary_stay_readable(
 
     assert reader_client.get("/reparto/academic-years/").json()["count"] == 1
     assert reader_client.get("/reparto/classroom-stages/").json()["count"] == 1
+
+
+# ── Scope is not a tier (remediation `W5.3`) ─────────────────────────────────
+
+
+def test_a_participant_is_refused_the_department_head_tier(
+    reader_client: TestClient, session: Session, reader: UserModel
+) -> None:
+    """Clearing the scope gate does not hand a participant the head's payload.
+
+    The two rules that govern "what may this teacher read" used to disagree:
+    read scope let a participant through to every process of their department,
+    and §20.25's tier projection redacted the same figures out of the stream
+    and the shared screen. The dashboard and the participant list carry that
+    department-head tier — per-participant hours, the findings that name them,
+    and the extra-hours reason — so they now sit at the administrator floor and
+    the two rules answer the same way.
+    """
+    process, _theirs = _two_departments(session)
+    factories.enrol(session, process, reader)
+
+    for path in (
+        f"{_PROCESSES}/{process.id}/dashboard",
+        f"{_PROCESSES}/{process.id}/teachers/",
+    ):
+        assert reader_client.get(path).status_code == 403, path
+
+
+def test_a_participant_is_refused_a_colleagues_participation_row(
+    reader_client: TestClient, session: Session, reader: UserModel
+) -> None:
+    """The detail route is the list route one row at a time, and gated alike."""
+    process, _theirs = _two_departments(session)
+    factories.enrol(session, process, reader)
+    colleague = factories.make_process_teacher(
+        session, process, factories.make_teacher_profile(session, display_name="Other")
+    )
+
+    response = reader_client.get(f"{_PROCESSES}/{process.id}/teachers/{colleague.id}")
+    assert response.status_code == 403
+
+
+def test_the_teacher_and_shared_screen_tiers_are_untouched(
+    reader_client: TestClient, session: Session, reader: UserModel
+) -> None:
+    """Narrowing cost no screen: both lower tiers already had their own endpoint.
+
+    ``/lan/me`` is the teacher's own row and the identifier-free aggregates;
+    ``/summary`` is the nameless aggregate the projected screen reads
+    (`RBAC-07`). Neither carries another participant's figures, so neither
+    moved.
+    """
+    process, _theirs = _two_departments(session)
+    factories.enrol(session, process, reader)
+
+    lan = reader_client.get(f"{_PROCESSES}/{process.id}/lan/me")
+    summary = reader_client.get(f"{_PROCESSES}/{process.id}/summary")
+
+    assert lan.status_code == 200
+    assert summary.status_code == 200
+    assert "participants" not in summary.json()
+
+
+def test_the_department_head_floor_never_reveals_an_out_of_scope_process(
+    reader_client: TestClient, session: Session, reader: UserModel
+) -> None:
+    """Scope is still resolved first, so the new 403 tells a stranger nothing.
+
+    A participant of one department asking for another department's dashboard —
+    or for a process id that does not exist at all — is answered 404, exactly as
+    before: the role floor is reached only once the caller is already known to
+    belong (§21.4's "an out-of-scope row is a 404, not a 403").
+    """
+    mine, theirs = _two_departments(session)
+    factories.enrol(session, mine, reader)
+
+    assert reader_client.get(f"{_PROCESSES}/{mine.id}/dashboard").status_code == 403
+    assert reader_client.get(f"{_PROCESSES}/{theirs.id}/dashboard").status_code == 404
+    assert (
+        reader_client.get(f"{_PROCESSES}/{uuid.uuid4()}/dashboard").status_code == 404
+    )
