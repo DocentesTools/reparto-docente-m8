@@ -862,7 +862,9 @@ class AssignmentController(DomainController):
                 detail=(
                     "Selection is blocked because the deterministic witness "
                     f"could not be repaired ({repair.code.value}); administrative "
-                    "feasibility evaluation is required."
+                    "feasibility evaluation is required. Go to the Planning page, "
+                    "run the feasibility evaluation again, and return to the "
+                    "board — nothing is broken and nothing is lost."
                 ),
             )
         return repair.witness
