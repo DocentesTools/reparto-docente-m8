@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-08-30
+
+### Fixed
+
+- **The SSE endpoint no longer holds a DB connection for the life of the
+  stream.** `GET /assignment-processes/{process_id}/events` scoped its session
+  to the three reads it needs before streaming starts, instead of pinning one
+  for the length of the meeting via a `yield` dependency. Concurrent viewers
+  were previously bounded by the connection pool (15 slots), so the service
+  stopped answering at roughly 15 concurrent viewers against an operating
+  target of ~30 participants. No API change: the contract stays
+  `reparto-docente-m8@2.0.0`, so no client upgrade is required.
+
 ## [2.0.0] - 2026-08-29
 
 `2.0.0` was prepared on 2026-08-25 and never published — `1.1.0` is still the
