@@ -17,13 +17,17 @@ from typing import cast
 import pytest
 from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from fastapi_m8 import DbEngine
+from sqlalchemy.pool import QueuePool
+from sqlmodel import Session, SQLModel, create_engine
 
 from auth_sdk_m8.schemas.user import UserModel
 
+import reparto_service.app.routes.process_events as process_events
 from reparto_service.app.routes.process_events import stream_process_events
 from reparto_service.controllers.process_teachers import ProcessTeacherController
 from reparto_service.controllers.teaching_plans import TeachingPlanController
+from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.process_teachers import ProcessTeacherExtraHoursUpdate
 from reparto_service.enums import (
     AssignmentProcessStatus,
@@ -429,13 +433,12 @@ def test_a_broken_broker_does_not_fail_the_committed_write(
 
 
 async def _open(
-    session: Session,
     user: UserModel,
     process_id: uuid.UUID,
     audience: SseAudience | None = None,
 ) -> tuple[StreamingResponse, str, AsyncGenerator[str, None]]:
     """Call the route and return (response, first_frame, body_iterator)."""
-    response = await stream_process_events(session, user, process_id, audience)
+    response = await stream_process_events(user, process_id, audience)
     # Starlette types body_iterator as a bare AsyncIterable; the route always
     # hands it our async generator, which is what a disconnect must aclose().
     body = cast("AsyncGenerator[str, None]", response.body_iterator)
@@ -448,6 +451,40 @@ def _data(frame: str) -> dict:
 
 
 @pytest.mark.anyio
+async def test_open_streams_hold_no_pool_connection(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, current_user: UserModel
+) -> None:
+    """R1's whole point (plan §11, §R1): the SSE session is scoped to its three
+    reads, not held for the stream's life — so N open viewers must consume 0
+    pool connections once the stream has started.
+
+    The shared in-memory ``StaticPool`` engine used by every other test in
+    this module has no ``checkedout()`` to assert on, so this test points the
+    route at its own file-backed SQLite engine, which defaults to a real
+    ``QueuePool``. Mutation check: reverting the route to a held ``SessionDep``
+    makes this fail — three streams would leave three connections checked out.
+    """
+    db_path = tmp_path / "pool_test.db"
+    pool_engine = create_engine(f"sqlite:///{db_path}")
+    pool = cast("QueuePool", pool_engine.pool)
+    SQLModel.metadata.create_all(pool_engine)
+    with Session(pool_engine) as setup_session:
+        process = make_assignment_process(setup_session)
+    monkeypatch.setattr(process_events, "engine", DbEngine(pool_engine))
+
+    streams = [await _open(current_user, process.id) for _ in range(3)]
+    try:
+        assert pool.checkedout() == 0
+        # The pool being free is what lets an ordinary request still succeed.
+        with process_events.engine.session() as probe:
+            assert probe.get(AssignmentProcess, process.id) is not None
+    finally:
+        for _, _, body in streams:
+            await body.aclose()
+    pool_engine.dispose()
+
+
+@pytest.mark.anyio
 async def test_stream_opens_with_the_readiness_baseline(
     session: Session, current_user: UserModel
 ) -> None:
@@ -456,7 +493,7 @@ async def test_stream_opens_with_the_readiness_baseline(
         session, process, status=TeachingPlanStatus.REQUIREMENTS_GENERATED
     )
 
-    response, frame, body = await _open(session, current_user, process.id)
+    response, frame, body = await _open(current_user, process.id)
 
     assert response.media_type == "text/event-stream"
     assert response.headers["cache-control"] == "no-store"
@@ -472,9 +509,7 @@ async def test_stream_baseline_is_projected_for_a_shared_screen(
 ) -> None:
     process = make_assignment_process(session)
 
-    _, frame, body = await _open(
-        session, current_user, process.id, SseAudience.SHARED_SCREEN
-    )
+    _, frame, body = await _open(current_user, process.id, SseAudience.SHARED_SCREEN)
 
     assert _data(frame) == {"readiness": "not_ready"}
     await body.aclose()
@@ -489,7 +524,7 @@ async def test_stream_relays_a_committed_change_to_a_subscriber(
     make_teaching_plan(
         session, process, status=TeachingPlanStatus.REQUIREMENTS_GENERATED
     )
-    _, _, body = await _open(session, current_user, process.id)
+    _, _, body = await _open(current_user, process.id)
 
     TeachingPlanController.mark_stale(
         session, process.id, "Allocation cut", current_user
@@ -516,7 +551,7 @@ async def test_stream_relays_only_a_teachers_own_hours(
     other = make_process_teacher(
         session, process, make_teacher_profile(session, display_name="Other")
     )
-    _, _, body = await _open(session, reader, process.id)
+    _, _, body = await _open(reader, process.id)
 
     ProcessTeacherController.update_extra_hours(
         session,
@@ -552,7 +587,7 @@ async def test_stream_relays_a_teachers_own_hours_without_the_reason(
     participant = make_process_teacher(
         session, process, subscriber_profile, base_weekly_hours=18.0
     )
-    _, _, body = await _open(session, reader, process.id)
+    _, _, body = await _open(reader, process.id)
 
     ProcessTeacherController.update_extra_hours(
         session,
@@ -579,7 +614,7 @@ async def test_stream_detaches_the_subscription_on_disconnect(
     session: Session, current_user: UserModel
 ) -> None:
     process = make_assignment_process(session)
-    _, _, body = await _open(session, current_user, process.id)
+    _, _, body = await _open(current_user, process.id)
     assert sse.event_broker.subscriber_count(process.id) == 1
 
     await body.aclose()  # what a client disconnect triggers

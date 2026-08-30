@@ -18,7 +18,8 @@ from typing import Optional
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 
-from reparto_service.app.deps import CurrentReader, SessionDep
+from reparto_service.app.deps import CurrentReader
+from reparto_service.core.deps import engine
 from reparto_service.enums import SseAudience, SseEventType
 from reparto_service.schemas.events import DomainEvent
 from reparto_service.services import sse
@@ -29,7 +30,6 @@ router = APIRouter(prefix="/assignment-processes", tags=["assignment-processes"]
 
 @router.get("/{process_id}/events", response_class=StreamingResponse)
 async def stream_process_events(
-    session: SessionDep,
     current_user: CurrentReader,
     process_id: uuid.UUID,
     audience: Optional[SseAudience] = Query(
@@ -50,15 +50,23 @@ async def stream_process_events(
     The stream opens with a ``stream.opened`` frame carrying the current plan
     readiness, so a client needs no separate fetch to render its initial state.
     """
-    ensure_process_visible(session, current_user, process_id)
-    resolved = sse.resolve_audience(current_user, audience)
-    participant_id = sse.viewer_participant_id(session, process_id, current_user)
-    readiness, selection_blocked = sse.current_readiness(session, process_id)
+    # A StreamingResponse only "completes" when the meeting ends, so a
+    # yield-dependency session would stay checked out for the stream's whole
+    # life — one pool slot per subscriber. Scope it to the reads instead: the
+    # generator below takes no session and relays in-memory broker events only.
+    with engine.session() as session:
+        ensure_process_visible(session, current_user, process_id)
+        resolved = sse.resolve_audience(current_user, audience)
+        participant_id = sse.viewer_participant_id(session, process_id, current_user)
+        readiness, selection_blocked = sse.current_readiness(session, process_id)
 
-    # Subscribe *before* rendering the baseline so a change committing between
-    # the two is buffered rather than lost: a client may see it twice (the
-    # baseline already reflects it), never zero times.
-    subscription = sse.event_broker.subscribe(process_id)
+        # Subscribe *before* rendering the baseline so a change committing
+        # between the two is buffered rather than lost: a client may see it
+        # twice (the baseline already reflects it), never zero times. Keep
+        # this inside the session block — moving it out widens that window
+        # for no benefit.
+        subscription = sse.event_broker.subscribe(process_id)
+
     opening = DomainEvent(
         event_type=SseEventType.STREAM_OPENED,
         process_id=process_id,
