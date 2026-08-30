@@ -11,7 +11,7 @@ from sqlmodel import Session
 from reparto_service.db_models.academic_years import AcademicYear
 from reparto_service.db_models.departments import Department
 from reparto_service.db_models.schools import School
-from reparto_service.enums import TeachingPlanStatus
+from reparto_service.enums import ProcessTeacherStatus, TeachingPlanStatus
 from tests import factories
 
 
@@ -142,6 +142,9 @@ def test_get_summary_process_without_plan(client: TestClient, session: Session) 
     assert body["plan_balance"] is None
     assert body["total_slots"] == 0
     assert body["blocking_validation_count"] == 0
+    assert body["balanced_participant_count"] == 0
+    assert body["pending_participant_count"] == 0
+    assert body["overloaded_participant_count"] == 0
 
 
 def test_get_summary_reports_unassigned_slot(
@@ -159,6 +162,62 @@ def test_get_summary_reports_unassigned_slot(
     assert body["assigned_slots"] == 0
     assert body["available_slots"] == 1
     assert body["blocking_validation_count"] >= 1
+
+
+def test_get_summary_reports_participant_state_counts(
+    client: TestClient, session: Session
+) -> None:
+    """Balanced, pending and overloaded participants are counted (§6.2).
+
+    Read off the same per-participant ``state`` the dashboard's own assignment
+    summary computes, never re-derived from raw hours: a target-hours match is
+    BALANCED, a slot short of target is PENDING, and any ``extra_weekly_hours``
+    is OVERLOADED_AUTHORIZED regardless of what is assigned.
+    """
+    process, _plan, slot = _seed_planned_process(session)
+    balanced_profile = factories.make_teacher_profile(session, display_name="Balanced")
+    balanced_teacher = factories.make_process_teacher(
+        session, process, balanced_profile, base_weekly_hours=4.0
+    )
+    factories.make_assignment(session, process, slot, balanced_teacher)
+    pending_profile = factories.make_teacher_profile(session, display_name="Pending")
+    factories.make_process_teacher(
+        session, process, pending_profile, base_weekly_hours=4.0
+    )
+    overloaded_profile = factories.make_teacher_profile(
+        session, display_name="Overloaded"
+    )
+    factories.make_process_teacher(
+        session,
+        process,
+        overloaded_profile,
+        base_weekly_hours=4.0,
+        extra_weekly_hours=2.0,
+    )
+    # An INACTIVE participant lands in none of the three counts — proving they
+    # are excluded rather than silently folded into one of the three.
+    inactive_profile = factories.make_teacher_profile(session, display_name="Inactive")
+    factories.make_process_teacher(
+        session,
+        process,
+        inactive_profile,
+        base_weekly_hours=4.0,
+        status=ProcessTeacherStatus.INACTIVE,
+    )
+
+    resp = client.get(f"/reparto/assignment-processes/{process.id}/summary")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["balanced_participant_count"] == 1
+    assert body["pending_participant_count"] == 1
+    assert body["overloaded_participant_count"] == 1
+    # Never named: these are aggregate counts, so this endpoint stays safe for
+    # a projected shared screen (§8.7, `RBAC-07`).
+    assert "Balanced" not in resp.text
+    assert "Pending" not in resp.text
+    assert "Overloaded" not in resp.text
+    assert "Inactive" not in resp.text
 
 
 def test_get_dashboard_reports_both_stages_side_by_side(

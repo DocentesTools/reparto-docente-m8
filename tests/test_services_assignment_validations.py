@@ -75,8 +75,9 @@ def _teacher(
     extra: float = 0.0,
     status: ProcessTeacherStatus = ProcessTeacherStatus.ACTIVE,
     participates: bool = True,
+    name: str | None = None,
 ) -> ProcessTeacher:
-    profile = make_teacher_profile(session, display_name=f"Teacher {_uid()}")
+    profile = make_teacher_profile(session, display_name=name or f"Teacher {_uid()}")
     return make_process_teacher(
         session,
         process,
@@ -173,7 +174,9 @@ def test_over_target_blocks(session: Session) -> None:
     process = _process(session)
     activity = _activity(session, process)
     slot = make_hour_requirement(session, process, activity, required_teacher_hours=4.0)
-    teacher = _teacher(session, process, base=2.0)  # target 2 < assigned 4
+    teacher = _teacher(
+        session, process, base=2.0, name="Over Target Teacher"
+    )  # target 2 < assigned 4
     make_assignment(session, process, slot, teacher, status=AssignmentStatus.ACTIVE)
 
     report = SERVICE.compute_assignment_validations(session, process)
@@ -184,6 +187,8 @@ def test_over_target_blocks(session: Session) -> None:
     assert over.entity_type == "teacher"
     assert over.entity_id == teacher.id
     assert over.severity == ValidationSeverity.BLOCKING
+    assert "Over Target Teacher" in over.message
+    assert str(teacher.id) not in over.message
 
 
 def test_over_target_ignored_for_inactive_teacher(session: Session) -> None:
@@ -204,12 +209,17 @@ def test_over_target_ignored_for_inactive_teacher(session: Session) -> None:
 
 def test_below_target_blocks_for_active_participant(session: Session) -> None:
     process = _process(session)
-    _teacher(session, process, base=6.0)  # no assignment, remaining 6
+    _teacher(
+        session, process, base=6.0, name="Below Target Teacher"
+    )  # no assignment, remaining 6
 
     report = SERVICE.compute_assignment_validations(session, process)
 
     assert report.is_final_ready is False
     assert _codes(report) == {CODE_PARTICIPANT_BELOW_TARGET}
+    below = report.messages[0]
+    assert "Below Target Teacher" in below.message
+    assert str(below.entity_id) not in below.message
 
 
 def test_below_target_skipped_for_non_participating(session: Session) -> None:
@@ -239,7 +249,9 @@ def test_authorized_overload_is_warning_only(session: Session) -> None:
     process = _process(session)
     activity = _activity(session, process)
     slot = make_hour_requirement(session, process, activity, required_teacher_hours=6.0)
-    teacher = _teacher(session, process, base=4.0, extra=2.0)  # target 6, assigned 6
+    teacher = _teacher(
+        session, process, base=4.0, extra=2.0, name="Overloaded Teacher"
+    )  # target 6, assigned 6
     make_assignment(session, process, slot, teacher, status=AssignmentStatus.ACTIVE)
 
     report = SERVICE.compute_assignment_validations(session, process)
@@ -247,6 +259,8 @@ def test_authorized_overload_is_warning_only(session: Session) -> None:
     assert report.is_final_ready is True
     assert report.blocking_count == 0
     assert report.warning_count == 1
+    assert "Overloaded Teacher" in report.messages[0].message
+    assert str(teacher.id) not in report.messages[0].message
     warn = report.messages[0]
     assert warn.code == CODE_PARTICIPANT_OVERLOADED
     assert warn.severity == ValidationSeverity.WARNING

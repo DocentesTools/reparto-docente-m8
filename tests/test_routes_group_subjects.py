@@ -46,8 +46,8 @@ def test_create_group_subject_with_overrides(
     payload = _base_payload(process.id, group.id, subject.id)
     payload.update(
         {
-            "group_weekly_hours": 3.0,
-            "teacher_weekly_hours_per_position": 2.0,
+            "group_weekly_hours": "3.00",
+            "teacher_weekly_hours_per_position": "2.00",
             "required_teacher_count": 2,
             "active": False,
             "notes": "Co-teaching cell",
@@ -59,8 +59,8 @@ def test_create_group_subject_with_overrides(
     )
     assert resp.status_code == 201
     body = resp.json()
-    assert body["group_weekly_hours"] == 3.0
-    assert body["teacher_weekly_hours_per_position"] == 2.0
+    assert body["group_weekly_hours"] == "3.00"
+    assert body["teacher_weekly_hours_per_position"] == "2.00"
     assert body["required_teacher_count"] == 2
     assert body["active"] is False
     assert body["notes"] == "Co-teaching cell"
@@ -206,11 +206,11 @@ def test_update_group_subject(client: TestClient, session: Session) -> None:
     gs = factories.make_group_subject(session, process, group, subject)
     resp = client.patch(
         f"/reparto/assignment-processes/{process.id}/group-subjects/{gs.id}",
-        json={"group_weekly_hours": 4.5},
+        json={"group_weekly_hours": "4.50"},
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["group_weekly_hours"] == 4.5
+    assert body["group_weekly_hours"] == "4.50"
     assert body["active"] is True
 
 

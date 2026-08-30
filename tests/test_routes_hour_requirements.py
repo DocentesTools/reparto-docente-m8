@@ -135,7 +135,7 @@ def test_get_requirement(client: TestClient, session: Session) -> None:
     assert resp.status_code == 200
     body = resp.json()
     assert body["id"] == str(slot.id)
-    assert body["required_teacher_hours"] == 2.5
+    assert body["required_teacher_hours"] == "2.50"
     assert body["retired_generation"] is None
     assert body["superseded_by_requirement_id"] is None
 

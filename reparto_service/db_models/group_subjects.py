@@ -18,9 +18,9 @@ Uniqueness is enforced per process on ``(assignment_process_id,
 teaching_group_id, subject_id)`` so a group/subject pair has exactly one
 configuration cell (plan §5.5).
 
-Hour values are stored as ``float`` like every other hour field in the service
-today; the fleet-wide switch to ``Decimal`` / ``NUMERIC(..., 2)`` and canonical
-decimal-string serialisation is a dedicated later task (plan §3.9).
+Hour values are ``Decimal``, stored in ``NUMERIC(8, 2)`` columns
+(``HoursNumeric``) and exchanged over the API as canonical decimal strings
+("2.50") — a binary float is refused on input (plan §3.9).
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ from pydantic import Field
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Column, Field as SQLField, SQLModel
 
+from reparto_service.core.decimals import HoursNumeric, OptionalHoursDecimal
 from reparto_service.core.db_models import UUIDString, prefixed_tables
 from reparto_service.enums import GroupSubjectBulkMode
 
@@ -49,16 +50,18 @@ class GroupSubjectBase(SQLModel):
     )
     teaching_group_id: uuid.UUID = Field(description="Configured teaching group ID.")
     subject_id: uuid.UUID = Field(description="Configured subject ID.")
-    group_weekly_hours: Optional[float] = Field(
+    group_weekly_hours: OptionalHoursDecimal = SQLField(
         default=None,
+        sa_type=HoursNumeric,
         ge=0,
         description=(
             "Actual weekly group hours for this group/subject cell. NULL "
             "inherits the subject default; a value overrides it (plan §5.5)."
         ),
     )
-    teacher_weekly_hours_per_position: Optional[float] = Field(
+    teacher_weekly_hours_per_position: OptionalHoursDecimal = SQLField(
         default=None,
+        sa_type=HoursNumeric,
         ge=0,
         description=(
             "Actual weekly teacher-load hours per position. NULL inherits the "
@@ -91,8 +94,8 @@ class GroupSubjectUpdate(SQLModel):
     are intentionally not updatable; change them by deleting and recreating.
     """
 
-    group_weekly_hours: Optional[float] = Field(default=None, ge=0)
-    teacher_weekly_hours_per_position: Optional[float] = Field(default=None, ge=0)
+    group_weekly_hours: OptionalHoursDecimal = Field(default=None, ge=0)
+    teacher_weekly_hours_per_position: OptionalHoursDecimal = Field(default=None, ge=0)
     required_teacher_count: Optional[int] = Field(default=None, ge=1)
     active: Optional[bool] = Field(default=None)
     notes: Optional[str] = Field(default=None)
@@ -180,8 +183,8 @@ class GroupSubjectBulkRequest(SQLModel):
     maximum_grade: Optional[int] = Field(
         default=None, gt=0, description="Only match groups with grade <= this value."
     )
-    group_weekly_hours: Optional[float] = Field(default=None, ge=0)
-    teacher_weekly_hours_per_position: Optional[float] = Field(default=None, ge=0)
+    group_weekly_hours: OptionalHoursDecimal = Field(default=None, ge=0)
+    teacher_weekly_hours_per_position: OptionalHoursDecimal = Field(default=None, ge=0)
     required_teacher_count: Optional[int] = Field(default=None, ge=1)
 
 
@@ -210,8 +213,8 @@ class GroupSubjectBulkChange(SQLModel):
     group_subject_id: Optional[uuid.UUID] = Field(
         default=None, description="Existing cell ID; NULL for a to-create row."
     )
-    group_weekly_hours: Optional[float] = Field(default=None)
-    teacher_weekly_hours_per_position: Optional[float] = Field(default=None)
+    group_weekly_hours: OptionalHoursDecimal = Field(default=None)
+    teacher_weekly_hours_per_position: OptionalHoursDecimal = Field(default=None)
     required_teacher_count: int = Field(default=1)
 
 

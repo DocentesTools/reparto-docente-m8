@@ -60,6 +60,43 @@ from reparto_service.services.selection_guards import (
 
 logger = logging.getLogger(__name__)
 
+#: The ``ProcessTeacher`` columns a snapshot actually reads (plan §20.25).
+#:
+#: Read off :func:`_snapshot_from_slots`, which is the only place a participant
+#: row reaches the solver: it selects on ``status == ACTIVE`` and takes
+#: ``target_weekly_hours``, which is exactly ``base_weekly_hours +
+#: extra_weekly_hours``. Nothing else on the row is looked at — selection
+#: position, points, criteria label, notes, the participation flag and the order
+#: lock are meeting choreography and display metadata the fingerprint never
+#: covers, so changing one cannot move a stored evaluation.
+#:
+#: ``tests/test_feasibility_participant_fields.py`` proves the split against the
+#: real snapshot builder rather than restating it, so a column that starts
+#: feeding the solver fails the suite until it is named here.
+PARTICIPANT_FEASIBILITY_INPUT_FIELDS: frozenset[str] = frozenset(
+    {"status", "base_weekly_hours", "extra_weekly_hours"}
+)
+
+
+def participant_change_affects_feasibility(
+    before: ProcessTeacher, after: ProcessTeacher
+) -> bool:
+    """Whether an edit to one participant row moved a solver input (plan §20.25).
+
+    Invalidation is otherwise unconditional on every mutating path, which is
+    right where the path can only touch an input but wrong for the generic
+    participant ``PATCH``: recording a selection position or a criteria label
+    dropped the stored result and announced *Not evaluated* mid-meeting, an
+    alarm nothing in the live assignment path was reacting to. Compared by
+    *value* rather than by which keys the payload carried, so re-sending a
+    participant's current target hours is correctly a no-op.
+    """
+
+    return any(
+        getattr(before, name) != getattr(after, name)
+        for name in PARTICIPANT_FEASIBILITY_INPUT_FIELDS
+    )
+
 
 @dataclass(frozen=True, slots=True)
 class FeasibilitySnapshot:
@@ -942,9 +979,11 @@ class FeasibilityWitnessService:
 
 
 __all__ = [
+    "PARTICIPANT_FEASIBILITY_INPUT_FIELDS",
     "FeasibilitySnapshot",
     "FeasibilityWitnessService",
     "build_feasibility_snapshot",
     "build_intended_feasibility_snapshot",
+    "participant_change_affects_feasibility",
     "prospective_requirement_id",
 ]

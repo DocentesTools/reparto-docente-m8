@@ -118,8 +118,8 @@ def test_source_edit_marks_out_of_sync_without_overwriting_activity(
     response = client.patch(
         _cell_url(process.id, cell.id),
         json={
-            "group_weekly_hours": 5.0,
-            "teacher_weekly_hours_per_position": 6.0,
+            "group_weekly_hours": "5.00",
+            "teacher_weekly_hours_per_position": "6.00",
             "required_teacher_count": 3,
         },
     )
@@ -147,8 +147,8 @@ def test_preview_and_apply_show_source_current_diff_and_update_activity(
     client.patch(
         _cell_url(process.id, cell.id),
         json={
-            "group_weekly_hours": 5.0,
-            "teacher_weekly_hours_per_position": 6.0,
+            "group_weekly_hours": "5.00",
+            "teacher_weekly_hours_per_position": "6.00",
             "required_teacher_count": 3,
         },
     )
@@ -157,13 +157,13 @@ def test_preview_and_apply_show_source_current_diff_and_update_activity(
     assert preview_response.status_code == 200
     preview = preview_response.json()
     assert preview["source_values"] == {
-        "group_weekly_hours_per_group": 5.0,
-        "teacher_weekly_hours_per_position": 6.0,
+        "group_weekly_hours_per_group": "5.00",
+        "teacher_weekly_hours_per_position": "6.00",
         "required_teacher_count": 3,
     }
     assert preview["current_values"] == {
-        "group_weekly_hours_per_group": 4.0,
-        "teacher_weekly_hours_per_position": 4.0,
+        "group_weekly_hours_per_group": "4.00",
+        "teacher_weekly_hours_per_position": "4.00",
         "required_teacher_count": 2,
     }
     assert [difference["field"] for difference in preview["differences"]] == [
@@ -181,8 +181,8 @@ def test_preview_and_apply_show_source_current_diff_and_update_activity(
     assert result_response.status_code == 200
     result = result_response.json()
     assert result["activity"]["sync_state"] == "in_sync"
-    assert result["activity"]["group_weekly_hours_per_group"] == 5.0
-    assert result["activity"]["teacher_weekly_hours_per_position"] == 6.0
+    assert result["activity"]["group_weekly_hours_per_group"] == "5.00"
+    assert result["activity"]["teacher_weekly_hours_per_position"] == "6.00"
     assert result["activity"]["required_teacher_count"] == 3
     assert result["teaching_plan_status"] == TeachingPlanStatus.UNBALANCED.value
     assert result["was_noop"] is False
@@ -202,7 +202,7 @@ def test_assigned_value_change_routes_plan_and_slot_to_reconciliation(
 
     response = client.patch(
         _cell_url(process.id, cell.id),
-        json={"teacher_weekly_hours_per_position": 5.0},
+        json={"teacher_weekly_hours_per_position": "5.00"},
     )
     assert response.status_code == 200
     session.refresh(plan)
@@ -235,7 +235,7 @@ def test_group_only_change_with_assignment_requires_regeneration_not_reconciliat
     requirement = _assign_first_slot(session, process, activity)
 
     response = client.patch(
-        _cell_url(process.id, cell.id), json={"group_weekly_hours": 5.0}
+        _cell_url(process.id, cell.id), json={"group_weekly_hours": "5.00"}
     )
     assert response.status_code == 200
     session.refresh(plan)
@@ -250,9 +250,9 @@ def test_group_only_change_with_assignment_requires_regeneration_not_reconciliat
 
 def test_apply_rejects_stale_preview(client: TestClient, session: Session) -> None:
     process, _plan, _subject, cell, _activity = _setup(session)
-    client.patch(_cell_url(process.id, cell.id), json={"group_weekly_hours": 5.0})
+    client.patch(_cell_url(process.id, cell.id), json={"group_weekly_hours": "5.00"})
     preview = client.post(_preview_url(process.id, cell.id)).json()
-    client.patch(_cell_url(process.id, cell.id), json={"group_weekly_hours": 6.0})
+    client.patch(_cell_url(process.id, cell.id), json={"group_weekly_hours": "6.00"})
 
     response = client.post(
         _apply_url(process.id, cell.id),
@@ -346,7 +346,7 @@ def test_same_effective_source_value_does_not_mark_out_of_sync(
     session.refresh(cell)
 
     response = client.patch(
-        _cell_url(process.id, cell.id), json={"group_weekly_hours": 4.0}
+        _cell_url(process.id, cell.id), json={"group_weekly_hours": "4.00"}
     )
     assert response.status_code == 200
     session.refresh(activity)
@@ -366,7 +366,7 @@ def test_sync_requires_materialized_activity(
 
     assert (
         client.patch(
-            _cell_url(process.id, cell.id), json={"group_weekly_hours": 2.0}
+            _cell_url(process.id, cell.id), json={"group_weekly_hours": "2.00"}
         ).status_code
         == 200
     )
@@ -388,7 +388,7 @@ def test_bulk_update_marks_materialized_activity_out_of_sync(
     preview_payload = {
         "subject_id": str(activity.subject_id),
         "mode": "update_existing",
-        "group_weekly_hours": 7.0,
+        "group_weekly_hours": "7.00",
     }
     bulk_preview = client.post(
         f"/reparto/assignment-processes/{process.id}/group-subjects/bulk-preview",
@@ -423,7 +423,7 @@ def test_apply_marks_only_affected_assigned_requirements(
     )
     client.patch(
         _cell_url(process.id, cell.id),
-        json={"teacher_weekly_hours_per_position": 5.0},
+        json={"teacher_weekly_hours_per_position": "5.00"},
     )
     preview = client.post(_preview_url(process.id, cell.id)).json()
     client.post(
@@ -462,15 +462,15 @@ def test_sync_resolves_subject_defaults_and_zero_fallbacks(
     )
 
     preview = client.post(_preview_url(process.id, cell.id)).json()
-    assert preview["source_values"]["group_weekly_hours_per_group"] == 0.0
-    assert preview["source_values"]["teacher_weekly_hours_per_position"] == 0.0
+    assert preview["source_values"]["group_weekly_hours_per_group"] == "0.00"
+    assert preview["source_values"]["teacher_weekly_hours_per_position"] == "0.00"
     subject.default_group_weekly_hours = 2.0
     subject.default_teacher_weekly_hours_per_position = 3.0
     session.add(subject)
     session.commit()
     preview = client.post(_preview_url(process.id, cell.id)).json()
-    assert preview["source_values"]["group_weekly_hours_per_group"] == 2.0
-    assert preview["source_values"]["teacher_weekly_hours_per_position"] == 3.0
+    assert preview["source_values"]["group_weekly_hours_per_group"] == "2.00"
+    assert preview["source_values"]["teacher_weekly_hours_per_position"] == "3.00"
 
 
 def test_apply_detects_activity_removed_after_preview(
@@ -497,7 +497,7 @@ def test_out_of_sync_invalidation_covers_balanced_locked_and_missing_plans(
     )
     assert (
         client.patch(
-            _cell_url(process.id, cell.id), json={"group_weekly_hours": 5.0}
+            _cell_url(process.id, cell.id), json={"group_weekly_hours": "5.00"}
         ).status_code
         == 200
     )
@@ -509,7 +509,7 @@ def test_out_of_sync_invalidation_covers_balanced_locked_and_missing_plans(
     )
     assert (
         client.patch(
-            _cell_url(process2.id, cell2.id), json={"group_weekly_hours": 5.0}
+            _cell_url(process2.id, cell2.id), json={"group_weekly_hours": "5.00"}
         ).status_code
         == 200
     )

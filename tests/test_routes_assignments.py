@@ -1268,14 +1268,23 @@ def test_get_assignment_validations_process_not_found(client: TestClient) -> Non
     assert resp.status_code == 404
 
 
-def test_get_assignment_validations_reader_allowed(
+def test_get_assignment_validations_refused_to_a_participant(
     reader_client: TestClient, session: Session, reader: UserModel
 ) -> None:
+    """The report is the department-head tier, so a participant is refused (`W7.1`).
+
+    This test used to assert ``200``. Since `W5.1` every finding names the
+    participant it is about and quotes their hours, which is the tier
+    :mod:`reparto_service.services.sse` withholds from a teacher even on an
+    event about themselves — the reader floor here was the same disagreement
+    between "which processes" and "which payload" that `W5.3` closed on the
+    dashboard.
+    """
     process = factories.make_assignment_process(session)
     factories.enrol(session, process, reader)
     factories.make_teaching_plan(session, process)
     resp = reader_client.get(f"{_assignments_path(process.id)}/validations")
-    assert resp.status_code == 200
+    assert resp.status_code == 403
 
 
 # ── Direct-selection concurrency: lock + in-transaction recheck (plan §20.5) ───

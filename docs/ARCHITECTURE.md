@@ -430,11 +430,21 @@ input validator (rejecting binary floats, negatives and more than two decimal
 places), the canonical decimal-string API representation (`"2.50"`), and a
 `HoursNumeric` `NUMERIC(8, 2)` column type.
 
-The stored hour **columns are still `float`** today; the column-level migration
-onto `HoursNumeric` is a pending task. Until it lands, every value is lifted into
-a two-place `Decimal` **via its string form** before any arithmetic or comparison,
-so no binary-float representation reaches a domain decision. A balance is "exact"
-only when the quantized difference is exactly `Decimal("0.00")`.
+**Every stored hour column is `HoursNumeric`.** All eleven of them are
+enumerated from the metadata by `tests/test_hours_columns.py`, so a new hour
+column declared as anything else fails the suite. A stored value therefore
+arrives as a two-place `Decimal` already, so the string-form lifting the
+calculation services used to do is gone; they still quantize every result before
+a comparison. A balance is "exact" only when the quantized difference is exactly
+`Decimal("0.00")`. The lifts that remain read a stored JSON snapshot or validate
+a request body — their input really can be a number or a string.
+
+Hours cross the API as canonical decimal strings in **both** directions:
+`HoursDecimal`/`OptionalHoursDecimal` serialise `"2.50"` on every response and
+refuse a JSON number on every request, so a binary float never enters the
+service. `table=True` models skip Pydantic validation by design, so
+`HoursNumeric` is the second guard: whatever is bound to it — `int`, `str` or a
+stray `float` — is stored quantized.
 
 ### 8.3 Validation services
 
@@ -506,7 +516,13 @@ through the equally administrator-gated `GET .../feasibility/diagnostics`
 fingerprint- and generation-matching evaluation exists. Relevant participant,
 planning, allocation,
 generation, reconciliation and undo mutations immediately reset the plan to
-`NOT_EVALUATED` and delete the cached row. A valid assignment hot path loads the
+`NOT_EVALUATED` and delete the cached row. *Relevant* is decided by field on the
+one path that can miss: the generic participant `PATCH` carries the selection
+order and the display metadata alongside the hour columns, so it invalidates
+only when a value in `PARTICIPANT_FEASIBILITY_INPUT_FIELDS` — the status and the
+two hour columns behind the target, which is all a snapshot reads off the row —
+actually changed. Adding, removing and the audited extra-hours action move an
+input by construction and stay unconditional. A valid assignment hot path loads the
 matching row, performs bounded local repair, and persists the repaired mapping
 against the post-selection fingerprint in the same transaction. It never runs
 the full solver. Reassignment first validates the current witness, builds the
@@ -643,6 +659,36 @@ Mapping: `CurrentAdmin` for every process/planning mutation (the department
 head, §21.2) and all platform reference data; `CurrentWriter` for the three
 own-data actions; `CurrentReader` everywhere else.
 
+**One mutation is authorized by a credential rather than by a role.**
+`POST /teacher-profiles/claim` sits at the reader floor, and deliberately.
+Binding a profile to an account used to need the head to *know* the account's
+user id, and the accounts directory belongs to `fa-auth-m8`, which restricts it
+to superusers by its own design — so linking a colleague was a superuser act
+and the roster's *Link user* button could only ever link the head to
+themselves. Nothing here may widen that directory, so the direction is
+reversed: the head mints a single-use code
+(`POST /teacher-profiles/{id}/claim-code`, `CurrentAdmin`) and the teacher
+redeems it with their own token. Four properties carry the weight, and none of
+them is the role:
+
+* the request schema has no `user_id` at all, so the only account a claim can
+  bind is the caller's own, read from the token;
+* the code is ~98 bits from `secrets`, stored only as a SHA-256 digest
+  (`services/claim_codes.py`), so a database read cannot redeem anything and a
+  lost code is reissued rather than recovered;
+* it is single-use and expiring (`CLAIM_CODE_TTL_HOURS`), and minting again
+  replaces the outstanding code — which is how a code read out in the wrong
+  room is revoked;
+* the linkage itself goes through `TeacherProfileController.link_user`, so the
+  "one profile per account" `409` is the same rule the head's own action obeys,
+  not a second copy of it.
+
+The floor is `READER` and not `WRITER` because a read-only participant would
+otherwise never reach their own view: the linkage is what makes *My view*
+resolvable at all. Both halves are audited — `teacher_profile.claim_code_issued`
+and `teacher_profile.claimed` — once per process the profile participates in,
+because `AuditEvent` is process-scoped and that is where the trail is read.
+
 `DomainController` keeps only the checks a dependency cannot express, because
 they need the row:
 
@@ -750,8 +796,18 @@ no payload that binds a slot to somebody else.
 The same process state is exposed at three confidentiality tiers, projected
 server-side rather than filtered in the client:
 
-* `GET /dashboard` and `GET /summary` — full planning and assignment sections for
-  a department head or administrator.
+* `GET /dashboard` — the full planning and assignment sections, per-participant
+  rows and named validation findings included, for a department head or
+  administrator **only**: the route declares `CurrentAdmin`, like the
+  feasibility witness and diagnostics. Read scope (§21.4) decides which
+  *processes* a caller may read and never which *tier* they receive, so a
+  participant who cleared the scope check used to be handed this payload;
+  remediation `W5.3` closed that. `GET /assignment-processes/{id}/teachers`
+  carries the same tier — every participant's hours plus `extra_hours_reason` —
+  and sits at the same floor.
+* `GET /summary` — the same process as aggregates and nameless counts, at the
+  reader floor: it is what the projected shared screen reads (§8.7,
+  `RBAC-07`).
 * `GET /lan/me` — the teacher's own view: aggregate, identifier-free plan
   balances, **only the caller's own** participation row, the available slot count,
   the current turn, and whether selection is blocked. Another teacher's figures
@@ -769,6 +825,34 @@ their own participation**, and the shared screen receives readiness alone
 request a *less* privileged tier with `?audience=teacher|shared_screen` — a
 projection screen should — but asking for a more privileged tier than the role
 grants is refused with `403`.
+
+#### The tier holds after the fact, too (`W7.1`)
+
+`W5.3` moved the two *live* department-head reads and left the rest for one
+decision rather than seven. That decision is taken: a read that carries the
+department-head tier declares `CurrentAdmin` **whenever it is asked**, not only
+while the meeting is running. Seven more reads moved with `W7.1`:
+
+| Read | Why it is the head's tier |
+| --- | --- |
+| `GET …/assignments/validations` | Since `W5.1` every §6.3/§6.4 finding names the participant it is about and quotes their hours |
+| `GET …/teaching-plan/validations` | Its twin, and the same messages |
+| `GET …/audit-events/` | The extra-hours event is stored with `reason` beside that participant's base, extra and target hours — the one key the SSE teacher tier withholds even about the viewer themselves |
+| `GET …/versions` | A snapshot is a whole-process dump; `extra_hours_reason` is restored out of one |
+| `GET …/versions/{left}/compare/{right}` | Reads two snapshots |
+| `GET …/compare-previous-year` | Same payload, one side implied |
+| `GET …/exports` | The inventory of the artefacts built from all of it |
+
+The alternative — projecting each payload down to the teacher tier the way
+`services/sse.py` does — was considered and rejected.
+`DEPARTMENT_HEAD_ONLY_PAYLOAD_KEYS` is a key filter over a flat event payload,
+and none of these seven has that shape; a validation report projected to the
+teacher tier is its two counts, which `GET …/teaching-plan/summary` already
+serves at the reader floor. Nothing lost a source, and §21.4's ordering is
+unchanged: every one of the seven hangs off a router that already declares
+`require_visible_process`, which FastAPI resolves first, so an out-of-scope
+process is still `404` and the new `403` can never confirm that a process
+exists.
 
 The stream is best-effort; the database stays authoritative. A subscriber that
 falls behind receives a `stream.gap` frame telling it to refetch rather than
@@ -815,8 +899,6 @@ silently missing a change.
 These are tracked adaptation tasks, not oversights. Each has its schema or
 extension point already in place.
 
-* **Decimal hour columns** — `HoursNumeric` exists but no model uses it yet; hour
-  columns remain `float` and are lifted to `Decimal` in the services (§8.2).
 * **Authorization hardening** — complete (§9.5, §9.5.1): the read floor, the
   `WRITER`-owns-its-own-records rule, the `ADMIN`/`SUPERADMIN` department head,
   the issuer-checked `department_head_user_id`, per-department read scoping, and

@@ -83,8 +83,8 @@ def test_creating_a_secondary_activity_unbalances_a_balanced_plan(
         f"/reparto/assignment-processes/{process.id}/teaching-activities/",
         json={
             "subject_id": str(subject.id),
-            "group_weekly_hours_per_group": 1.0,
-            "teacher_weekly_hours_per_position": 1.0,
+            "group_weekly_hours_per_group": "1.00",
+            "teacher_weekly_hours_per_position": "1.00",
             "group_subject_ids": [str(cell.id)],
         },
     )
@@ -101,8 +101,8 @@ def test_updating_an_activity_back_to_the_target_rebalances_the_plan(
         f"/reparto/assignment-processes/{process.id}/teaching-activities/",
         json={
             "subject_id": str(subject.id),
-            "group_weekly_hours_per_group": 1.0,
-            "teacher_weekly_hours_per_position": 1.0,
+            "group_weekly_hours_per_group": "1.00",
+            "teacher_weekly_hours_per_position": "1.00",
             "group_subject_ids": [str(cell.id)],
         },
     )
@@ -113,8 +113,8 @@ def test_updating_an_activity_back_to_the_target_rebalances_the_plan(
         f"/reparto/assignment-processes/{process.id}"
         f"/teaching-activities/{created.json()['id']}",
         json={
-            "group_weekly_hours_per_group": 4.0,
-            "teacher_weekly_hours_per_position": 4.0,
+            "group_weekly_hours_per_group": "4.00",
+            "teacher_weekly_hours_per_position": "4.00",
         },
     )
     assert resp.status_code == 200

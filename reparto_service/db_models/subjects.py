@@ -15,9 +15,10 @@ subject default here NEVER retroactively rewrites an already-materialised
 ``GroupSubject`` or ``TeachingActivity`` — defaults only seed future rows unless
 an explicit sync action runs (plan §20.14).
 
-Hour defaults are stored as ``float`` like every other hour field in the service
-today; the fleet-wide switch to ``Decimal`` / ``NUMERIC(..., 2)`` and canonical
-decimal-string serialisation is its own §3.9 task.
+Hour defaults are ``Decimal`` like every other hour field, stored in
+``NUMERIC(8, 2)`` columns (``HoursNumeric``) and exchanged over the API as
+canonical decimal strings ("2.50") — a binary float is refused on input
+(plan §3.9).
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ from pydantic import Field
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Column, Field as SQLField, SQLModel
 
+from reparto_service.core.decimals import HoursNumeric, OptionalHoursDecimal
 from reparto_service.core.db_models import (
     UUIDString,
     enum_column_type,
@@ -76,16 +78,18 @@ class SubjectBase(SQLModel):
             "on it (plan §20.17)."
         ),
     )
-    default_group_weekly_hours: Optional[float] = Field(
+    default_group_weekly_hours: OptionalHoursDecimal = SQLField(
         default=None,
+        sa_type=HoursNumeric,
         ge=0,
         description=(
             "Suggested weekly group hours seeded onto a new GroupSubject/"
             "activity. A suggestion, not an immutable value (plan §5.3)."
         ),
     )
-    default_teacher_weekly_hours_per_position: Optional[float] = Field(
+    default_teacher_weekly_hours_per_position: OptionalHoursDecimal = SQLField(
         default=None,
+        sa_type=HoursNumeric,
         ge=0,
         description=(
             "Suggested weekly teacher-load hours per teacher position. A "
@@ -128,8 +132,8 @@ class SubjectUpdate(SQLModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=150)
     allocation_category: Optional[SubjectAllocationCategory] = Field(default=None)
     activity_type: Optional[ActivityType] = Field(default=None)
-    default_group_weekly_hours: Optional[float] = Field(default=None, ge=0)
-    default_teacher_weekly_hours_per_position: Optional[float] = Field(
+    default_group_weekly_hours: OptionalHoursDecimal = Field(default=None, ge=0)
+    default_teacher_weekly_hours_per_position: OptionalHoursDecimal = Field(
         default=None, ge=0
     )
     default_required_teacher_count: Optional[int] = Field(default=None, ge=1)

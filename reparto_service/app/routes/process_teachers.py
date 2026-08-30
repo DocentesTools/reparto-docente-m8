@@ -1,4 +1,14 @@
-"""ProcessTeacher routes (nested under an assignment process)."""
+"""ProcessTeacher routes (nested under an assignment process).
+
+The reads here are department-head reads (remediation `W5.3`).
+``ProcessTeacherPublic`` carries every participant's base, extra and target
+weekly hours together with ``extra_hours_reason`` — the head's written
+justification, which :mod:`reparto_service.services.sse` redacts from the
+teacher tier even on an event about the viewer themselves. A payload the
+stream refuses to a teacher cannot be one a plain ``GET`` hands them, so the
+list and the detail sit at the administrator floor and the teacher tier reads
+its own row from ``GET /assignment-processes/{process_id}/lan/me``.
+"""
 
 from __future__ import annotations
 
@@ -28,8 +38,9 @@ router = APIRouter(
 
 @router.get("/", response_model=ProcessTeachersPublic)
 def list_process_teachers(
-    session: SessionDep, process_id: uuid.UUID
+    session: SessionDep, current_user: CurrentAdmin, process_id: uuid.UUID
 ) -> ProcessTeachersPublic:
+    """Expose the roster's hours and extra-hours reasons only to an administrator."""
     return ProcessTeacherController.list_process_teachers(session, process_id)
 
 
@@ -47,8 +58,12 @@ def create_process_teacher(
 
 @router.get("/{process_teacher_id}", response_model=ProcessTeacherPublic)
 def get_process_teacher(
-    session: SessionDep, process_id: uuid.UUID, process_teacher_id: uuid.UUID
+    session: SessionDep,
+    current_user: CurrentAdmin,
+    process_id: uuid.UUID,
+    process_teacher_id: uuid.UUID,
 ) -> ProcessTeacherPublic:
+    """Same payload as the list, one row at a time — same floor."""
     return ProcessTeacherController.get_process_teacher(
         session, process_id, process_teacher_id
     )

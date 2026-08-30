@@ -24,9 +24,9 @@ This module provides four cooperating layers:
   types that validate request input and serialise the canonical decimal string
   in JSON responses while keeping a real ``Decimal`` in Python.
 
-The fleet-wide switch of the existing ``float`` hour columns onto these helpers
-is carried out by the individual model tasks; this module is the shared
-foundation they build on.
+Every hour column in the service is on these helpers: ``tests/
+test_hours_columns.py`` enumerates them from the metadata and fails if one is
+declared as anything but :class:`HoursNumeric`.
 """
 
 from __future__ import annotations

@@ -37,7 +37,7 @@ from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.selection_turns import SelectionTurn
 from reparto_service.db_models.teacher_profiles import TeacherProfile
 from reparto_service.db_models.teaching_plans import TeachingPlan
-from reparto_service.enums import SelectionTurnStatus
+from reparto_service.enums import ParticipantBalanceState, SelectionTurnStatus
 from reparto_service.schemas.dashboard import (
     AssignmentSection,
     CurrentTurnSummary,
@@ -46,6 +46,7 @@ from reparto_service.schemas.dashboard import (
     ProcessSummary,
     TeacherLanSummary,
 )
+from reparto_service.schemas.planning import AssignmentSummary
 from reparto_service.services.calculations import (
     AssignmentCalculationService,
     PlanningCalculationService,
@@ -88,6 +89,9 @@ class DashboardController(DomainController):
         planning = DashboardController._planning_section(session, process_id)
         assignment = DashboardController._assignment_section(session, process)
         readiness, _ = current_readiness(session, process_id)
+        balanced, pending, overloaded = DashboardController._participant_state_counts(
+            assignment.summary
+        )
         return ProcessSummary(
             process_id=process_id,
             generated_at=datetime.now(tz=timezone.utc),
@@ -97,6 +101,9 @@ class DashboardController(DomainController):
             total_slots=assignment.summary.total_slots,
             assigned_slots=assignment.summary.assigned_slots,
             available_slots=assignment.summary.available_slots,
+            balanced_participant_count=balanced,
+            pending_participant_count=pending,
+            overloaded_participant_count=overloaded,
             current_turn=DashboardController._current_turn(session, process_id),
             blocking_validation_count=DashboardController._blocking_count(
                 planning, assignment
@@ -184,6 +191,27 @@ class DashboardController(DomainController):
             0 if planning.validations is None else planning.validations.blocking_count
         )
         return planning_blocking + assignment.validations.blocking_count
+
+    @staticmethod
+    def _participant_state_counts(summary: AssignmentSummary) -> tuple[int, int, int]:
+        """Return (balanced, pending, overloaded) counts from ``summary`` rows.
+
+        Read off the same per-participant ``state`` the head's dashboard
+        already computes (plan §6.2) — never re-derived from raw hours, so
+        this can never disagree with the department-head view of the same
+        process. INACTIVE and NOT_PARTICIPATING participants are excluded from
+        all three counts, same as they are excluded from the plan §6.1 target
+        total.
+        """
+        balanced = pending = overloaded = 0
+        for participant in summary.participants:
+            if participant.state == ParticipantBalanceState.BALANCED:
+                balanced += 1
+            elif participant.state == ParticipantBalanceState.PENDING:
+                pending += 1
+            elif participant.state == ParticipantBalanceState.OVERLOADED_AUTHORIZED:
+                overloaded += 1
+        return balanced, pending, overloaded
 
     # ── Internal lookups ─────────────────────────────────────────────────────
 

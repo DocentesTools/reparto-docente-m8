@@ -48,8 +48,15 @@ def get_teaching_plan_summary(
 
 @router.get("/validations", response_model=PlanValidationReport)
 def get_teaching_plan_validations(
-    session: SessionDep, process_id: uuid.UUID
+    session: SessionDep, current_user: CurrentAdmin, process_id: uuid.UUID
 ) -> PlanValidationReport:
+    """Expose the planning findings only to an administrator (`W7.1`).
+
+    The assignment report's twin, and gated alike: since `W5.1` its messages
+    name the participant a finding is about and quote their hours. ``summary``
+    directly above answers "is this plan balanced" without naming anyone and is
+    the read a participant or a projected screen is entitled to.
+    """
     return TeachingPlanController.get_validations(session, process_id)
 
 

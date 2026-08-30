@@ -322,6 +322,18 @@ READ_ONLY_POSTS: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
+#: The one mutation whose authorization is a *credential*, not a role
+#: (remediation `W1.4`). Redeeming a claim code sits at the reader floor
+#: because the department head cannot look a colleague's user id up —
+#: `fa-auth-m8` owns that directory and restricts it to superusers by its own
+#: design — so the head issues a single-use code and the teacher presents it
+#: with their own token. It is not an own-data mutation: the caller does not
+#: own the row yet, which is the whole point. Ownership is still structural —
+#: the request schema has no ``user_id``, asserted below.
+CODE_AUTHORIZED_MUTATIONS: frozenset[tuple[str, str]] = frozenset(
+    {("POST", "/reparto/teacher-profiles/claim")}
+)
+
 ROLE_RANK: dict[str, int] = {
     "user": 0,
     "reader": 1,
@@ -336,6 +348,30 @@ ROLE_RANK: dict[str, int] = {
 #: has chosen, so it is department-head-only however harmless a `GET` looks.
 #: The diagnostics name the concrete slots/activities a remediation must touch
 #: (§20.24), so they sit behind the same gate.
+#:
+#: The dashboard and the participant list joined them with remediation `W5.3`.
+#: Both carry the department-head tier of §20.25 — every participant's target,
+#: assigned and remaining hours, the validation findings that name them, and
+#: ``extra_hours_reason``, which :mod:`reparto_service.services.sse` withholds
+#: from a teacher even on an event about the viewer themselves. Read scope
+#: (§21.4) answers *which processes*, never *which tier*; before this, a
+#: participant cleared the scope check and was handed the head's payload. The
+#: teacher tier reads ``/lan/me`` and the shared screen reads ``/summary``, so
+#: no screen lost a source.
+#:
+#: `W7.1` finished that narrowing in one decision rather than seven. `W5.3`
+#: moved the two live reads and said so explicitly: the reader surface was not
+#: teacher-tier-clean afterwards. The same tier was still reachable *after the
+#: fact* — the two validation reports (whose messages name the participant a
+#: finding is about, since `W5.1`), the stored audit trail (whose extra-hours
+#: event carries ``reason`` beside the participant's hours), the version
+#: snapshots and their two comparison routes (a whole-process dump, including
+#: ``extra_hours_reason``), and the export inventory built from all of it.
+#: Projecting each payload down to the teacher tier was the alternative and was
+#: rejected: ``DEPARTMENT_HEAD_ONLY_PAYLOAD_KEYS`` is a key filter over a flat
+#: event payload, and none of these seven has that shape — a projected
+#: validation report is its two counts, which ``…/teaching-plan/summary``
+#: already serves at the reader floor.
 ADMIN_ONLY_READS: frozenset[tuple[str, str]] = frozenset(
     {
         (
@@ -352,6 +388,35 @@ ADMIN_ONLY_READS: frozenset[tuple[str, str]] = frozenset(
                 "/teaching-plan/feasibility/diagnostics"
             ),
         ),
+        ("GET", "/reparto/assignment-processes/{process_id}/dashboard"),
+        ("GET", "/reparto/assignment-processes/{process_id}/teachers/"),
+        (
+            "GET",
+            (
+                "/reparto/assignment-processes/{process_id}"
+                "/teachers/{process_teacher_id}"
+            ),
+        ),
+        # Remediation `W7.1` — the after-the-fact reads of the same tier.
+        (
+            "GET",
+            ("/reparto/assignment-processes/{process_id}/assignments/validations"),
+        ),
+        (
+            "GET",
+            ("/reparto/assignment-processes/{process_id}/teaching-plan/validations"),
+        ),
+        ("GET", "/reparto/assignment-processes/{process_id}/audit-events/"),
+        ("GET", "/reparto/assignment-processes/{process_id}/versions"),
+        (
+            "GET",
+            (
+                "/reparto/assignment-processes/{process_id}"
+                "/versions/{left_version_id}/compare/{right_version_id}"
+            ),
+        ),
+        ("GET", "/reparto/assignment-processes/{process_id}/compare-previous-year"),
+        ("GET", "/reparto/assignment-processes/{process_id}/exports"),
     }
 )
 
@@ -360,7 +425,11 @@ def required_role(method: str, path: str) -> str:
     """Return the minimum role the §21.1/§21.3 tables give this operation."""
     if (method, path) in ADMIN_ONLY_READS:
         return "admin"
-    if method == "GET" or (method, path) in READ_ONLY_POSTS:
+    if (
+        method == "GET"
+        or (method, path) in READ_ONLY_POSTS
+        or (method, path) in CODE_AUTHORIZED_MUTATIONS
+    ):
         return "reader"
     if (method, path) in OWN_DATA_OPERATIONS:
         return "writer"
@@ -377,6 +446,7 @@ def test_every_operation_is_classified_by_the_role_tables() -> None:
     assert OWN_DATA_OPERATIONS <= known, OWN_DATA_OPERATIONS - known
     assert READ_ONLY_POSTS <= known, READ_ONLY_POSTS - known
     assert ADMIN_ONLY_READS <= known, ADMIN_ONLY_READS - known
+    assert CODE_AUTHORIZED_MUTATIONS <= known, CODE_AUTHORIZED_MUTATIONS - known
 
 
 @pytest.fixture
@@ -482,6 +552,19 @@ def test_direct_choice_cannot_name_another_participant() -> None:
     schema = app.openapi()["components"]["schemas"]["AssignmentDirectChoice"]
     assert "process_teacher_id" not in schema["properties"]
     assert "teacher_profile_id" not in schema["properties"]
+
+
+def test_a_claim_cannot_name_another_account() -> None:
+    """Ownership is structural on the claim path too (remediation `W1.4`).
+
+    The redemption endpoint is the service's only reader-floor mutation, so
+    what keeps it safe is that there is no payload naming an account: the
+    caller's id is read from the token and the code is single-use, expiring and
+    hashed at rest. A ``user_id`` field appearing here would turn a reader-floor
+    route into an account-linking primitive for anyone holding one code.
+    """
+    schema = app.openapi()["components"]["schemas"]["TeacherProfileClaim"]
+    assert set(schema["properties"]) == {"claim_code"}
 
 
 def test_a_recorded_head_is_re_evaluated_from_the_role_on_every_request(

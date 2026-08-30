@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import HTTPException, status
 from fastapi_m8 import UserModel
@@ -62,6 +63,9 @@ from reparto_service.services.feasibility_witnesses import FeasibilityWitnessSer
 # Plan statuses in which normal activity mutation is allowed (plan §5.6, §20.14):
 # still-planning states. LOCKED / REQUIREMENTS_GENERATED / STALE /
 # RECONCILIATION_REQUIRED all require an explicit unlock/reconcile first.
+#: The canonical two-place zero an unset override/default materialises as.
+_ZERO_HOURS = Decimal("0.00")
+
 _MUTABLE_PLAN_STATUSES: frozenset[TeachingPlanStatus] = frozenset(
     {
         TeachingPlanStatus.DRAFT,
@@ -71,20 +75,19 @@ _MUTABLE_PLAN_STATUSES: frozenset[TeachingPlanStatus] = frozenset(
 )
 
 
-def _first_hours(override: float | None, default: float | None) -> float:
+def _first_hours(override: Decimal | None, default: Decimal | None) -> Decimal:
     """Resolve an effective hour value for a materialised activity (plan §5.5).
 
     A cell override wins; otherwise the subject default is inherited; when both
-    are unset the value materialises as ``0.0`` so a main cell always yields a
-    concrete activity (the resulting group imbalance is surfaced by the planning
-    validations, never silently blocked). Actual values stay ``float`` today
-    (§3.9 Decimal sweep deferred).
+    are unset the value materialises as the canonical two-place zero so a main
+    cell always yields a concrete activity (the resulting group imbalance is
+    surfaced by the planning validations, never silently blocked).
     """
     if override is not None:
         return override
     if default is not None:
         return default
-    return 0.0
+    return _ZERO_HOURS
 
 
 class TeachingActivityController(DomainController):

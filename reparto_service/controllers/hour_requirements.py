@@ -117,7 +117,7 @@ class _Conflict:
 
     requirement: HourRequirement
     assignment: Assignment
-    new_hours: float | None
+    new_hours: Decimal | None
 
     @property
     def resolution(self) -> str:
@@ -131,7 +131,7 @@ class _GenerationPlan:
     """Pure, executable diff produced by :meth:`_plan_generation`."""
 
     next_generation_number: int
-    to_create: list[tuple[uuid.UUID, uuid.UUID, int, float]] = field(
+    to_create: list[tuple[uuid.UUID, uuid.UUID, int, Decimal]] = field(
         default_factory=list
     )
     to_preserve: list[HourRequirement] = field(default_factory=list)
@@ -530,7 +530,7 @@ class HourRequirementController(DomainController):
             .where(col(TeachingActivity.retired_at).is_(None))
             .order_by(col(TeachingActivity.id))
         ).all()
-        target: dict[tuple[uuid.UUID, int], float] = {}
+        target: dict[tuple[uuid.UUID, int], Decimal] = {}
         for activity in activities:
             for position in range(activity.required_teacher_count):
                 target[(activity.id, position)] = (
@@ -670,7 +670,7 @@ class HourRequirementController(DomainController):
         requirement_id: uuid.UUID,
         activity_id: uuid.UUID,
         position_index: int,
-        hours: float,
+        hours: Decimal,
         generation: int,
     ) -> HourRequirement:
         """Add one fresh AVAILABLE slot for a logical position (plan §20.8)."""
@@ -789,9 +789,9 @@ class HourRequirementController(DomainController):
         return requirement
 
 
-def _hours_equal(left: float, right: float) -> bool:
+def _hours_equal(left: Decimal, right: Decimal) -> bool:
     """Compare two hour values as canonical two-place decimals (plan §3.9)."""
-    return quantize_hours(Decimal(str(left))) == quantize_hours(Decimal(str(right)))
+    return quantize_hours(left) == quantize_hours(right)
 
 
 __all__ = ["HourRequirementController"]

@@ -102,9 +102,9 @@ def test_build_snapshot_full_sections(session: Session) -> None:
     assert requirement_row["status"] == HourRequirementStatus.ASSIGNED.value
 
     (teacher_row,) = snapshot["teachers"]
-    assert teacher_row["base_weekly_hours"] == 18.0
-    assert teacher_row["extra_weekly_hours"] == 2.0
-    assert teacher_row["target_weekly_hours"] == 20.0
+    assert teacher_row["base_weekly_hours"] == "18.00"
+    assert teacher_row["extra_weekly_hours"] == "2.00"
+    assert teacher_row["target_weekly_hours"] == "20.00"
     assert teacher_row["is_overloaded"] is True
 
 

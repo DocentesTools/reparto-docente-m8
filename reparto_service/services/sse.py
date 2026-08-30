@@ -100,15 +100,17 @@ DEPARTMENT_HEAD_ONLY_PAYLOAD_KEYS: frozenset[str] = frozenset({"reason"})
 
 
 def hours_string(value: float | Decimal) -> str:
-    """Render a stored hour figure as its canonical two-place string (plan §3.9).
+    """Render an hour figure as its canonical two-place string (plan §3.9).
 
-    The hour columns are still ``float`` today (the ``Decimal`` sweep is its own
-    later task), so an emit site must not drop a raw binary float into a payload:
-    a client would receive ``17.399999999999999``. This is the output-side
-    counterpart of the calculation schemas' hour field — lenient and rounding,
-    because it renders a value the domain already accepted.
+    Since the column sweep a stored value arrives as a two-place ``Decimal``
+    already; the ``float`` branch stays because an emit site may also render a
+    figure that reached it another way, and a raw binary float in a payload
+    would show a client ``17.399999999999999``. Lenient and rounding, unlike
+    ``normalize_hours``: it renders a value the domain has already accepted.
     """
-    return str(quantize_hours(Decimal(str(value))))
+    return str(
+        quantize_hours(value if isinstance(value, Decimal) else Decimal(str(value)))
+    )
 
 
 # ── Readiness projection (plan §20.25) ────────────────────────────────────────

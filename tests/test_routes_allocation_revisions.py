@@ -25,12 +25,12 @@ def test_create_first_revision(client: TestClient, session: Session) -> None:
     process = factories.make_assignment_process(session)
     resp = client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
-        json={"allocated_group_weekly_hours": 120, "reason": "First allocation"},
+        json={"allocated_group_weekly_hours": "120.00", "reason": "First allocation"},
     )
     assert resp.status_code == 201
     body = resp.json()
     assert body["revision_number"] == 1
-    assert body["allocated_group_weekly_hours"] == 120
+    assert body["allocated_group_weekly_hours"] == "120.00"
     assert body["reason"] == "First allocation"
     assert body["source"] == "manual_transcription"
     assert body["superseded_at"] is None
@@ -43,11 +43,14 @@ def test_create_revision_supersedes_previous(
     process = factories.make_assignment_process(session)
     client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
-        json={"allocated_group_weekly_hours": 120, "reason": "First"},
+        json={"allocated_group_weekly_hours": "120.00", "reason": "First"},
     )
     resp = client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
-        json={"allocated_group_weekly_hours": 124, "reason": "Leadership raised it"},
+        json={
+            "allocated_group_weekly_hours": "124.00",
+            "reason": "Leadership raised it",
+        },
     )
     assert resp.status_code == 201
     body = resp.json()
@@ -74,7 +77,7 @@ def test_create_revision_with_full_source_metadata(
     resp = client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
         json={
-            "allocated_group_weekly_hours": 96.5,
+            "allocated_group_weekly_hours": "96.50",
             "reason": "Imported from leadership sheet",
             "source": "file_import",
             "source_reference": "allocation_2026.xlsx",
@@ -94,7 +97,7 @@ def test_create_revision_records_audit_event(
     process = factories.make_assignment_process(session)
     client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
-        json={"allocated_group_weekly_hours": 120, "reason": "Audited reason"},
+        json={"allocated_group_weekly_hours": "120.00", "reason": "Audited reason"},
     )
     resp = client.get(f"{_BASE}/{process.id}/audit-events/")
     assert resp.status_code == 200
@@ -113,7 +116,7 @@ def test_create_revision_superadmin_allowed(
     process = factories.make_assignment_process(session)
     resp = superuser_client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
-        json={"allocated_group_weekly_hours": 100, "reason": "By superadmin"},
+        json={"allocated_group_weekly_hours": "100.00", "reason": "By superadmin"},
     )
     assert resp.status_code == 201
 
@@ -127,7 +130,7 @@ def test_create_revision_rejects_zero_hours(
     process = factories.make_assignment_process(session)
     resp = client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
-        json={"allocated_group_weekly_hours": 0, "reason": "Zero"},
+        json={"allocated_group_weekly_hours": "0.00", "reason": "Zero"},
     )
     assert resp.status_code == 422
 
@@ -138,7 +141,7 @@ def test_create_revision_rejects_negative_hours(
     process = factories.make_assignment_process(session)
     resp = client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
-        json={"allocated_group_weekly_hours": -5, "reason": "Negative"},
+        json={"allocated_group_weekly_hours": "-5.00", "reason": "Negative"},
     )
     assert resp.status_code == 422
 
@@ -149,7 +152,7 @@ def test_create_revision_rejects_empty_reason(
     process = factories.make_assignment_process(session)
     resp = client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
-        json={"allocated_group_weekly_hours": 120, "reason": ""},
+        json={"allocated_group_weekly_hours": "120.00", "reason": ""},
     )
     assert resp.status_code == 422
 
@@ -157,7 +160,7 @@ def test_create_revision_rejects_empty_reason(
 def test_create_revision_process_not_found(client: TestClient) -> None:
     resp = client.post(
         f"{_BASE}/{uuid.uuid4()}/allocation-revisions/",
-        json={"allocated_group_weekly_hours": 120, "reason": "No process"},
+        json={"allocated_group_weekly_hours": "120.00", "reason": "No process"},
     )
     assert resp.status_code == 404
 
@@ -170,7 +173,7 @@ def test_create_revision_blocked_on_final_process(
     )
     resp = client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
-        json={"allocated_group_weekly_hours": 120, "reason": "On final"},
+        json={"allocated_group_weekly_hours": "120.00", "reason": "On final"},
     )
     assert resp.status_code == 400
 
@@ -182,7 +185,7 @@ def test_create_revision_forbidden_for_reader(
     factories.enrol(session, process, reader)
     resp = reader_client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
-        json={"allocated_group_weekly_hours": 120, "reason": "Reader"},
+        json={"allocated_group_weekly_hours": "120.00", "reason": "Reader"},
     )
     assert resp.status_code == 403
 
@@ -227,17 +230,17 @@ def test_get_current_revision(client: TestClient, session: Session) -> None:
     process = factories.make_assignment_process(session)
     client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
-        json={"allocated_group_weekly_hours": 120, "reason": "First"},
+        json={"allocated_group_weekly_hours": "120.00", "reason": "First"},
     )
     client.post(
         f"{_BASE}/{process.id}/allocation-revisions/",
-        json={"allocated_group_weekly_hours": 124, "reason": "Second"},
+        json={"allocated_group_weekly_hours": "124.00", "reason": "Second"},
     )
     resp = client.get(f"{_BASE}/{process.id}/allocation-revisions/current")
     assert resp.status_code == 200
     body = resp.json()
     assert body["revision_number"] == 2
-    assert body["allocated_group_weekly_hours"] == 124
+    assert body["allocated_group_weekly_hours"] == "124.00"
     assert body["superseded_at"] is None
 
 

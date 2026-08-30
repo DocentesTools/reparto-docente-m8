@@ -72,6 +72,28 @@ ever produce a second, divergent answer.
 - **`WRITER` mutates its own records only** — own teacher profile, own
   direct-choice, own selection turn — and ownership is proven against the row,
   never inferred from the role.
+- **Read scope is not a confidentiality tier.**
+  `services/read_scope.py` answers *which processes* a caller may read;
+  `services/sse.py`'s audience projection answers *which payload* they receive.
+  A read that carries the department-head tier — per-participant hours, the
+  validation findings that name them, `extra_hours_reason`, the feasibility
+  witness and diagnostics — declares `CurrentAdmin` however harmless a `GET`
+  looks, and `tests/test_authorization_boundaries.py::ADMIN_ONLY_READS` is the
+  list. The teacher tier reads `…/lan/me` and the shared screen reads
+  `…/summary`; both are at the reader floor because neither carries another
+  participant's figures.
+- **The tier does not expire when the meeting ends.** The same rule governs the
+  after-the-fact reads: both validation reports, the stored audit trail, the
+  version list and its two comparison routes, and the export inventory are the
+  head's tier read later, and they sit at the administrator floor for that
+  reason alone. The alternative — a second redaction rule projecting each
+  payload down to the teacher tier — was considered and rejected: `sse.py`'s
+  `DEPARTMENT_HEAD_ONLY_PAYLOAD_KEYS` is a key filter over a flat event
+  payload, no report or snapshot has that shape, and a validation report
+  projected to the teacher tier is its two counts, which
+  `…/teaching-plan/summary` already serves at the reader floor. Adding a read
+  to `ADMIN_ONLY_READS` is how that decision is recorded; it is not a
+  per-endpoint judgement call.
 
 ### Controller-level role checks are kept on purpose
 

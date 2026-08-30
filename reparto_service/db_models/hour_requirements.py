@@ -35,9 +35,9 @@ consumed by the plan §7.5 generation flow on
 :class:`~reparto_service.controllers.hour_requirements.HourRequirementController`.
 The reconciliation-preview / reconcile flow (plan §7.5) is its own later task.
 
-Hour values stay ``float`` like every other hour field in the service today; the
-fleet-wide ``Decimal`` / ``NUMERIC(..., 2)`` sweep is a dedicated later task
-(plan §3.9).
+Hour values are ``Decimal``, stored in ``NUMERIC(8, 2)`` columns
+(``HoursNumeric``) and exchanged over the API as canonical decimal strings
+("2.50") — a binary float is refused on input (plan §3.9).
 """
 
 from __future__ import annotations
@@ -51,6 +51,11 @@ from pydantic import Field
 from sqlalchemy import Index, UniqueConstraint, text
 from sqlmodel import Column, Field as SQLField, SQLModel
 
+from reparto_service.core.decimals import (
+    HoursDecimal,
+    HoursNumeric,
+    OptionalHoursDecimal,
+)
 from reparto_service.core.db_models import (
     UUIDString,
     enum_column_type,
@@ -112,7 +117,8 @@ class HourRequirement(TimestampMixin, SQLModel, table=True):
             "(plan §3.7). Slots 0..required_teacher_count-1."
         ),
     )
-    required_teacher_hours: float = SQLField(
+    required_teacher_hours: HoursDecimal = SQLField(
+        sa_type=HoursNumeric,
         ge=0,
         description=(
             "Indivisible weekly hours of this slot, derived from the activity's "
@@ -175,7 +181,7 @@ class HourRequirementPublic(SQLModel):
         description="Teaching activity this slot was generated from."
     )
     position_index: int = Field(description="Zero-based teacher-position index.")
-    required_teacher_hours: float = Field(
+    required_teacher_hours: HoursDecimal = Field(
         ge=0, description="Indivisible weekly hours of this slot."
     )
     status: HourRequirementStatus = Field(description="Slot lifecycle state.")
@@ -217,7 +223,7 @@ class RequirementSlotPlan(SQLModel):
     position_index: int = Field(
         ge=0, description="Zero-based teacher-position index (plan §3.7)."
     )
-    required_teacher_hours: float = Field(
+    required_teacher_hours: HoursDecimal = Field(
         ge=0, description="Indivisible weekly hours of the planned slot."
     )
 
@@ -327,10 +333,10 @@ class RequirementConflictDetail(SQLModel):
             "'removed' (the teacher position no longer exists)."
         )
     )
-    current_required_teacher_hours: float = Field(
+    current_required_teacher_hours: HoursDecimal = Field(
         ge=0, description="Hours the assigned slot currently carries."
     )
-    new_required_teacher_hours: Optional[float] = Field(
+    new_required_teacher_hours: OptionalHoursDecimal = Field(
         default=None,
         description=(
             "Target hours the activity now wants (value change); null when the "

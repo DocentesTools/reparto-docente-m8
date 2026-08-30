@@ -28,9 +28,9 @@ activity is single-subject); the group hours count once per linked group.
   (IN_SYNC / OUT_OF_SYNC vs the source cell — plan §20.10) and the
   ``retired_at`` timestamp (activities are RETIRED at a timestamp — plan §20.18).
 
-Hour values stay ``float`` like every other hour field in the service today; the
-fleet-wide ``Decimal`` / ``NUMERIC(..., 2)`` sweep is a dedicated later task
-(plan §3.9).
+Hour values are ``Decimal``, stored in ``NUMERIC(8, 2)`` columns
+(``HoursNumeric``) and exchanged over the API as canonical decimal strings
+("2.50") — a binary float is refused on input (plan §3.9).
 """
 
 from __future__ import annotations
@@ -45,6 +45,11 @@ from sqlalchemy import DateTime, Index, UniqueConstraint, text
 from sqlmodel import Column, SQLModel
 from sqlmodel import Field as SQLField
 
+from reparto_service.core.decimals import (
+    HoursDecimal,
+    HoursNumeric,
+    OptionalHoursDecimal,
+)
 from reparto_service.core.db_models import (
     UUIDString,
     enum_column_type,
@@ -92,14 +97,16 @@ class TeachingActivityBase(SQLModel):
             "and reports. No domain behaviour may branch on this value."
         ),
     )
-    group_weekly_hours_per_group: float = Field(
+    group_weekly_hours_per_group: HoursDecimal = SQLField(
+        sa_type=HoursNumeric,
         ge=0,
         description=(
             "Actual weekly group hours this activity delivers to each linked "
             "group (plan §5.6, §3.1). Counted once per linked group."
         ),
     )
-    teacher_weekly_hours_per_position: float = Field(
+    teacher_weekly_hours_per_position: HoursDecimal = SQLField(
+        sa_type=HoursNumeric,
         ge=0,
         description=(
             "Actual weekly teacher-load hours per teacher position (plan §5.6, §3.1)."
@@ -151,8 +158,8 @@ class TeachingActivityUpdate(SQLModel):
 
     allocation_category: Optional[SubjectAllocationCategory] = Field(default=None)
     activity_type: Optional[ActivityType] = Field(default=None)
-    group_weekly_hours_per_group: Optional[float] = Field(default=None, ge=0)
-    teacher_weekly_hours_per_position: Optional[float] = Field(default=None, ge=0)
+    group_weekly_hours_per_group: OptionalHoursDecimal = Field(default=None, ge=0)
+    teacher_weekly_hours_per_position: OptionalHoursDecimal = Field(default=None, ge=0)
     required_teacher_count: Optional[int] = Field(default=None, ge=1)
     notes: Optional[str] = Field(default=None)
     group_subject_ids: Optional[list[uuid.UUID]] = Field(default=None)
@@ -323,8 +330,8 @@ class MainMaterializationResult(SQLModel):
 class MainActivitySyncValues(SQLModel):
     """Planning values compared by the GroupSubject sync flow (plan §20.10)."""
 
-    group_weekly_hours_per_group: float = Field(ge=0)
-    teacher_weekly_hours_per_position: float = Field(ge=0)
+    group_weekly_hours_per_group: HoursDecimal = Field(ge=0)
+    teacher_weekly_hours_per_position: HoursDecimal = Field(ge=0)
     required_teacher_count: int = Field(ge=1)
 
 
@@ -336,8 +343,12 @@ class MainActivitySyncDifference(SQLModel):
         "teacher_weekly_hours_per_position",
         "required_teacher_count",
     ]
-    current_value: float = Field(description="Current materialized activity value.")
-    source_value: float = Field(description="Resolved source GroupSubject value.")
+    current_value: HoursDecimal = Field(
+        description="Current materialized activity value."
+    )
+    source_value: HoursDecimal = Field(
+        description="Resolved source GroupSubject value."
+    )
 
 
 class MainActivityAssignmentImpact(SQLModel):

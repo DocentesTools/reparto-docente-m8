@@ -36,7 +36,7 @@ def test_bulk_preview_create_missing(client: TestClient, session: Session) -> No
         json={
             "subject_id": str(subject.id),
             "mode": "create_missing",
-            "group_weekly_hours": 3.0,
+            "group_weekly_hours": "3.00",
             "required_teacher_count": 2,
         },
     )
@@ -46,7 +46,7 @@ def test_bulk_preview_create_missing(client: TestClient, session: Session) -> No
     assert len(body["to_create"]) == 1
     assert body["to_create"][0]["teaching_group_id"] == str(g2.id)
     assert body["to_create"][0]["group_subject_id"] is None
-    assert body["to_create"][0]["group_weekly_hours"] == 3.0
+    assert body["to_create"][0]["group_weekly_hours"] == "3.00"
     assert body["to_create"][0]["required_teacher_count"] == 2
     assert len(body["unchanged"]) == 1
     assert body["unchanged"][0]["teaching_group_id"] == str(g1.id)
@@ -68,14 +68,14 @@ def test_bulk_preview_update_existing_reports_conflicts(
         json={
             "subject_id": str(subject.id),
             "mode": "update_existing",
-            "group_weekly_hours": 5.0,
+            "group_weekly_hours": "5.00",
         },
     )
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["to_update"]) == 1
     assert body["to_update"][0]["teaching_group_id"] == str(g1.id)
-    assert body["to_update"][0]["group_weekly_hours"] == 5.0
+    assert body["to_update"][0]["group_weekly_hours"] == "5.00"
     # g2 has no row -> cannot update -> conflict.
     assert len(body["conflicts"]) == 1
     assert body["conflicts"][0]["teaching_group_id"] == str(g2.id)
@@ -96,7 +96,7 @@ def test_bulk_preview_update_unchanged_when_values_equal(
         json={
             "subject_id": str(subject.id),
             "mode": "update_existing",
-            "group_weekly_hours": 4.0,
+            "group_weekly_hours": "4.00",
         },
     )
     assert resp.status_code == 200
@@ -117,7 +117,7 @@ def test_bulk_preview_upsert_mix(client: TestClient, session: Session) -> None:
         json={
             "subject_id": str(subject.id),
             "mode": "upsert",
-            "group_weekly_hours": 2.0,
+            "group_weekly_hours": "2.00",
         },
     )
     assert resp.status_code == 200
@@ -228,7 +228,7 @@ def test_bulk_apply_create_missing_commits(
         json={
             "subject_id": str(subject.id),
             "mode": "create_missing",
-            "group_weekly_hours": 3.0,
+            "group_weekly_hours": "3.00",
             "expected_affected_count": 2,
         },
     )
@@ -237,7 +237,7 @@ def test_bulk_apply_create_missing_commits(
     assert body["created_count"] == 2
     assert body["updated_count"] == 0
     assert body["count"] == 2
-    assert all(row["group_weekly_hours"] == 3.0 for row in body["data"])
+    assert all(row["group_weekly_hours"] == "3.00" for row in body["data"])
     # Rows are persisted.
     listing = client.get(f"/reparto/assignment-processes/{process.id}/group-subjects/")
     assert listing.json()["count"] == 2
@@ -286,7 +286,7 @@ def test_bulk_apply_update_existing_commits(
         json={
             "subject_id": str(subject.id),
             "mode": "update_existing",
-            "group_weekly_hours": 6.5,
+            "group_weekly_hours": "6.50",
             "expected_affected_count": 1,
         },
     )
@@ -297,7 +297,7 @@ def test_bulk_apply_update_existing_commits(
     detail = client.get(
         f"/reparto/assignment-processes/{process.id}/group-subjects/{gs.id}"
     )
-    assert detail.json()["group_weekly_hours"] == 6.5
+    assert detail.json()["group_weekly_hours"] == "6.50"
 
 
 def test_bulk_apply_upsert_commits(client: TestClient, session: Session) -> None:
@@ -311,7 +311,7 @@ def test_bulk_apply_upsert_commits(client: TestClient, session: Session) -> None
         json={
             "subject_id": str(subject.id),
             "mode": "upsert",
-            "group_weekly_hours": 2.0,
+            "group_weekly_hours": "2.00",
             "expected_affected_count": 2,
         },
     )

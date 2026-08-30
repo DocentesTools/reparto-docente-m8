@@ -33,8 +33,8 @@ def _setup(session: Session, *, plan_status=TeachingPlanStatus.DRAFT, **subject_
 def _payload(subject_id: uuid.UUID, cell_ids: list[uuid.UUID], **extra):
     body = {
         "subject_id": str(subject_id),
-        "group_weekly_hours_per_group": 2.0,
-        "teacher_weekly_hours_per_position": 2.0,
+        "group_weekly_hours_per_group": "2.00",
+        "teacher_weekly_hours_per_position": "2.00",
         "group_subject_ids": [str(c) for c in cell_ids],
     }
     body.update(extra)
@@ -332,11 +332,11 @@ def test_update_activity_fields(client: TestClient, session: Session) -> None:
     )
     resp = client.patch(
         f"/reparto/assignment-processes/{process.id}/teaching-activities/{activity.id}",
-        json={"group_weekly_hours_per_group": 3.5, "required_teacher_count": 3},
+        json={"group_weekly_hours_per_group": "3.50", "required_teacher_count": 3},
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["group_weekly_hours_per_group"] == 3.5
+    assert body["group_weekly_hours_per_group"] == "3.50"
     assert body["required_teacher_count"] == 3
     # Links untouched when group_subject_ids is omitted.
     assert body["group_subject_ids"] == [str(cell.id)]

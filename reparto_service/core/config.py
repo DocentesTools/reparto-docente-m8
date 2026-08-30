@@ -36,6 +36,12 @@ class Settings(ConsumerServiceSettings):
     #: expected to come up empty, and a deployment must never invent rows.
     SEED_EXAMPLE_DATA: bool = False
 
+    #: How long a teacher-profile claim code stays redeemable (remediation
+    #: `W1.4`). A code is a bearer credential for one profile, so it expires as
+    #: well as being single-use: the default spans a working week, which is the
+    #: window a department head hands codes out over, and nothing longer.
+    CLAIM_CODE_TTL_HOURS: int = 72
+
     # Vault/`_FILE` source ordering is handled by the inherited
     # CommonSettings.settings_customise_sources classmethod — no override needed.
     model_config = SettingsConfigDict(

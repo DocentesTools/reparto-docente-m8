@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from decimal import Decimal
 from collections.abc import AsyncGenerator
 from typing import cast
 
@@ -127,7 +128,7 @@ def test_creating_an_allocation_revision_publishes(
         f"{PREFIX}/{process.id}/allocation-revisions/",
         json={
             "assignment_process_id": str(process.id),
-            "allocated_group_weekly_hours": 120.0,
+            "allocated_group_weekly_hours": "120.00",
             "reason": "Leadership allocation received",
             "source": "manual_transcription",
         },
@@ -155,7 +156,7 @@ def test_allocation_event_carries_the_post_change_readiness(
         f"{PREFIX}/{process.id}/allocation-revisions/",
         json={
             "assignment_process_id": str(process.id),
-            "allocated_group_weekly_hours": 100.0,
+            "allocated_group_weekly_hours": "100.00",
             "reason": "Revised downward",
             "source": "manual_transcription",
         },
@@ -178,7 +179,7 @@ def test_a_refused_allocation_revision_publishes_nothing(
         f"{PREFIX}/{process.id}/allocation-revisions/",
         json={
             "assignment_process_id": str(process.id),
-            "allocated_group_weekly_hours": 120.0,
+            "allocated_group_weekly_hours": "120.00",
             "reason": "Too late",
             "source": "manual_transcription",
         },
@@ -203,7 +204,7 @@ def test_updating_extra_hours_publishes_a_participant_scoped_event(
 
     resp = client.post(
         f"{PREFIX}/{process.id}/teachers/{participant.id}/extra-hours",
-        json={"extra_weekly_hours": 3.0, "reason": "Covers a vacancy"},
+        json={"extra_weekly_hours": "3.00", "reason": "Covers a vacancy"},
     )
     assert resp.status_code == 200
 
@@ -232,7 +233,7 @@ def test_a_refused_extra_hours_change_publishes_nothing(
 
     resp = client.post(
         f"{PREFIX}/{process.id}/teachers/{participant.id}/extra-hours",
-        json={"extra_weekly_hours": 3.0, "reason": "Too late"},
+        json={"extra_weekly_hours": "3.00", "reason": "Too late"},
     )
 
     assert resp.status_code == 400
@@ -399,7 +400,7 @@ def test_a_broken_broker_does_not_fail_the_committed_write(
         f"{PREFIX}/{process.id}/allocation-revisions/",
         json={
             "assignment_process_id": str(process.id),
-            "allocated_group_weekly_hours": 120.0,
+            "allocated_group_weekly_hours": "120.00",
             "reason": "Leadership allocation",
             "source": "manual_transcription",
         },
@@ -521,7 +522,9 @@ async def test_stream_relays_only_a_teachers_own_hours(
         session,
         process.id,
         other.id,
-        ProcessTeacherExtraHoursUpdate(extra_weekly_hours=4.0, reason="Cover"),
+        ProcessTeacherExtraHoursUpdate(
+            extra_weekly_hours=Decimal("4.00"), reason="Cover"
+        ),
         current_user,
     )
 
@@ -556,7 +559,7 @@ async def test_stream_relays_a_teachers_own_hours_without_the_reason(
         process.id,
         participant.id,
         ProcessTeacherExtraHoursUpdate(
-            extra_weekly_hours=3.0, reason="Covers a vacancy"
+            extra_weekly_hours=Decimal("3.00"), reason="Covers a vacancy"
         ),
         current_user,
     )
@@ -734,7 +737,7 @@ def test_a_mutation_that_drops_a_stored_result_publishes_invalidated(
 
     resp = admin_client.patch(
         f"{PREFIX}/{process.id}/teachers/{teachers[0].id}",
-        json={"base_weekly_hours": 6.0},
+        json={"base_weekly_hours": "6.00"},
     )
     assert resp.status_code == 200
 
@@ -751,7 +754,7 @@ def test_a_mutation_without_a_stored_result_publishes_no_invalidation(
 
     resp = admin_client.patch(
         f"{PREFIX}/{process.id}/teachers/{teachers[0].id}",
-        json={"base_weekly_hours": 6.0},
+        json={"base_weekly_hours": "6.00"},
     )
 
     assert resp.status_code == 200

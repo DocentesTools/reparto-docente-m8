@@ -7,11 +7,9 @@ never overwritten in place: every value is stored as an immutable revision
 superseded); creating a new revision supersedes the previous one
 transactionally and increments the per-process ``revision_number``.
 
-``allocated_group_weekly_hours`` is a weekly-hour value. Like every other hour
-field in the service today it is stored as ``float``; the fleet-wide switch to
-``Decimal`` / ``NUMERIC(..., 2)`` and canonical decimal-string serialisation is
-a dedicated later task (plan §3.9, "Implement decimal normalization utilities")
-that converts all hour fields uniformly.
+``allocated_group_weekly_hours`` is a weekly-hour value, so like every other
+hour field it is a ``Decimal`` in a ``NUMERIC(8, 2)`` column (``HoursNumeric``)
+and a canonical decimal string ("132.50") over the API (plan §3.9).
 """
 
 from __future__ import annotations
@@ -25,6 +23,7 @@ from pydantic import Field
 from sqlalchemy import DateTime, UniqueConstraint
 from sqlmodel import Column, Field as SQLField, SQLModel
 
+from reparto_service.core.decimals import HoursDecimal, HoursNumeric
 from reparto_service.core.db_models import (
     UUIDString,
     enum_column_type,
@@ -45,7 +44,8 @@ class DepartmentHourAllocationRevisionBase(SQLModel):
     number or resurrect a superseded revision.
     """
 
-    allocated_group_weekly_hours: float = Field(
+    allocated_group_weekly_hours: HoursDecimal = SQLField(
+        sa_type=HoursNumeric,
         gt=0,
         description=(
             "Weekly group-teaching hours allocated to the department by school "

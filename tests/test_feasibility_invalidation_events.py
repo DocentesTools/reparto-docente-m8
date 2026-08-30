@@ -144,7 +144,7 @@ def test_editing_a_cell_invalidates(
 
     resp = client.patch(
         f"{PREFIX}/{process.id}/group-subjects/{cell.id}",
-        json={"group_weekly_hours": 5.0},
+        json={"group_weekly_hours": "5.00"},
     )
 
     assert resp.status_code == 200
@@ -196,7 +196,7 @@ def test_applying_a_source_sync_invalidates(
     process, plan, _subject, _group, cell, _activity = _main_setup(session)
     edit = client.patch(
         f"{PREFIX}/{process.id}/group-subjects/{cell.id}",
-        json={"group_weekly_hours": 5.0},
+        json={"group_weekly_hours": "5.00"},
     )
     assert edit.status_code == 200
     _store_result(session, plan)
@@ -236,8 +236,8 @@ def test_creating_an_activity_invalidates(
         f"{PREFIX}/{process.id}/teaching-activities/",
         json={
             "subject_id": str(subject.id),
-            "group_weekly_hours_per_group": 0.0,
-            "teacher_weekly_hours_per_position": 3.0,
+            "group_weekly_hours_per_group": "0.00",
+            "teacher_weekly_hours_per_position": "3.00",
             "required_teacher_count": 1,
             "group_subject_ids": [],
         },
@@ -319,7 +319,7 @@ def test_adding_a_participant_invalidates(
         json={
             "assignment_process_id": str(process.id),
             "teacher_profile_id": str(profile.id),
-            "base_weekly_hours": 18.0,
+            "base_weekly_hours": "18.00",
         },
     )
 
@@ -341,7 +341,7 @@ def test_updating_extra_hours_invalidates(
 
     resp = client.post(
         f"{PREFIX}/{process.id}/teachers/{participant.id}/extra-hours",
-        json={"extra_weekly_hours": 2.0, "reason": "Leadership authorization"},
+        json={"extra_weekly_hours": "2.00", "reason": "Leadership authorization"},
     )
 
     assert resp.status_code == 200
@@ -377,7 +377,7 @@ def test_recording_an_allocation_revision_invalidates(
     resp = client.post(
         f"{PREFIX}/{process.id}/allocation-revisions/",
         json={
-            "allocated_group_weekly_hours": 40.0,
+            "allocated_group_weekly_hours": "40.00",
             "reason": "Leadership reduced the department allocation",
         },
     )

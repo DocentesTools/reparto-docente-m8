@@ -3,22 +3,28 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 from fastapi_m8 import RoleType, UserModel, has_minimum_role
 from sqlmodel import Session, col, func, select
 
 from reparto_service.controllers.base import DomainController
+from reparto_service.core.config import settings
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.teacher_profiles import (
     TeacherProfile,
+    TeacherProfileClaim,
+    TeacherProfileClaimCode,
     TeacherProfileCreate,
     TeacherProfileLinkUser,
     TeacherProfilePublic,
     TeacherProfilesPublic,
     TeacherProfileUpdate,
 )
+from reparto_service.enums import AuditEventType
+from reparto_service.services.claim_codes import hash_claim_code, mint_claim_code
 from reparto_service.services.read_scope import UNRESTRICTED, visible_department_ids
 
 
@@ -164,11 +170,169 @@ class TeacherProfileController(DomainController):
         return TeacherProfilePublic.model_validate(profile)
 
     @staticmethod
+    def issue_claim_code(
+        session: Session,
+        current_user: UserModel,
+        profile_id: uuid.UUID,
+    ) -> TeacherProfileClaimCode:
+        """Mint the single-use code that lets *this* profile be claimed (`W1.4`).
+
+        Refused for a profile that is already linked. That is not tidiness: a
+        code minted over a live linkage would let whoever redeems it take over
+        the participation of the account currently holding it. Unlinking first
+        is an explicit department-head act with its own row on the roster, so
+        the takeover cannot happen by pressing one button.
+
+        Minting again replaces any outstanding code — there is at most one live
+        code per profile, so a code read out in the wrong room is revoked by
+        issuing the next one rather than by remembering to expire it.
+        """
+        profile = DomainController.get_or_404(session, TeacherProfile, profile_id)
+        if profile.user_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Teacher profile is already linked to an auth user; "
+                    "unlink it before issuing a claim code."
+                ),
+            )
+        code = mint_claim_code()
+        expires_at = datetime.now(tz=timezone.utc) + timedelta(
+            hours=settings.CLAIM_CODE_TTL_HOURS
+        )
+        profile.claim_code_hash = hash_claim_code(code)
+        profile.claim_code_expires_at = expires_at
+        session.add(profile)
+        TeacherProfileController._audit_profile_linkage(
+            session,
+            current_user=current_user,
+            profile=profile,
+            event_type=AuditEventType.TEACHER_PROFILE_CLAIM_CODE_ISSUED,
+            before=None,
+        )
+        session.commit()
+        session.refresh(profile)
+        return TeacherProfileClaimCode(
+            teacher_profile_id=profile.id,
+            display_name=profile.display_name,
+            claim_code=code,
+            expires_at=expires_at,
+        )
+
+    @staticmethod
+    def claim_profile(
+        session: Session,
+        current_user: UserModel,
+        claim_in: TeacherProfileClaim,
+    ) -> TeacherProfilePublic:
+        """Bind the profile *claim_in*'s code names to the caller's own account.
+
+        The caller's id comes from the token and from nowhere else, so this
+        endpoint can only ever link the person presenting the code. The 409
+        "already linked to another profile" rule is not restated here: the
+        linkage goes through :meth:`link_user`, the same path the department
+        head's own action uses, so there is one place that decides an account
+        holds at most one profile.
+
+        Every refusal answers the same 400 with the same wording — unknown,
+        expired, or minted for a profile that has since been linked. Telling
+        the difference would tell a caller holding a wrong code which half of
+        it to vary.
+        """
+        profile = session.exec(
+            select(TeacherProfile).where(
+                TeacherProfile.claim_code_hash == hash_claim_code(claim_in.claim_code)
+            )
+        ).first()
+        expires_at = profile.claim_code_expires_at if profile else None
+        if (
+            profile is None
+            or profile.user_id is not None
+            or expires_at is None
+            or _as_utc(expires_at) <= datetime.now(tz=timezone.utc)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Claim code is not valid, or has expired or been used.",
+            )
+        before = TeacherProfilePublic.model_validate(profile)
+        linked = TeacherProfileController.link_user(
+            session,
+            profile.id,
+            TeacherProfileLinkUser(user_id=uuid.UUID(str(current_user.id))),
+        )
+        # Consumed only once the linkage committed: a 409 from ``link_user``
+        # leaves the code redeemable, because the caller who was refused is not
+        # the teacher the head issued it to.
+        profile.claim_code_hash = None
+        profile.claim_code_expires_at = None
+        session.add(profile)
+        TeacherProfileController._audit_profile_linkage(
+            session,
+            current_user=current_user,
+            profile=profile,
+            event_type=AuditEventType.TEACHER_PROFILE_CLAIMED,
+            before=before,
+        )
+        session.commit()
+        return linked
+
+    @staticmethod
+    def _audit_profile_linkage(
+        session: Session,
+        *,
+        current_user: UserModel,
+        profile: TeacherProfile,
+        event_type: AuditEventType,
+        before: TeacherProfilePublic | None,
+    ) -> None:
+        """Record a linkage event on every process the profile takes part in.
+
+        A teacher profile is cross-process but ``AuditEvent`` is not: the trail
+        is read per process and ``assignment_process_id`` is not nullable. So
+        one event is written per participating process, which is also where the
+        record is useful — the head running that reparto is the person who needs
+        to see who claimed a participant. A profile in no process yet writes no
+        row; there is no reparto for it to belong to.
+
+        Neither the code nor its hash appears in the payload: both sides are
+        recorded from :class:`TeacherProfilePublic`, which has no claim-code
+        field at all, so the trail cannot leak a live credential.
+        """
+        process_ids = session.exec(
+            select(ProcessTeacher.assignment_process_id)
+            .where(ProcessTeacher.teacher_profile_id == profile.id)
+            .distinct()
+        ).all()
+        after = TeacherProfilePublic.model_validate(profile)
+        for process_id in process_ids:
+            TeacherProfileController.record_audit_event(
+                session,
+                process_id=process_id,
+                current_user=current_user,
+                event_type=event_type,
+                entity_type="teacher_profile",
+                entity_id=profile.id,
+                before=before,
+                after=after,
+            )
+
+    @staticmethod
     def delete_profile(session: Session, profile_id: uuid.UUID) -> TeacherProfilePublic:
         profile = DomainController.get_or_404(session, TeacherProfile, profile_id)
         session.delete(profile)
         session.commit()
         return TeacherProfilePublic.model_validate(profile)
+
+
+def _as_utc(moment: datetime) -> datetime:
+    """Read a stored timestamp as UTC-aware.
+
+    SQLite hands back a naive value from a ``DateTime(timezone=True)`` column,
+    so an expiry compared as-is would raise rather than expire. The stored
+    instant is always UTC — it is written from ``datetime.now(tz=utc)``.
+    """
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
 
 __all__ = ["TeacherProfileController"]

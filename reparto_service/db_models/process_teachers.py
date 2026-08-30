@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 
 from fastapi_m8 import TimestampMixin
@@ -28,12 +29,21 @@ from pydantic import Field, computed_field
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Column, Field as SQLField, SQLModel
 
+from reparto_service.core.decimals import (
+    HoursDecimal,
+    HoursNumeric,
+    OptionalHoursDecimal,
+    quantize_hours,
+)
 from reparto_service.core.db_models import (
     UUIDString,
     enum_column_type,
     prefixed_tables,
 )
 from reparto_service.enums import ProcessTeacherStatus
+
+#: The canonical two-place zero the overload predicate compares against.
+_ZERO_HOURS = Decimal("0.00")
 
 
 # ── Base, Create, Update schemas ──────────────────────────────────────────────
@@ -46,8 +56,9 @@ class ProcessTeacherBase(SQLModel):
         description="Owning assignment process ID."
     )
     teacher_profile_id: uuid.UUID = Field(description="Linked teacher profile ID.")
-    base_weekly_hours: float = Field(
-        default=0,
+    base_weekly_hours: HoursDecimal = SQLField(
+        default=Decimal("0.00"),
+        sa_type=HoursNumeric,
         ge=0,
         description=(
             "Contractual weekly teaching hours for this process — the product "
@@ -55,8 +66,9 @@ class ProcessTeacherBase(SQLModel):
             "participant target (plan §3.8)."
         ),
     )
-    extra_weekly_hours: float = Field(
-        default=0,
+    extra_weekly_hours: HoursDecimal = SQLField(
+        default=Decimal("0.00"),
+        sa_type=HoursNumeric,
         ge=0,
         description=(
             "Department-head authorized extra weekly hours (overload). A value "
@@ -117,7 +129,7 @@ class ProcessTeacherUpdate(SQLModel):
     generic ``PATCH`` from bypassing the audit requirement.
     """
 
-    base_weekly_hours: Optional[float] = Field(default=None, ge=0)
+    base_weekly_hours: OptionalHoursDecimal = Field(default=None, ge=0)
     participates_in_selection: Optional[bool] = Field(default=None)
     selection_position: Optional[int] = Field(default=None, ge=0)
     selection_points: Optional[float] = Field(default=None, ge=0)
@@ -130,7 +142,7 @@ class ProcessTeacherUpdate(SQLModel):
 class ProcessTeacherExtraHoursUpdate(SQLModel):
     """Payload for the dedicated audited extra-hours action (plan §7.6)."""
 
-    extra_weekly_hours: float = Field(
+    extra_weekly_hours: HoursDecimal = Field(
         ge=0, description="New authorized extra weekly hours (non-negative)."
     )
     reason: str = Field(
@@ -187,13 +199,17 @@ class ProcessTeacher(TimestampMixin, ProcessTeacherBase, SQLModel, table=True):
     )
 
     @property
-    def target_weekly_hours(self) -> float:
+    def target_weekly_hours(self) -> Decimal:
         """Exact participant target: base plus authorized extra (plan §3.8).
+
+        Quantized because both operands come off ``HoursNumeric`` columns and a
+        sum of two two-place values is a two-place value; the call makes that
+        explicit rather than relying on it.
 
         Used by the balance/summary service; ``is_overloaded`` is exposed on
         the public schema only, where it is actually serialized.
         """
-        return self.base_weekly_hours + self.extra_weekly_hours
+        return quantize_hours(self.base_weekly_hours + self.extra_weekly_hours)
 
 
 # ── Public/read schemas ──────────────────────────────────────────────────────
@@ -211,15 +227,20 @@ class ProcessTeacherPublic(ProcessTeacherBase, SQLModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def target_weekly_hours(self) -> float:
-        """base_weekly_hours + extra_weekly_hours (plan §3.8)."""
-        return self.base_weekly_hours + self.extra_weekly_hours
+    def target_weekly_hours(self) -> HoursDecimal:
+        """base_weekly_hours + extra_weekly_hours (plan §3.8).
+
+        Serialized as the canonical decimal string like every stored hour
+        field, so a client never has to tell a computed hour apart from a
+        stored one (plan §3.9).
+        """
+        return quantize_hours(self.base_weekly_hours + self.extra_weekly_hours)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def is_overloaded(self) -> bool:
         """True when extra_weekly_hours > 0 (plan §3.8 authorized overload)."""
-        return self.extra_weekly_hours > 0
+        return self.extra_weekly_hours > _ZERO_HOURS
 
 
 class ProcessTeachersPublic(SQLModel):

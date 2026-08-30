@@ -365,6 +365,14 @@ class AuditEventType(str, Enum):
     PROCESS_COPIED_FROM_PREVIOUS_YEAR = "process.copied_from_previous_year"
     PROCESS_RESTORED_FROM_BACKUP = "process.restored_from_backup"
 
+    # ── Teacher profile linkage (cross-process; plan §8.5, remediation W1.4) ──
+    #: A department head minted a single-use claim code for a profile. The code
+    #: itself is never recorded — only that one was issued, and by whom.
+    TEACHER_PROFILE_CLAIM_CODE_ISSUED = "teacher_profile.claim_code_issued"
+    #: A teacher redeemed a claim code and bound the profile to their own
+    #: account. The actor *is* the account that was bound.
+    TEACHER_PROFILE_CLAIMED = "teacher_profile.claimed"
+
     # ── Stage 1: configuration ────────────────────────────────────────────────
     PROCESS_TEACHER_CREATED = "process_teacher.created"
     PROCESS_TEACHER_UPDATED = "process_teacher.updated"
