@@ -145,6 +145,35 @@ def session_fixture(engine):
         yield _session
 
 
+@pytest.fixture(autouse=True)
+def _core_engine_singleton_uses_the_test_engine(
+    monkeypatch: pytest.MonkeyPatch, engine
+) -> None:
+    """Point the process-lifetime ``core.deps.engine`` singleton at this
+    test's in-memory database.
+
+    Most routes take their session through the DI-overridable ``get_db``
+    (see ``_override_db`` above), which never touches this singleton. The SSE
+    stream route (R1) is the one exception: it opens its session directly
+    through ``core.deps.engine`` instead of a ``yield`` dependency, so that a
+    connected viewer cannot pin a pool slot for the life of the stream. Without
+    this, that route — and anything else reading through the singleton —
+    would reach for the real (unreachable in tests) database the service
+    settings name.
+    """
+    from reparto_service.core import deps as core_deps
+
+    monkeypatch.setattr(core_deps.engine, "_engine", engine)
+    # fastapi-m8's app lifespan calls ``engine.dispose()`` on shutdown, which
+    # every ``client``-family fixture triggers on teardown (``with tc as c``).
+    # Disposing the shared in-memory SQLite engine above would close its one
+    # connection — deleting the database — out from under any fixture still
+    # tearing down. The per-test ``engine`` fixture owns that engine's
+    # lifecycle (``drop_all`` on teardown); nothing here needs the pool
+    # disposed too.
+    monkeypatch.setattr(core_deps.engine, "dispose", lambda: None)
+
+
 # ── User fixtures ────────────────────────────────────────────────────────────
 
 
