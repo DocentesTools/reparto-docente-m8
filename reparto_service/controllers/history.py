@@ -75,6 +75,7 @@ from reparto_service.enums import (
     TeachingActivitySyncState,
     TeachingPlanStatus,
 )
+from reparto_service.services.document_rendering import DocumentRenderingService
 from reparto_service.services.validations import AssignmentValidationService
 
 #: The literal JSON value the ``ACTIVE`` assignment status serialises to.
@@ -149,11 +150,12 @@ class HistoryController(DomainController):
                 session, process_id, payload.process_version_id
             )
         snapshot = HistoryController._snapshot(session, process_id)
+        versions = HistoryController._version_summaries(session, process_id)
         if payload.export_type == ExportArtifactType.BACKUP:
-            snapshot["versions"] = HistoryController._version_summaries(
-                session, process_id
-            )
-        content = HistoryController._render_artifact(payload.format, snapshot)
+            snapshot["versions"] = versions
+        content = HistoryController._render_artifact(
+            payload.format, payload.export_type, snapshot, versions
+        )
         checksum = hashlib.sha256(content.encode("utf-8")).hexdigest()
         artifact = ExportArtifact(
             assignment_process_id=process_id,
@@ -909,8 +911,18 @@ class HistoryController(DomainController):
 
     @staticmethod
     def _render_artifact(
-        artifact_format: ExportArtifactFormat, snapshot: dict[str, Any]
+        artifact_format: ExportArtifactFormat,
+        export_type: ExportArtifactType,
+        snapshot: dict[str, Any],
+        versions: list[dict[str, Any]],
     ) -> str:
+        """Render the artifact's stored content for one format/type pair.
+
+        ``json`` and ``csv`` are whole-snapshot dumps and read the same for
+        every type — they are data, and the type is metadata on the row. The
+        ``pdf`` format is the opposite: it is the plan §15 *document*, so it is
+        the one branch that reads ``export_type``.
+        """
         if artifact_format == ExportArtifactFormat.JSON:
             return json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
         if artifact_format == ExportArtifactFormat.CSV:
@@ -930,10 +942,17 @@ class HistoryController(DomainController):
                 writer.writerow(["assignment", row["id"], "", row["status"]])
             return output.getvalue()
         if artifact_format == ExportArtifactFormat.PDF:
-            raise HTTPException(
-                status_code=status.HTTP_501_NOT_IMPLEMENTED,
-                detail="PDF export is not implemented.",
-            )
+            if export_type == ExportArtifactType.BACKUP:
+                # A backup is a restorable payload, not a document: rendering
+                # one as prose would produce a file `restore-draft` cannot read.
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "A backup must be exported as json so it can be "
+                        "restored; pdf renders a document, not a snapshot."
+                    ),
+                )
+            return DocumentRenderingService.render(export_type, snapshot, versions)
         raise AssertionError(
             f"Unsupported export format: {artifact_format}"
         )  # pragma: no cover

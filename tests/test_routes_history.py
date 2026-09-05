@@ -334,20 +334,176 @@ def test_final_export_blocked_by_validations(
     assert "blocking validations" in resp.json()["detail"]
 
 
-def test_pdf_export_returns_not_implemented(
+def _pdf_document(client: TestClient, process_id: uuid.UUID, export_type: str) -> str:
+    resp = client.post(
+        f"/reparto/assignment-processes/{process_id}/exports",
+        json={"export_type": export_type, "format": "pdf"},
+    )
+    assert resp.status_code == 201, resp.text
+    return str(resp.json()["content"])
+
+
+def test_internal_draft_pdf_documents_an_unfinished_process(
     client: TestClient, session: Session
 ) -> None:
+    """Plan §15.1: a draft document describes a plan that is *not* settled.
+
+    The whole point of the draft is to be produced mid-process, so the
+    unfinished state has to travel inside the document rather than block it.
+    """
+    process, *_ = _full_source(session)
+
+    content = _pdf_document(client, process.id, "internal_draft")
+
+    assert "REPARTO — INTERNAL DRAFT" in content
+    assert "not for distribution" in content
+    assert "GLOBAL BALANCE" in content
+    assert "TEACHER BALANCES" in content
+    assert "UNCOVERED REQUIREMENTS" in content
+    # `_full_source` leaves the spare secondary slot AVAILABLE.
+    assert "Secondary" in content
+    assert "uncovered" in content.lower()
+    session.refresh(process)
+    assert process.status != AssignmentProcessStatus.ARCHIVED
+
+
+def test_internal_draft_pdf_is_produced_without_a_plan(
+    client: TestClient, session: Session
+) -> None:
+    """A process that has not started planning still exports a document."""
+    process = _config_only_source(session)
+
+    content = _pdf_document(client, process.id, "internal_draft")
+
+    assert "planning has not started" in content
+    assert "No teaching plan exists for this process yet." in content
+
+
+def test_school_leadership_pdf_carries_the_leadership_sections(
+    client: TestClient, session: Session
+) -> None:
+    """Plan §15.2: identity, both assignment views, summary and exceptions."""
+    process, *_ = _full_source(session)
+    teacher = session.exec(
+        select(ProcessTeacher)
+        .where(ProcessTeacher.assignment_process_id == process.id)
+        .where(col(ProcessTeacher.extra_weekly_hours) > 0)
+    ).one()
+    teacher.extra_hours_reason = "Covers the vacant secondary position."
+    session.add(teacher)
+    session.commit()
+    client.post(
+        f"/reparto/assignment-processes/{process.id}/versions",
+        json={"reason": "leadership"},
+    )
+
+    content = _pdf_document(client, process.id, "school_leadership")
+
+    assert str(process.school_id) in content
+    assert str(process.department_id) in content
+    assert str(process.academic_year_id) in content
+    assert "Version:        v1" in content
+    assert "ASSIGNMENT BY TEACHER" in content
+    assert "ASSIGNMENT BY GROUP" in content
+    assert "HOURS SUMMARY" in content
+    assert "Covers the vacant secondary position." in content
+
+
+def test_teacher_summary_pdf_withholds_the_extra_hours_justification(
+    client: TestClient, session: Session
+) -> None:
+    """The participant recap stays below the department-head tier (§20.25).
+
+    The head's written justification is the key the SSE teacher tier withholds
+    even from the participant it is about, so the document a teacher receives
+    must not reintroduce it.
+    """
+    process, *_ = _full_source(session)
+    teacher = session.exec(
+        select(ProcessTeacher)
+        .where(ProcessTeacher.assignment_process_id == process.id)
+        .where(col(ProcessTeacher.extra_weekly_hours) > 0)
+    ).one()
+    teacher.extra_hours_reason = "Covers the vacant secondary position."
+    session.add(teacher)
+    session.commit()
+
+    content = _pdf_document(client, process.id, "teacher_summary")
+
+    assert "ASSIGNMENT BY TEACHER" in content
+    assert "Covers the vacant secondary position." not in content
+    assert "EXCEPTIONS AND JUSTIFICATIONS" not in content
+
+
+def test_final_pdf_export_archives_process(
+    client: TestClient, session: Session
+) -> None:
+    """Plan §15.3: the final document closes the process, same as the JSON one."""
     process = factories.make_assignment_process(session)
+
+    content = _pdf_document(client, process.id, "final")
+
+    assert "REPARTO — FINAL" in content
+    assert "FINAL ASSIGNMENT LIST" in content
+    assert "FINAL SUMMARY" in content
+    session.refresh(process)
+    assert process.status == AssignmentProcessStatus.ARCHIVED
+
+
+def test_final_pdf_export_is_blocked_by_blocking_validations(
+    client: TestClient, session: Session
+) -> None:
+    """The §7.8 gate runs ahead of rendering, so nothing is stored or archived."""
+    process = factories.make_assignment_process(session)
+    profile = factories.make_teacher_profile(session)
+    factories.make_process_teacher(session, process, profile, base_weekly_hours=18.0)
 
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/exports",
         json={"export_type": "final", "format": "pdf"},
     )
 
-    assert resp.status_code == 501
-    assert resp.json()["detail"] == "PDF export is not implemented."
+    assert resp.status_code == 400
+    assert "blocking validations" in resp.json()["detail"]
     session.refresh(process)
     assert process.status != AssignmentProcessStatus.ARCHIVED
+
+
+def test_pdf_document_rendering_is_deterministic(
+    client: TestClient, session: Session
+) -> None:
+    """Two documents of an unchanged process are byte-identical.
+
+    The artifact's checksum is a hash of the content, so a wall-clock date in
+    the document would make every checksum unique and destroy its ability to
+    answer "has anything moved?".
+    """
+    process, *_ = _full_source(session)
+
+    first = _pdf_document(client, process.id, "internal_draft")
+    second = _pdf_document(client, process.id, "internal_draft")
+
+    assert first == second
+    artifacts = client.get(
+        f"/reparto/assignment-processes/{process.id}/exports"
+    ).json()["data"]
+    checksums = {row["checksum"] for row in artifacts}
+    assert len(checksums) == 1
+
+
+def test_pdf_backup_is_refused_as_unrestorable(
+    client: TestClient, session: Session
+) -> None:
+    """A backup is a restorable payload; rendering it as prose would break that."""
+    process = factories.make_assignment_process(session)
+
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/exports",
+        json={"export_type": "backup", "format": "pdf"},
+    )
+
+    assert resp.status_code == 400
+    assert "restored" in resp.json()["detail"]
 
 
 def test_final_json_export_archives_process(
