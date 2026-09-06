@@ -32,12 +32,14 @@ from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
     AssignmentProcessStatus,
     AssignmentStatus,
+    ExportArtifactType,
     FeasibilityStatus,
     HourRequirementStatus,
     SubjectAllocationCategory,
     TeachingActivitySource,
     TeachingPlanStatus,
 )
+from reparto_service.services.document_rendering import DocumentRenderingService
 from tests import factories
 
 
@@ -861,3 +863,170 @@ def test_restore_rejects_teacher_twice_on_activity(
 
     assert resp.status_code == 400
     assert "assigned twice on one activity" in resp.json()["detail"]
+
+
+# ── Document renderer: the snapshot paths a route cannot produce ─────────────
+#
+# `DocumentRenderingService` is a pure function of a snapshot, and several of
+# its branches exist for a snapshot that is *internally inconsistent* — a link
+# whose group-subject is gone, an assignment naming an activity the snapshot
+# does not carry. A live process never produces one, so a route test never
+# reaches them; a **restored** backup can, since `restore-draft` accepts a
+# payload the caller supplies. They are reached here by rendering a deliberately
+# broken snapshot directly, which is also the only way to prove the renderer
+# keeps its "never refuses" contract on input it cannot join.
+
+
+def _document_snapshot(client: TestClient, process_id: uuid.UUID) -> dict[str, Any]:
+    """A well-formed snapshot, as `_render_artifact` hands one to the renderer."""
+    return dict(json.loads(_backup_content(client, process_id)))
+
+
+def test_renderer_skips_a_link_whose_group_subject_is_missing(
+    client: TestClient, session: Session
+) -> None:
+    """A dangling `group_subject_id` drops the link, not the document."""
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    assert snapshot["teaching_activity_groups"], "fixture must carry a link"
+    for link in snapshot["teaching_activity_groups"]:
+        link["group_subject_id"] = str(uuid.uuid4())
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.INTERNAL_DRAFT, snapshot, []
+    )
+
+    # The document is still produced, and the activity is simply named without
+    # the group codes it can no longer reach.
+    assert content
+    assert " ()" not in content
+
+
+def test_renderer_skips_a_link_whose_teaching_group_is_missing(
+    client: TestClient, session: Session
+) -> None:
+    """The second half of the same chain: the cell resolves, the group does not."""
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    for cell in snapshot["group_subjects"]:
+        cell["teaching_group_id"] = str(uuid.uuid4())
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.INTERNAL_DRAFT, snapshot, []
+    )
+
+    assert content
+    assert " ()" not in content
+
+
+def test_renderer_lists_a_repeated_group_code_once(
+    client: TestClient, session: Session
+) -> None:
+    """Two cells of one activity on the same group code print one code.
+
+    A group code is what the reader recognizes, so `A, A` would read as two
+    groups where there is one.
+    """
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    link = snapshot["teaching_activity_groups"][0]
+    cell = next(
+        row
+        for row in snapshot["group_subjects"]
+        if row["id"] == str(link["group_subject_id"])
+    )
+    twin = dict(cell)
+    twin["id"] = str(uuid.uuid4())
+    snapshot["group_subjects"].append(twin)
+    snapshot["teaching_activity_groups"].append(
+        {
+            **link,
+            "id": str(uuid.uuid4()),
+            "group_subject_id": twin["id"],
+        }
+    )
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.INTERNAL_DRAFT, snapshot, []
+    )
+
+    group = next(
+        row
+        for row in snapshot["teaching_groups"]
+        if row["id"] == str(cell["teaching_group_id"])
+    )
+    code = str(group["group_code"])
+    assert f"({code})" in content
+    assert f"({code}, {code})" not in content
+
+
+def test_renderer_names_an_unresolvable_activity_and_participant_by_id(
+    client: TestClient, session: Session
+) -> None:
+    """An unjoinable row is named by its id rather than dropped or invented.
+
+    Silence would understate the reparto — a slot really is taken — so the
+    document says what it knows and no more. The assignment-by-group section
+    is the one that labels an assignment's *own* activity and participant
+    rather than the teacher it is iterating, so it is the school-leadership
+    document that reaches both fallbacks.
+    """
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    orphan_activity = str(uuid.uuid4())
+    orphan_teacher = str(uuid.uuid4())
+    assert snapshot["assignments"], "fixture must carry an assignment"
+    for row in snapshot["assignments"]:
+        row["teaching_activity_id"] = orphan_activity
+        row["process_teacher_id"] = orphan_teacher
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.SCHOOL_LEADERSHIP, snapshot, []
+    )
+
+    assert f"activity {orphan_activity}" in content
+    assert f"participant {orphan_teacher}" in content
+    # An activity with no resolvable cell has no group codes, so the row is
+    # filed under the explicit placeholder rather than a blank heading.
+    assert "(unlinked)" in content
+
+
+def test_renderer_warns_that_a_stale_plan_is_stale(
+    client: TestClient, session: Session
+) -> None:
+    """Plan §15.1: a stale plan is stated on the face of the document."""
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    snapshot["teaching_plan"]["stale_reason"] = "allocation changed after locking"
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.INTERNAL_DRAFT, snapshot, []
+    )
+
+    assert "Plan is stale: allocation changed after locking" in content
+
+
+def test_renderer_warns_that_an_unvalidated_plan_is_not_validated(
+    client: TestClient, session: Session
+) -> None:
+    """§20.25: a document off a plan that is not FEASIBLE says so.
+
+    This is the counterpart to the export centre's own feasibility label: a
+    draft is produced from whatever the plan is, so the *document* has to
+    carry the disclaimer rather than the button that made it. `INFEASIBLE` and
+    `NOT EVALUATED` are equally not-validated here — the renderer tests
+    against `feasible` rather than for a particular failure.
+    """
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    assert snapshot["teaching_plan"]["feasibility_status"] == (
+        FeasibilityStatus.FEASIBLE.value
+    ), "fixture must start feasible for this to prove anything"
+    snapshot["teaching_plan"]["feasibility_status"] = FeasibilityStatus.INFEASIBLE.value
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.INTERNAL_DRAFT, snapshot, []
+    )
+
+    assert "Feasibility is INFEASIBLE" in content
+    assert "not describe a validated plan" in content
