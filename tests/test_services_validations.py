@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from sqlmodel import Session, select
 
 from reparto_service.db_models.teaching_activities import TeachingActivity
+from reparto_service.db_models.teaching_groups import TeachingGroup
+from reparto_service.db_models.subjects import Subject
 from reparto_service.enums import (
     FeasibilityStatus,
     HourRequirementStatus,
@@ -185,6 +187,10 @@ def test_out_of_sync_main_activity_is_blocking(session: Session) -> None:
     )
     assert message.entity_type == "teaching_activity"
     assert message.entity_id == activity.id
+    assert message.params is not None
+    subject = session.get(Subject, activity.subject_id)
+    assert subject is not None
+    assert message.params["activity_label"] == subject.name
     assert report.is_assignment_ready is False
 
 
@@ -195,6 +201,8 @@ def test_missing_allocation_is_blocking(session: Session):
     _, plan = _process_with_plan(session)
     report = SERVICE.compute_plan_validations(session, plan)
     assert CODE_MISSING_ALLOCATION in _codes(report)
+    missing = next(m for m in report.messages if m.code == CODE_MISSING_ALLOCATION)
+    assert missing.params == {}
     # No allocation ⇒ the group-imbalance code is suppressed (covered by missing).
     assert CODE_GROUP_HOURS_IMBALANCED not in _codes(report)
     assert report.is_assignment_ready is False
@@ -225,6 +233,14 @@ def test_group_imbalance_is_blocking(session: Session):
     codes = _codes(report)
     assert CODE_GROUP_HOURS_IMBALANCED in codes
     assert CODE_MISSING_ALLOCATION not in codes
+    imbalance = next(
+        m for m in report.messages if m.code == CODE_GROUP_HOURS_IMBALANCED
+    )
+    assert imbalance.params == {
+        "group_hours": "15.00",
+        "allocation_hours": "10.00",
+        "difference_hours": "+5.00",
+    }
 
 
 def test_group_balanced_emits_no_imbalance(session: Session):
@@ -239,7 +255,14 @@ def test_teacher_load_imbalance_is_blocking(session: Session):
     profile = make_teacher_profile(session, display_name=f"Extra-{_uid()}")
     make_process_teacher(session, process, profile, base_weekly_hours=7.0)
     report = SERVICE.compute_plan_validations(session, plan)
-    assert CODE_TEACHER_LOAD_IMBALANCED in _codes(report)
+    imbalance = next(
+        m for m in report.messages if m.code == CODE_TEACHER_LOAD_IMBALANCED
+    )
+    assert imbalance.params == {
+        "teacher_hours": "10.00",
+        "target_hours": "17.00",
+        "difference_hours": "-7.00",
+    }
 
 
 # ── Main materialization (plan §6.3) ────────────────────────────────────────────
@@ -255,6 +278,12 @@ def test_unmaterialized_main_cell_is_blocking(session: Session):
     assert len(matching) == 1
     assert matching[0].entity_type == "group_subject"
     assert matching[0].entity_id == cell.id
+    assert matching[0].params is not None
+    assert matching[0].params["subject_label"] == _subject.name
+    group = session.get(TeachingGroup, cell.teaching_group_id)
+    assert group is not None
+    assert matching[0].params["group_label"] == group.label
+    assert str(cell.id) not in matching[0].message
 
 
 def test_materialized_main_cell_is_clean(session: Session):
@@ -293,6 +322,7 @@ def test_activity_missing_groups_is_blocking(session: Session):
     assert len(matching) == 1
     assert matching[0].entity_type == "teaching_activity"
     assert matching[0].entity_id == activity.id
+    assert matching[0].params == {"activity_label": subject.name}
 
 
 def test_zero_group_allowed_activity_is_clean(session: Session):
@@ -316,7 +346,12 @@ def test_multiple_groups_not_allowed_is_blocking(session: Session):
         cells.append(make_group_subject(session, process, group, subject))
     make_teaching_activity(session, plan, subject, group_subjects=cells)
     report = SERVICE.compute_plan_validations(session, plan)
-    assert CODE_ACTIVITY_MULTIPLE_GROUPS_NOT_ALLOWED in _codes(report)
+    message = next(
+        m
+        for m in report.messages
+        if m.code == CODE_ACTIVITY_MULTIPLE_GROUPS_NOT_ALLOWED
+    )
+    assert message.params == {"activity_label": subject.name, "group_count": 2}
 
 
 def test_multiple_groups_allowed_is_clean(session: Session):
@@ -343,7 +378,10 @@ def test_linked_subject_mismatch_is_blocking(session: Session):
     activity = make_teaching_activity(session, plan, subject_a, group_subjects=[])
     make_teaching_activity_group(session, activity, cell_b)
     report = SERVICE.compute_plan_validations(session, plan)
-    assert CODE_ACTIVITY_LINKED_SUBJECT_MISMATCH in _codes(report)
+    message = next(
+        m for m in report.messages if m.code == CODE_ACTIVITY_LINKED_SUBJECT_MISMATCH
+    )
+    assert message.params == {"activity_label": subject_a.name}
 
 
 def test_retired_activity_skipped_by_link_checks(session: Session):
@@ -367,6 +405,10 @@ def test_requirements_not_generated_is_blocking(session: Session):
     report = SERVICE.compute_plan_validations(session, plan)
     assert CODE_REQUIREMENTS_NOT_GENERATED in _codes(report)
     assert CODE_REQUIREMENTS_STALE not in _codes(report)
+    message = next(
+        m for m in report.messages if m.code == CODE_REQUIREMENTS_NOT_GENERATED
+    )
+    assert message.params == {}
 
 
 def test_stale_requirement_is_blocking(session: Session):
@@ -393,6 +435,8 @@ def test_stale_requirement_is_blocking(session: Session):
     codes = _codes(report)
     assert CODE_REQUIREMENTS_STALE in codes
     assert CODE_REQUIREMENTS_NOT_GENERATED not in codes
+    message = next(m for m in report.messages if m.code == CODE_REQUIREMENTS_STALE)
+    assert message.params == {"count": 1}
 
 
 def test_retired_requirement_does_not_count_as_generated(session: Session):
@@ -421,7 +465,8 @@ def test_stale_plan_is_blocking(session: Session):
     session.commit()
     session.refresh(plan)
     report = SERVICE.compute_plan_validations(session, plan)
-    assert CODE_PLAN_STALE in _codes(report)
+    message = next(m for m in report.messages if m.code == CODE_PLAN_STALE)
+    assert message.params == {"status": "stale"}
 
 
 # ── Feasibility (plan §20.19 — read only) ───────────────────────────────────────
@@ -430,7 +475,10 @@ def test_stale_plan_is_blocking(session: Session):
 def test_feasibility_not_confirmed_is_blocking(session: Session):
     _, plan = _process_with_plan(session)
     report = SERVICE.compute_plan_validations(session, plan)
-    assert CODE_FEASIBILITY_NOT_CONFIRMED in _codes(report)
+    message = next(
+        m for m in report.messages if m.code == CODE_FEASIBILITY_NOT_CONFIRMED
+    )
+    assert message.params == {"status": "not_evaluated"}
 
 
 def test_feasible_plan_has_no_feasibility_finding(session: Session):
@@ -453,6 +501,12 @@ def test_overloaded_participant_is_a_warning(session: Session):
     assert len(matching) == 1
     assert matching[0].severity == ValidationSeverity.WARNING
     assert matching[0].entity_id == teacher.id
+    assert matching[0].params == {
+        "teacher_label": profile.display_name,
+        "extra_hours": "2.00",
+    }
+    assert profile.display_name in matching[0].message
+    assert str(teacher.id) not in matching[0].message
 
 
 def test_inactive_overloaded_participant_is_ignored(session: Session):
@@ -486,6 +540,7 @@ def test_unmaterialized_secondary_cell_is_a_warning(session: Session):
     ]
     assert len(matching) == 1
     assert matching[0].severity == ValidationSeverity.WARNING
+    assert matching[0].params == {"count": 1}
 
 
 def test_linked_secondary_cell_is_not_warned(session: Session):

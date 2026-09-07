@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Validation findings expose a language-neutral parameter contract.** Every
+  one of the 17 planning and assignment codes now emits exact `params` beside
+  its compatibility `message`: counts are JSON integers, decimal hours are
+  canonical signed strings, and people or teaching entities are named through
+  display labels while `entity_id` remains machine data. The public model keeps
+  `params` optional so the tolerant client can be released before this service
+  shape is deployed, but validates exact keys and scalar kinds whenever a known
+  code supplies them.
+
 - **`POST .../exports` renders the plan §15 documents instead of refusing
   them.** Every `pdf` request answered `501`, so three of the four document
   buttons — internal draft, school leadership, teacher summary — and the
