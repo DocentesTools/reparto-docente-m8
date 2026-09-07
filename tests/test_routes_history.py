@@ -10,6 +10,7 @@ and generation/reconciliation consistency validation.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -39,7 +40,11 @@ from reparto_service.enums import (
     TeachingActivitySource,
     TeachingPlanStatus,
 )
-from reparto_service.services.document_rendering import DocumentRenderingService
+from reparto_service.services.document_rendering import (
+    DOCUMENT_TRACE_ID_LINE_PREFIXES,
+    DocumentIdentityContext,
+    DocumentRenderingService,
+)
 from tests import factories
 
 
@@ -243,6 +248,24 @@ def test_backup_snapshot_without_plan(client: TestClient, session: Session) -> N
     assert snapshot["requirements"] == []
 
 
+def test_document_identity_keeps_backup_bytes_and_restore_contract_unchanged(
+    client: TestClient, session: Session
+) -> None:
+    """Document-only joins never enter the restorable snapshot."""
+    source, *_ = _full_source(session)
+    before = _backup_content(client, source.id)
+
+    _pdf_document(client, source.id, "school_leadership")
+    after = _backup_content(client, source.id)
+
+    assert after == before
+    target = factories.make_assignment_process(session)
+    restored = _restore(client, target.id, after)
+    assert restored.status_code == 201, restored.text
+    assert _count(session, ProcessTeacher, target.id) == 2
+    assert _count(session, HourRequirement, target.id) == 3
+
+
 def test_create_csv_export_with_version(client: TestClient, session: Session) -> None:
     process, _rev, slot_new, _slot_sec = _full_source(session)
     version = client.post(
@@ -401,9 +424,14 @@ def test_school_leadership_pdf_carries_the_leadership_sections(
 
     content = _pdf_document(client, process.id, "school_leadership")
 
-    assert str(process.school_id) in content
-    assert str(process.department_id) in content
-    assert str(process.academic_year_id) in content
+    assert "School:         IES Test" in content
+    assert "Department:     Matemáticas" in content
+    assert "Academic year:  2026/2027" in content
+    assert "Ana" in content
+    assert "Beto" in content
+    assert str(process.school_id) not in content
+    assert str(process.department_id) not in content
+    assert str(process.academic_year_id) not in content
     assert "Version:        v1" in content
     assert "ASSIGNMENT BY TEACHER" in content
     assert "ASSIGNMENT BY GROUP" in content
@@ -448,6 +476,7 @@ def test_final_pdf_export_archives_process(
     assert "REPARTO — FINAL" in content
     assert "FINAL ASSIGNMENT LIST" in content
     assert "FINAL SUMMARY" in content
+    assert "Confirmed by:" not in content
     session.refresh(process)
     assert process.status == AssignmentProcessStatus.ARCHIVED
 
@@ -882,6 +911,23 @@ def _document_snapshot(client: TestClient, process_id: uuid.UUID) -> dict[str, A
     return dict(json.loads(_backup_content(client, process_id)))
 
 
+def _document_identity(
+    snapshot: dict[str, Any], *, missing_profile_id: str | None = None
+) -> DocumentIdentityContext:
+    """Deterministic labels for direct pure-renderer tests."""
+    teacher_names = {
+        str(row["teacher_profile_id"]): f"Teacher {index}"
+        for index, row in enumerate(snapshot["teachers"], start=1)
+        if str(row["teacher_profile_id"]) != missing_profile_id
+    }
+    return DocumentIdentityContext(
+        school_name="IES Test",
+        department_name="Matemáticas",
+        academic_year_label="2026/2027",
+        teacher_display_names_by_profile_id=teacher_names,
+    )
+
+
 def test_renderer_skips_a_link_whose_group_subject_is_missing(
     client: TestClient, session: Session
 ) -> None:
@@ -893,7 +939,7 @@ def test_renderer_skips_a_link_whose_group_subject_is_missing(
         link["group_subject_id"] = str(uuid.uuid4())
 
     content = DocumentRenderingService.render(
-        ExportArtifactType.INTERNAL_DRAFT, snapshot, []
+        ExportArtifactType.INTERNAL_DRAFT, snapshot, [], _document_identity(snapshot)
     )
 
     # The document is still produced, and the activity is simply named without
@@ -912,7 +958,7 @@ def test_renderer_skips_a_link_whose_teaching_group_is_missing(
         cell["teaching_group_id"] = str(uuid.uuid4())
 
     content = DocumentRenderingService.render(
-        ExportArtifactType.INTERNAL_DRAFT, snapshot, []
+        ExportArtifactType.INTERNAL_DRAFT, snapshot, [], _document_identity(snapshot)
     )
 
     assert content
@@ -947,7 +993,7 @@ def test_renderer_lists_a_repeated_group_code_once(
     )
 
     content = DocumentRenderingService.render(
-        ExportArtifactType.INTERNAL_DRAFT, snapshot, []
+        ExportArtifactType.INTERNAL_DRAFT, snapshot, [], _document_identity(snapshot)
     )
 
     group = next(
@@ -960,10 +1006,10 @@ def test_renderer_lists_a_repeated_group_code_once(
     assert f"({code}, {code})" not in content
 
 
-def test_renderer_names_an_unresolvable_activity_and_participant_by_id(
+def test_renderer_uses_placeholders_for_missing_activity_and_process_teacher(
     client: TestClient, session: Session
 ) -> None:
-    """An unjoinable row is named by its id rather than dropped or invented.
+    """An unjoinable row stays visible without exposing its identifier.
 
     Silence would understate the reparto — a slot really is taken — so the
     document says what it knows and no more. The assignment-by-group section
@@ -981,14 +1027,89 @@ def test_renderer_names_an_unresolvable_activity_and_participant_by_id(
         row["process_teacher_id"] = orphan_teacher
 
     content = DocumentRenderingService.render(
-        ExportArtifactType.SCHOOL_LEADERSHIP, snapshot, []
+        ExportArtifactType.SCHOOL_LEADERSHIP,
+        snapshot,
+        [],
+        _document_identity(snapshot),
     )
 
-    assert f"activity {orphan_activity}" in content
-    assert f"participant {orphan_teacher}" in content
+    assert "(teaching activity unavailable)" in content
+    assert "(process teacher unavailable)" in content
+    assert orphan_activity not in content
+    assert orphan_teacher not in content
     # An activity with no resolvable cell has no group codes, so the row is
     # filed under the explicit placeholder rather than a blank heading.
     assert "(unlinked)" in content
+
+
+def test_renderer_uses_a_placeholder_when_a_teacher_profile_is_missing(
+    client: TestClient, session: Session
+) -> None:
+    """A missing enriched profile never falls back to its UUID."""
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    missing_profile_id = str(snapshot["teachers"][0]["teacher_profile_id"])
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.INTERNAL_DRAFT,
+        snapshot,
+        [],
+        _document_identity(snapshot, missing_profile_id=missing_profile_id),
+    )
+
+    assert "(teacher profile unavailable)" in content
+    assert missing_profile_id not in content
+
+
+def test_renderer_uses_a_placeholder_when_an_activity_subject_is_missing(
+    client: TestClient, session: Session
+) -> None:
+    """A dangling subject stays visible without exposing its UUID."""
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    missing_subject_id = str(uuid.uuid4())
+    for activity in snapshot["teaching_activities"]:
+        activity["subject_id"] = missing_subject_id
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.SCHOOL_LEADERSHIP,
+        snapshot,
+        [],
+        _document_identity(snapshot),
+    )
+
+    assert "(subject unavailable)" in content
+    assert missing_subject_id not in content
+
+
+def test_document_uuid_lines_are_limited_to_the_trace_allowlist(
+    client: TestClient, session: Session
+) -> None:
+    """Human labels may not silently regress to database identifiers."""
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    snapshot["process"]["closed_by_user_id"] = str(uuid.uuid4())
+    identity = _document_identity(snapshot)
+    uuid_pattern = re.compile(
+        r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-"
+        r"[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\b"
+    )
+
+    for export_type in (
+        ExportArtifactType.INTERNAL_DRAFT,
+        ExportArtifactType.SCHOOL_LEADERSHIP,
+        ExportArtifactType.TEACHER_SUMMARY,
+        ExportArtifactType.FINAL,
+    ):
+        content = DocumentRenderingService.render(export_type, snapshot, [], identity)
+        uuid_lines = [
+            line for line in content.splitlines() if uuid_pattern.search(line)
+        ]
+        assert uuid_lines
+        assert all(
+            line.startswith(tuple(DOCUMENT_TRACE_ID_LINE_PREFIXES))
+            for line in uuid_lines
+        )
 
 
 def test_renderer_warns_that_a_stale_plan_is_stale(
@@ -1000,7 +1121,7 @@ def test_renderer_warns_that_a_stale_plan_is_stale(
     snapshot["teaching_plan"]["stale_reason"] = "allocation changed after locking"
 
     content = DocumentRenderingService.render(
-        ExportArtifactType.INTERNAL_DRAFT, snapshot, []
+        ExportArtifactType.INTERNAL_DRAFT, snapshot, [], _document_identity(snapshot)
     )
 
     assert "Plan is stale: allocation changed after locking" in content
@@ -1025,7 +1146,7 @@ def test_renderer_warns_that_an_unvalidated_plan_is_not_validated(
     snapshot["teaching_plan"]["feasibility_status"] = FeasibilityStatus.INFEASIBLE.value
 
     content = DocumentRenderingService.render(
-        ExportArtifactType.INTERNAL_DRAFT, snapshot, []
+        ExportArtifactType.INTERNAL_DRAFT, snapshot, [], _document_identity(snapshot)
     )
 
     assert "Feasibility is INFEASIBLE" in content

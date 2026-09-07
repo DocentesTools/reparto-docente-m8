@@ -38,9 +38,11 @@ from reparto_service.db_models.assignment_processes import (
     AssignmentProcessPublic,
 )
 from reparto_service.db_models.assignments import Assignment
+from reparto_service.db_models.academic_years import AcademicYear
 from reparto_service.db_models.department_hour_allocation_revisions import (
     DepartmentHourAllocationRevision,
 )
+from reparto_service.db_models.departments import Department
 from reparto_service.db_models.export_artifacts import (
     ExportArtifact,
     ExportBackupRestoreRequest,
@@ -52,7 +54,9 @@ from reparto_service.db_models.group_subjects import GroupSubject
 from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.process_versions import ProcessVersion
+from reparto_service.db_models.schools import School
 from reparto_service.db_models.subjects import Subject
+from reparto_service.db_models.teacher_profiles import TeacherProfile
 from reparto_service.db_models.teaching_activities import (
     TeachingActivity,
     TeachingActivityGroup,
@@ -75,7 +79,10 @@ from reparto_service.enums import (
     TeachingActivitySyncState,
     TeachingPlanStatus,
 )
-from reparto_service.services.document_rendering import DocumentRenderingService
+from reparto_service.services.document_rendering import (
+    DocumentIdentityContext,
+    DocumentRenderingService,
+)
 from reparto_service.services.validations import AssignmentValidationService
 
 #: The literal JSON value the ``ACTIVE`` assignment status serialises to.
@@ -153,8 +160,18 @@ class HistoryController(DomainController):
         versions = HistoryController._version_summaries(session, process_id)
         if payload.export_type == ExportArtifactType.BACKUP:
             snapshot["versions"] = versions
+        document_identity = (
+            HistoryController._document_identity(session, process, snapshot)
+            if payload.format == ExportArtifactFormat.PDF
+            and payload.export_type != ExportArtifactType.BACKUP
+            else None
+        )
         content = HistoryController._render_artifact(
-            payload.format, payload.export_type, snapshot, versions
+            payload.format,
+            payload.export_type,
+            snapshot,
+            versions,
+            document_identity,
         )
         checksum = hashlib.sha256(content.encode("utf-8")).hexdigest()
         artifact = ExportArtifact(
@@ -915,6 +932,7 @@ class HistoryController(DomainController):
         export_type: ExportArtifactType,
         snapshot: dict[str, Any],
         versions: list[dict[str, Any]],
+        document_identity: Optional[DocumentIdentityContext],
     ) -> str:
         """Render the artifact's stored content for one format/type pair.
 
@@ -952,10 +970,43 @@ class HistoryController(DomainController):
                         "restored; pdf renders a document, not a snapshot."
                     ),
                 )
-            return DocumentRenderingService.render(export_type, snapshot, versions)
+            if document_identity is None:  # pragma: no cover - controller invariant
+                raise AssertionError("Document exports require identity enrichment")
+            return DocumentRenderingService.render(
+                export_type, snapshot, versions, document_identity
+            )
         raise AssertionError(
             f"Unsupported export format: {artifact_format}"
         )  # pragma: no cover
+
+    @staticmethod
+    def _document_identity(
+        session: Session,
+        process: AssignmentProcess,
+        snapshot: dict[str, Any],
+    ) -> DocumentIdentityContext:
+        """Join human labels without widening the restorable snapshot."""
+        school = session.get(School, process.school_id)
+        department = session.get(Department, process.department_id)
+        academic_year = session.get(AcademicYear, process.academic_year_id)
+        profile_ids = {
+            uuid.UUID(str(row["teacher_profile_id"])) for row in snapshot["teachers"]
+        }
+        profiles = (
+            session.exec(
+                select(TeacherProfile).where(col(TeacherProfile.id).in_(profile_ids))
+            ).all()
+            if profile_ids
+            else []
+        )
+        return DocumentIdentityContext(
+            school_name=None if school is None else school.name,
+            department_name=None if department is None else department.name,
+            academic_year_label=None if academic_year is None else academic_year.label,
+            teacher_display_names_by_profile_id={
+                str(profile.id): profile.display_name for profile in profiles
+            },
+        )
 
     @staticmethod
     def _ensure_no_blocking_validations(

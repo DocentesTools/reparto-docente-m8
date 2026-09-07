@@ -30,8 +30,9 @@ point.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from reparto_service.core.decimals import quantize_hours
 from reparto_service.enums import ExportArtifactType
@@ -53,6 +54,26 @@ _ZERO = Decimal("0.00")
 _RULE = "=" * 72
 _THIN_RULE = "-" * 72
 
+#: Human-facing line prefixes that may carry a UUID as secondary trace data.
+#: Every other renderer-owned document line must use a human label or a
+#: non-identifying missing-data marker.
+DOCUMENT_TRACE_ID_LINE_PREFIXES = frozenset({"Process reference:"})
+
+
+@dataclass(frozen=True)
+class DocumentIdentityContext:
+    """Human labels joined by the controller and injected into the renderer.
+
+    This data deliberately remains separate from the restorable snapshot. The
+    renderer therefore stays pure while backup JSON keeps its established
+    schema and byte identity.
+    """
+
+    school_name: Optional[str]
+    department_name: Optional[str]
+    academic_year_label: Optional[str]
+    teacher_display_names_by_profile_id: Mapping[str, str]
+
 
 class DocumentRenderingService:
     """Render the plan §15 export documents as deterministic text."""
@@ -62,6 +83,7 @@ class DocumentRenderingService:
         export_type: ExportArtifactType,
         snapshot: dict[str, Any],
         versions: list[dict[str, Any]],
+        identity: DocumentIdentityContext,
     ) -> str:
         """Render ``export_type`` from ``snapshot``, or raise for a non-document.
 
@@ -69,7 +91,7 @@ class DocumentRenderingService:
         :meth:`HistoryController._version_summaries` builds them; the leadership
         and final documents name the latest one (plan §15.2, §15.3).
         """
-        view = _SnapshotView(snapshot, versions)
+        view = _SnapshotView(snapshot, versions, identity)
         if export_type == ExportArtifactType.INTERNAL_DRAFT:
             return _render_internal_draft(view)
         if export_type == ExportArtifactType.SCHOOL_LEADERSHIP:
@@ -96,10 +118,16 @@ class _SnapshotView:
     than a re-derivation of the same maps.
     """
 
-    def __init__(self, snapshot: dict[str, Any], versions: list[dict[str, Any]]):
+    def __init__(
+        self,
+        snapshot: dict[str, Any],
+        versions: list[dict[str, Any]],
+        identity: DocumentIdentityContext,
+    ):
         self.process: dict[str, Any] = snapshot["process"]
         self.plan: Optional[dict[str, Any]] = snapshot.get("teaching_plan")
         self.versions = versions
+        self.identity = identity
         self.teachers: list[dict[str, Any]] = snapshot["teachers"]
         self.requirements: list[dict[str, Any]] = snapshot["requirements"]
         self.assignments: list[dict[str, Any]] = snapshot["assignments"]
@@ -229,22 +257,39 @@ class _SnapshotView:
         )
 
     def activity_label(self, activity_id: Any) -> str:
-        """``Subject (GROUP-A, GROUP-B)`` for an activity, by id when unknown."""
+        """``Subject (GROUP-A, GROUP-B)`` or a non-identifying placeholder."""
         activity = self.activity_by_id.get(str(activity_id))
         if activity is None:
-            return f"activity {activity_id}"
+            return "(teaching activity unavailable)"
         subject = self.subject_by_id.get(str(activity["subject_id"]))
-        name = str(subject["name"]) if subject else f"subject {activity['subject_id']}"
+        name = str(subject["name"]) if subject else "(subject unavailable)"
         codes = self.group_codes_by_activity.get(str(activity_id), [])
         return f"{name} ({', '.join(codes)})" if codes else name
 
     def teacher_label(self, teacher_id: Any) -> str:
-        """A participant is named by their profile id — the snapshot holds no
-        display name, and a document must not invent one."""
+        """Resolve a participant through the separately enriched profile map."""
         teacher = self.teacher_by_id.get(str(teacher_id))
         if teacher is None:
-            return f"participant {teacher_id}"
-        return f"teacher-profile {teacher['teacher_profile_id']}"
+            return "(process teacher unavailable)"
+        display_name = self.identity.teacher_display_names_by_profile_id.get(
+            str(teacher["teacher_profile_id"])
+        )
+        return display_name or "(teacher profile unavailable)"
+
+    @property
+    def school_label(self) -> str:
+        """School name, with no identifier fallback."""
+        return self.identity.school_name or "(school unavailable)"
+
+    @property
+    def department_label(self) -> str:
+        """Department name, with no identifier fallback."""
+        return self.identity.department_name or "(department unavailable)"
+
+    @property
+    def academic_year_label(self) -> str:
+        """Academic-year label, with no identifier fallback."""
+        return self.identity.academic_year_label or "(academic year unavailable)"
 
 
 def _by_id(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -285,7 +330,7 @@ def _header(view: _SnapshotView, title: str, banner: Optional[str]) -> list[str]
         lines.append("")
     lines.extend(
         [
-            f"Process:        {view.process['id']}",
+            f"Process reference: {view.process['id']}",
             f"Status:         {_label(view.process['status'])}",
             f"State as of:    {view.process['updated_at']} (UTC)",
         ]
@@ -469,9 +514,9 @@ def _render_school_leadership(view: _SnapshotView) -> str:
     )
     lines.extend(
         [
-            f"School:         {view.process['school_id']}",
-            f"Department:     {view.process['department_id']}",
-            f"Academic year:  {view.process['academic_year_id']}",
+            f"School:         {view.school_label}",
+            f"Department:     {view.department_label}",
+            f"Academic year:  {view.academic_year_label}",
             _version_line(view),
         ]
     )
@@ -501,15 +546,13 @@ def _render_final(view: _SnapshotView) -> str:
     """Plan §15.3: the closing document, produced only from an accepted reparto."""
     lines = _header(view, "REPARTO — FINAL", None)
     closed_at = view.process.get("closed_at") or "(not recorded)"
-    closed_by = view.process.get("closed_by_user_id") or "(not recorded)"
     lines.extend(
         [
-            f"School:         {view.process['school_id']}",
-            f"Department:     {view.process['department_id']}",
-            f"Academic year:  {view.process['academic_year_id']}",
+            f"School:         {view.school_label}",
+            f"Department:     {view.department_label}",
+            f"Academic year:  {view.academic_year_label}",
             _version_line(view),
             f"Closed at:      {closed_at}",
-            f"Confirmed by:   {closed_by}",
         ]
     )
     lines.extend(_plan_lines(view))
@@ -519,4 +562,8 @@ def _render_final(view: _SnapshotView) -> str:
     return "\n".join(lines) + "\n"
 
 
-__all__ = ["DocumentRenderingService"]
+__all__ = [
+    "DOCUMENT_TRACE_ID_LINE_PREFIXES",
+    "DocumentIdentityContext",
+    "DocumentRenderingService",
+]
