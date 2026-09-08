@@ -20,10 +20,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, col, func, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.process_versions import (
     ProcessVersion,
@@ -113,9 +114,11 @@ class ProcessVersionController(DomainController):
         """
         process = DomainController.get_process_or_404(session, process_id)
         if process.created_from_process_id is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Process has no previous-year source process.",
+                code="process_versions.process_has_no_previous_year_source_process",
+                message="Process has no previous-year source process.",
+                params={},
             )
         left = SnapshotService.build_snapshot(session, process.created_from_process_id)
         right = SnapshotService.build_snapshot(session, process_id)
@@ -129,9 +132,11 @@ class ProcessVersionController(DomainController):
     ) -> ProcessVersion:
         version = session.get(ProcessVersion, version_id)
         if version is None or version.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"ProcessVersion {version_id} not found.",
+                code="process_versions.processversion_not_found",
+                message=f"ProcessVersion {version_id} not found.",
+                params={"version_id": version_id},
             )
         return version
 

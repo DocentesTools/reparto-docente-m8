@@ -207,7 +207,7 @@ def test_feasible_selection_fails_closed_without_current_witness(
         },
     )
     assert response.status_code == 409
-    assert "missing or stale" in response.json()["detail"]
+    assert "missing or stale" in response.json()["detail"]["message"]
 
 
 def test_selection_fails_closed_when_bounded_repair_cannot_finish(
@@ -231,7 +231,10 @@ def test_selection_fails_closed_when_bounded_repair_cannot_finish(
         },
     )
     assert response.status_code == 409
-    assert WitnessRepairCode.REPAIR_LIMIT_REACHED.value in response.json()["detail"]
+    assert (
+        WitnessRepairCode.REPAIR_LIMIT_REACHED.value
+        in response.json()["detail"]["message"]
+    )
 
 
 def test_fingerprint_drift_expires_witness_and_re_evaluates(
@@ -448,7 +451,7 @@ def test_diagnostics_fail_closed_without_a_current_evaluation(
     session.commit()
     stale = admin_client.get(_path(process.id, "diagnostics"))
     assert stale.status_code == 409
-    assert "evaluation is required" in stale.json()["detail"]
+    assert "evaluation is required" in stale.json()["detail"]["message"]
 
     missing = factories.make_assignment_process(session)
     assert admin_client.get(_path(missing.id, "diagnostics")).status_code == 404

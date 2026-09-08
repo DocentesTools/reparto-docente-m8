@@ -22,6 +22,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 from fastapi import HTTPException, status
+from reparto_service.core.errors import DomainHTTPException
 from sqlalchemy import text
 from sqlmodel import Session
 
@@ -43,12 +44,11 @@ def _solve_in_progress() -> HTTPException:
     """Build the fail-fast response used when a process solve is already active."""
 
     logger.warning("feasibility_solve_rejected reason=solve_in_progress")
-    return HTTPException(
+    return DomainHTTPException(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        detail=(
-            "A feasibility evaluation is already running for this process; "
-            "retry after it completes."
-        ),
+        code="feasibility_controls.solve_in_progress",
+        message="A feasibility evaluation is already running for this process; retry after it completes.",
+        params={},
         headers={"Retry-After": "1"},
     )
 

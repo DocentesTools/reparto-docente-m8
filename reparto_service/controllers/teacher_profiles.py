@@ -5,10 +5,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import RoleType, UserModel, has_minimum_role
 from sqlmodel import Session, col, func, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.core.config import settings
 from reparto_service.db_models.assignment_processes import AssignmentProcess
@@ -97,9 +98,11 @@ class TeacherProfileController(DomainController):
         visible = TeacherProfileController._visible_profile_ids(session, current_user)
         if visible is not UNRESTRICTED and profile.id not in visible:
             # 404, not 403: confirming the row exists is itself out of scope.
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"TeacherProfile {profile_id} not found.",
+                code="teacher_profiles.teacherprofile_not_found",
+                message=f"TeacherProfile {profile_id} not found.",
+                params={"profile_id": profile_id},
             )
         return TeacherProfilePublic.model_validate(profile)
 
@@ -133,12 +136,11 @@ class TeacherProfileController(DomainController):
                 set(changes) - TeacherProfileController.SELF_EDITABLE_FIELDS
             )
             if forbidden:
-                raise HTTPException(
+                raise DomainHTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail=(
-                        "Only a department head may change "
-                        f"{', '.join(forbidden)} on a teacher profile."
-                    ),
+                    code="teacher_profiles.only_department_head_may_change_on_teacher_profile",
+                    message=f"Only a department head may change {', '.join(forbidden)} on a teacher profile.",
+                    params={"forbidden": ", ".join(forbidden)},
                 )
         profile.sqlmodel_update(changes)
         session.add(profile)
@@ -159,9 +161,11 @@ class TeacherProfileController(DomainController):
             .where(TeacherProfile.id != profile_id)
         ).first()
         if existing is not None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Auth user is already linked to another teacher profile.",
+                code="teacher_profiles.auth_user_is_already_linked_another_teacher_profile",
+                message="Auth user is already linked to another teacher profile.",
+                params={},
             )
         profile.user_id = link_in.user_id
         session.add(profile)
@@ -189,12 +193,11 @@ class TeacherProfileController(DomainController):
         """
         profile = DomainController.get_or_404(session, TeacherProfile, profile_id)
         if profile.user_id is not None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "Teacher profile is already linked to an auth user; "
-                    "unlink it before issuing a claim code."
-                ),
+                code="teacher_profiles.teacher_profile_is_already_linked_auth_user_unlink",
+                message="Teacher profile is already linked to an auth user; unlink it before issuing a claim code.",
+                params={},
             )
         code = mint_claim_code()
         expires_at = datetime.now(tz=timezone.utc) + timedelta(
@@ -251,9 +254,11 @@ class TeacherProfileController(DomainController):
             or expires_at is None
             or _as_utc(expires_at) <= datetime.now(tz=timezone.utc)
         ):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Claim code is not valid, or has expired or been used.",
+                code="teacher_profiles.claim_code_is_not_valid_or_has_expired",
+                message="Claim code is not valid, or has expired or been used.",
+                params={},
             )
         before = TeacherProfilePublic.model_validate(profile)
         linked = TeacherProfileController.link_user(

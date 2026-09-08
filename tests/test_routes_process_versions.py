@@ -137,7 +137,7 @@ def test_compare_previous_year_requires_source(
     )
 
     assert resp.status_code == 400
-    assert "previous-year" in resp.json()["detail"]
+    assert "previous-year" in resp.json()["detail"]["message"]
 
 
 def test_compare_previous_year_success(client: TestClient, session: Session) -> None:

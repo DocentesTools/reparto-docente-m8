@@ -356,7 +356,7 @@ def test_final_export_blocked_by_validations(
     )
 
     assert resp.status_code == 400
-    assert "blocking validations" in resp.json()["detail"]
+    assert "blocking validations" in resp.json()["detail"]["message"]
 
 
 def _pdf_document(client: TestClient, process_id: uuid.UUID, export_type: str) -> str:
@@ -495,7 +495,7 @@ def test_final_pdf_export_is_blocked_by_blocking_validations(
     )
 
     assert resp.status_code == 400
-    assert "blocking validations" in resp.json()["detail"]
+    assert "blocking validations" in resp.json()["detail"]["message"]
     session.refresh(process)
     assert process.status != AssignmentProcessStatus.ARCHIVED
 
@@ -534,7 +534,7 @@ def test_pdf_backup_is_refused_as_unrestorable(
     )
 
     assert resp.status_code == 400
-    assert "restored" in resp.json()["detail"]
+    assert "restored" in resp.json()["detail"]["message"]
 
 
 def test_final_json_export_archives_process(
@@ -687,7 +687,7 @@ def test_restore_requires_draft(client: TestClient, session: Session) -> None:
     resp = _restore(client, process.id, "{}")
 
     assert resp.status_code == 400
-    assert "draft process" in resp.json()["detail"]
+    assert "draft process" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_invalid_content(client: TestClient, session: Session) -> None:
@@ -740,7 +740,7 @@ def test_restore_rejects_requirements_without_plan(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "no teaching plan" in resp.json()["detail"]
+    assert "no teaching plan" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_generation_beyond_plan(
@@ -756,7 +756,7 @@ def test_restore_rejects_generation_beyond_plan(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "beyond the plan" in resp.json()["detail"]
+    assert "beyond the plan" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_bad_retirement_generation(
@@ -774,7 +774,7 @@ def test_restore_rejects_bad_retirement_generation(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "retirement generation" in resp.json()["detail"]
+    assert "retirement generation" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_dangling_supersession(
@@ -792,7 +792,7 @@ def test_restore_rejects_dangling_supersession(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "superseded by a slot missing" in resp.json()["detail"]
+    assert "superseded by a slot missing" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_assignment_missing_requirement(
@@ -808,7 +808,7 @@ def test_restore_rejects_assignment_missing_requirement(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "requirement missing" in resp.json()["detail"]
+    assert "requirement missing" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_assignment_activity_mismatch(
@@ -824,7 +824,7 @@ def test_restore_rejects_assignment_activity_mismatch(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "does not match its requirement" in resp.json()["detail"]
+    assert "does not match its requirement" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_assignment_missing_teacher(
@@ -840,7 +840,7 @@ def test_restore_rejects_assignment_missing_teacher(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "teacher missing" in resp.json()["detail"]
+    assert "teacher missing" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_two_active_on_slot(
@@ -861,7 +861,7 @@ def test_restore_rejects_two_active_on_slot(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "more than one active assignment" in resp.json()["detail"]
+    assert "more than one active assignment" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_teacher_twice_on_activity(
@@ -891,7 +891,7 @@ def test_restore_rejects_teacher_twice_on_activity(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "assigned twice on one activity" in resp.json()["detail"]
+    assert "assigned twice on one activity" in resp.json()["detail"]["message"]
 
 
 # ── Document renderer: the snapshot paths a route cannot produce ─────────────

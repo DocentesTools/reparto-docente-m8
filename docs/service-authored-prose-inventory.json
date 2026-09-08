@@ -346,7 +346,7 @@
       "surface": "fastapi.HTTPException.detail",
       "ownership": "service-authored-prose",
       "catalog_owner": "C7-error-taxonomy for Reparto domain errors; framework and authentication errors remain framework-owned until the separately authorized fastapi-m8 promotion",
-      "notes": "Includes string detail, FastAPI validation arrays, and the existing structured {code, message} detail objects."
+      "notes": "Reparto-owned controller and service failures use the structured {code, message, params} detail envelope. FastAPI validation arrays and framework/authentication failures remain separately owned and are classified by HTTP status until their owning framework promotes a stable code contract."
     },
     {
       "surface": "GET /reparto/assignment-processes/{process_id}/events text/event-stream payload.reason",

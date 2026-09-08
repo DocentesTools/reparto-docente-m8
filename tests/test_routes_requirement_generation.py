@@ -181,7 +181,7 @@ def test_generate_fails_closed_when_intended_state_is_infeasible(
     resp = client.post(_generate_url(process.id))
 
     assert resp.status_code == 409
-    assert "infeasible" in resp.json()["detail"]
+    assert "infeasible" in resp.json()["detail"]["message"]
     session.refresh(plan)
     assert plan.status == TeachingPlanStatus.LOCKED
     assert _live_requirements(session, process) == []

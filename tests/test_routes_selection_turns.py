@@ -106,7 +106,7 @@ def test_initialize_rejects_existing_turns(
     resp = client.post(f"{_turns_path(process, meeting)}/initialize")
 
     assert resp.status_code == 400
-    assert "already exist" in resp.json()["detail"]
+    assert "already exist" in resp.json()["detail"]["message"]
 
 
 def test_initialize_rejects_duplicate_selection_positions(
@@ -119,7 +119,7 @@ def test_initialize_rejects_duplicate_selection_positions(
     resp = client.post(f"{_turns_path(process, meeting)}/initialize")
 
     assert resp.status_code == 400
-    assert "Duplicate selection positions" in resp.json()["detail"]
+    assert "Duplicate selection positions" in resp.json()["detail"]["message"]
 
 
 def test_initialize_rejects_missing_selection_position(
@@ -131,7 +131,7 @@ def test_initialize_rejects_missing_selection_position(
     resp = client.post(f"{_turns_path(process, meeting)}/initialize")
 
     assert resp.status_code == 400
-    assert "selection_position" in resp.json()["detail"]
+    assert "selection_position" in resp.json()["detail"]["message"]
 
 
 def test_start_turn_enforces_one_active_turn(
@@ -148,7 +148,7 @@ def test_start_turn_enforces_one_active_turn(
     resp = client.post(f"{_turns_path(process, meeting)}/{pending.id}/start")
 
     assert resp.status_code == 400
-    assert "already active" in resp.json()["detail"]
+    assert "already active" in resp.json()["detail"]["message"]
     session.refresh(active)
     assert active.status == SelectionTurnStatus.ACTIVE
 
@@ -186,7 +186,7 @@ def test_start_turn_rejects_non_pending_turn(
     resp = client.post(f"{_turns_path(process, meeting)}/{turn.id}/start")
 
     assert resp.status_code == 400
-    assert "pending turns" in resp.json()["detail"]
+    assert "pending turns" in resp.json()["detail"]["message"]
 
 
 def test_turn_actions_require_open_meeting(
@@ -202,7 +202,7 @@ def test_turn_actions_require_open_meeting(
     resp = client.post(f"{_turns_path(process, meeting)}/{turn.id}/start")
 
     assert resp.status_code == 400
-    assert "must be open" in resp.json()["detail"]
+    assert "must be open" in resp.json()["detail"]["message"]
 
 
 def test_turn_actions_return_404_for_missing_turn(
@@ -262,7 +262,7 @@ def test_skip_rejects_finished_turn(client: TestClient, session: Session) -> Non
     )
 
     assert resp.status_code == 400
-    assert "pending or active" in resp.json()["detail"]
+    assert "pending or active" in resp.json()["detail"]["message"]
 
 
 def test_override_requires_writer(
@@ -357,7 +357,7 @@ def test_complete_turn_rejects_inactive_turn(
     )
 
     assert resp.status_code == 400
-    assert "active turn" in resp.json()["detail"]
+    assert "active turn" in resp.json()["detail"]["message"]
 
 
 def test_complete_turn_records_assignment_through_shared_service(
@@ -426,7 +426,7 @@ def test_complete_turn_rejects_assignment_for_other_teacher(
     )
 
     assert resp.status_code == 400
-    assert "active turn teacher" in resp.json()["detail"]
+    assert "active turn teacher" in resp.json()["detail"]["message"]
     # No assignment is created when the turn guard rejects the request.
     assert session.exec(select(Assignment)).all() == []
 
@@ -459,7 +459,7 @@ def test_complete_turn_enforces_shared_exact_target_guard(
     )
 
     assert resp.status_code == 400
-    assert "authorize extra hours first" in resp.json()["detail"]
+    assert "authorize extra hours first" in resp.json()["detail"]["message"]
     assert session.exec(select(Assignment)).all() == []
 
 
@@ -495,7 +495,7 @@ def test_complete_turn_rejects_already_assigned_slot(
     )
 
     assert resp.status_code == 400
-    assert "not available" in resp.json()["detail"]
+    assert "not available" in resp.json()["detail"]["message"]
 
 
 def test_summary_exposes_current_turn(client: TestClient, session: Session) -> None:

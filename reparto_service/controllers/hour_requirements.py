@@ -45,10 +45,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, col, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.controllers.teaching_plans import TeachingPlanController
 from reparto_service.core.decimals import quantize_hours
@@ -216,13 +217,11 @@ class HourRequirementController(DomainController):
         generation = HourRequirementController._plan_generation(session, plan)
 
         if generation.conflicts:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"{len(generation.conflicts)} assigned requirement slot(s) would "
-                    "change; resolve them through reconciliation before "
-                    "regenerating (plan §7.5, §9)."
-                ),
+                code="hour_requirements.assigned_requirement_slot_s_would_change_resolve_them",
+                message=f"{len(generation.conflicts)} assigned requirement slot(s) would change; resolve them through reconciliation before regenerating (plan §7.5, §9).",
+                params={"generation_conflicts_count": len(generation.conflicts)},
             )
 
         FeasibilityWitnessService.require_intended_feasible(
@@ -348,13 +347,14 @@ class HourRequirementController(DomainController):
         generation = HourRequirementController._plan_generation(session, plan)
 
         if request.expected_conflict_count != len(generation.conflicts):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"Expected {request.expected_conflict_count} conflict(s) to "
-                    f"reconcile but the plan now has {len(generation.conflicts)}; "
-                    "re-run reconciliation-preview and confirm the current count."
-                ),
+                code="hour_requirements.expected_conflict_s_reconcile_but_plan_now_has",
+                message=f"Expected {request.expected_conflict_count} conflict(s) to reconcile but the plan now has {len(generation.conflicts)}; re-run reconciliation-preview and confirm the current count.",
+                params={
+                    "request_expected_conflict_count": request.expected_conflict_count,
+                    "generation_conflicts_count": len(generation.conflicts),
+                },
             )
 
         FeasibilityWitnessService.require_intended_feasible(
@@ -362,12 +362,11 @@ class HourRequirementController(DomainController):
         )
         generation = HourRequirementController._plan_generation(session, plan)
         if request.expected_conflict_count != len(generation.conflicts):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "The reconciliation changed during feasibility evaluation; "
-                    "re-run reconciliation-preview and confirm the current count."
-                ),
+                code="hour_requirements.reconciliation_changed_during_feasibility_evaluation_re_run_re",
+                message="The reconciliation changed during feasibility evaluation; re-run reconciliation-preview and confirm the current count.",
+                params={},
             )
         number = generation.next_generation_number
         for requirement in generation.to_preserve:
@@ -696,21 +695,18 @@ class HourRequirementController(DomainController):
             select(TeachingPlan).where(TeachingPlan.assignment_process_id == process_id)
         ).first()
         if plan is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Process {process_id} has no teaching plan; create and lock "
-                    "one before generating requirements."
-                ),
+                code="hour_requirements.process_has_no_teaching_plan_create_and_lock",
+                message=f"Process {process_id} has no teaching plan; create and lock one before generating requirements.",
+                params={"process_id": process_id},
             )
         if plan.status not in _GENERATABLE_PLAN_STATUSES:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Teaching plan is {plan.status.value}; lock the plan "
-                    "(or regenerate a stale plan) before generating requirements "
-                    "(plan §7.5, §20.8)."
-                ),
+                code="hour_requirements.teaching_plan_is_lock_plan_or_regenerate_stale",
+                message=f"Teaching plan is {plan.status.value}; lock the plan (or regenerate a stale plan) before generating requirements (plan §7.5, §20.8).",
+                params={"plan_status": plan.status.value},
             )
         return plan
 
@@ -723,18 +719,18 @@ class HourRequirementController(DomainController):
             select(TeachingPlan).where(TeachingPlan.assignment_process_id == process_id)
         ).first()
         if plan is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Process {process_id} has no teaching plan to reconcile.",
+                code="hour_requirements.process_has_no_teaching_plan_reconcile",
+                message=f"Process {process_id} has no teaching plan to reconcile.",
+                params={"process_id": process_id},
             )
         if plan.status not in _RECONCILABLE_PLAN_STATUSES:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Teaching plan is {plan.status.value}; reconciliation runs "
-                    "only on a stale or reconciliation-required plan (plan §7.5, "
-                    "§9)."
-                ),
+                code="hour_requirements.teaching_plan_is_reconciliation_runs_only_on_stale",
+                message=f"Teaching plan is {plan.status.value}; reconciliation runs only on a stale or reconciliation-required plan (plan §7.5, §9).",
+                params={"plan_status": plan.status.value},
             )
         return plan
 
@@ -779,12 +775,11 @@ class HourRequirementController(DomainController):
         statement = select(HourRequirement).where(HourRequirement.id == requirement_id)
         requirement = session.exec(statement).first()
         if requirement is None or requirement.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(
-                    f"HourRequirement {requirement_id} not found in process "
-                    f"{process_id}."
-                ),
+                code="hour_requirements.hourrequirement_not_found_process",
+                message=f"HourRequirement {requirement_id} not found in process {process_id}.",
+                params={"requirement_id": requirement_id, "process_id": process_id},
             )
         return requirement
 

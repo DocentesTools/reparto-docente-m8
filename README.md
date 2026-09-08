@@ -411,6 +411,15 @@ instance cannot gate a consumer's pull request — a tracked one can. Refreshing
 it is deliberate and leaves a reviewable diff, which is what makes it worth
 trusting.
 
+### Published error taxonomy
+
+[`docs/error-taxonomy.md`](docs/error-taxonomy.md) defines ownership for domain,
+framework/auth, request-validation, routing, and unexpected failures. Every
+Reparto-owned failure uses `{"detail":{"code","message","params"}}`; the
+additive-only code catalog in
+[`docs/error-taxonomy.json`](docs/error-taxonomy.json) is checked against all
+controller and service call sites by `tests/test_error_taxonomy.py`.
+
 ## Quality gates
 
 Run these commands from the repository root in the repository's Python

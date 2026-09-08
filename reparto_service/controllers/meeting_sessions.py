@@ -5,10 +5,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, col, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.meeting_sessions import (
@@ -78,12 +79,11 @@ class MeetingSessionController(DomainController):
             DomainController.get_process_or_404(session, process_id)
         )
         if meeting_session_in.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "assignment_process_id in the payload does not match the "
-                    "URL process_id."
-                ),
+                code="meeting_sessions.assignment_process_id_payload_does_not_match_url",
+                message="assignment_process_id in the payload does not match the URL process_id.",
+                params={},
             )
         MeetingSessionController._ensure_no_active_session(session, process_id)
         meeting_session = MeetingSession.model_validate(meeting_session_in.model_dump())
@@ -129,9 +129,11 @@ class MeetingSessionController(DomainController):
             meeting_session.direct_teacher_selection_enabled,
         )
         if direct_enabled and not lan_enabled:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="Direct teacher selection requires LAN access.",
+                code="meeting_sessions.direct_teacher_selection_requires_lan_access",
+                message="Direct teacher selection requires LAN access.",
+                params={},
             )
         meeting_session.sqlmodel_update(update_dict)
         now = datetime.now(tz=timezone.utc)
@@ -195,12 +197,14 @@ class MeetingSessionController(DomainController):
             meeting_session is None
             or meeting_session.assignment_process_id != process_id
         ):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(
-                    f"MeetingSession {meeting_session_id} not found in process "
-                    f"{process_id}."
-                ),
+                code="meeting_sessions.meetingsession_not_found_process",
+                message=f"MeetingSession {meeting_session_id} not found in process {process_id}.",
+                params={
+                    "meeting_session_id": meeting_session_id,
+                    "process_id": process_id,
+                },
             )
         return meeting_session
 
@@ -211,9 +215,11 @@ class MeetingSessionController(DomainController):
             col(MeetingSession.status).in_(_ACTIVE_SESSION_STATUSES),
         )
         if session.exec(statement).first() is not None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="An active meeting session already exists for this process.",
+                code="meeting_sessions.active_meeting_session_already_exists_process",
+                message="An active meeting session already exists for this process.",
+                params={},
             )
 
     @staticmethod

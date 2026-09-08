@@ -93,7 +93,7 @@ def test_create_year_rejects_inverted_dates(client: TestClient) -> None:
         },
     )
     assert resp.status_code == 400
-    assert "start_date" in resp.json()["detail"]
+    assert "start_date" in resp.json()["detail"]["message"]
 
 
 def test_create_year_rejects_reader_role(

@@ -168,7 +168,7 @@ def test_a_writer_may_not_act_on_another_participants_turn(
         json={"reason": "Not mine to skip"},
     )
     assert response.status_code == 403
-    assert "your own participation" in response.json()["detail"]
+    assert "your own participation" in response.json()["detail"]["message"]
 
 
 def test_a_writer_with_no_linked_profile_owns_nothing(
@@ -212,7 +212,7 @@ def test_a_writer_may_not_edit_another_teachers_profile(
         json={"display_name": "Hijacked"},
     )
     assert response.status_code == 403
-    assert "your own teacher profile" in response.json()["detail"]
+    assert "your own teacher profile" in response.json()["detail"]["message"]
 
 
 @pytest.mark.parametrize(
@@ -239,7 +239,7 @@ def test_a_writer_may_not_change_the_linkage_on_their_own_profile(
         f"/reparto/teacher-profiles/{profile.id}", json=payload
     )
     assert response.status_code == 403
-    assert "Only a department head" in response.json()["detail"]
+    assert "Only a department head" in response.json()["detail"]["message"]
 
 
 def test_a_department_head_may_edit_any_profile_field(

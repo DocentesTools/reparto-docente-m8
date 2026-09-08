@@ -346,7 +346,7 @@ def test_reconcile_fails_closed_when_intended_state_is_infeasible(
     resp = client.post(_reconcile_url(process.id), json=_body(1))
 
     assert resp.status_code == 409
-    assert "infeasible" in resp.json()["detail"]
+    assert "infeasible" in resp.json()["detail"]["message"]
     session.refresh(plan)
     session.refresh(slot)
     session.refresh(assignment)
@@ -375,7 +375,7 @@ def test_reconcile_rechecks_conflicts_after_feasibility_evaluation(
     resp = client.post(_reconcile_url(process.id), json=_body(1))
 
     assert resp.status_code == 409
-    assert "changed during feasibility evaluation" in resp.json()["detail"]
+    assert "changed during feasibility evaluation" in resp.json()["detail"]["message"]
     session.refresh(slot)
     session.refresh(assignment)
     assert slot.retired_generation is None

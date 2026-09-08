@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.classroom_stages import (
     ClassroomStage,
@@ -34,9 +35,11 @@ def generate_group_code_range(start: str, end: str) -> list[str]:
     first, last = start.strip().upper(), end.strip().upper()
     valid = len(first) == len(last) == 1 and first.isascii() and last.isascii()
     if not valid or not first.isalpha() or not last.isalpha() or first > last:
-        raise HTTPException(
+        raise DomainHTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="group_start and group_end must define an ascending A-Z range",
+            code="teaching_groups.group_start_and_group_end_must_define_ascending",
+            message="group_start and group_end must define an ascending A-Z range",
+            params={},
         )
     return [chr(code) for code in range(ord(first), ord(last) + 1)]
 
@@ -77,9 +80,11 @@ class TeachingGroupController(DomainController):
     ) -> TeachingGroupPublic:
         TeachingGroupController._prepare_process(session, process_id)
         if group_in.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Payload assignment_process_id does not match the URL.",
+                code="teaching_groups.payload_assignment_process_id_does_not_match_url",
+                message="Payload assignment_process_id does not match the URL.",
+                params={},
             )
         stage = TeachingGroupController._stage_for_grade(
             session, group_in.classroom_stage_id, group_in.grade
@@ -208,17 +213,21 @@ class TeachingGroupController(DomainController):
     ) -> ClassroomStage:
         stage = session.get(ClassroomStage, stage_id)
         if stage is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"ClassroomStage {stage_id} not found.",
+                code="teaching_groups.classroomstage_not_found",
+                message=f"ClassroomStage {stage_id} not found.",
+                params={"stage_id": stage_id},
             )
         if not stage.min_grade <= grade <= stage.max_grade:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    f"grade must be between {stage.min_grade} and "
-                    f"{stage.max_grade} for this classroom stage"
-                ),
+                code="teaching_groups.grade_must_be_between_and_classroom_stage",
+                message=f"grade must be between {stage.min_grade} and {stage.max_grade} for this classroom stage",
+                params={
+                    "stage_min_grade": stage.min_grade,
+                    "stage_max_grade": stage.max_grade,
+                },
             )
         return stage
 
@@ -268,12 +277,11 @@ class TeachingGroupController(DomainController):
             session.commit()
         except IntegrityError as exc:
             session.rollback()
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "code": "classroom_conflict",
-                    "message": "A classroom with this label already exists.",
-                },
+                code="classroom_conflict",
+                message="A classroom with this label already exists.",
+                params={},
             ) from exc
 
     @staticmethod
@@ -284,9 +292,11 @@ class TeachingGroupController(DomainController):
             select(TeachingGroup).where(TeachingGroup.id == group_id)
         ).first()
         if group is None or group.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"TeachingGroup {group_id} not found in process {process_id}.",
+                code="teaching_groups.teachinggroup_not_found_process",
+                message=f"TeachingGroup {group_id} not found in process {process_id}.",
+                params={"group_id": group_id, "process_id": process_id},
             )
         return group
 

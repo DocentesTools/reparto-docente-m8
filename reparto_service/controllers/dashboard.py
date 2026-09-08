@@ -27,10 +27,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.process_teachers import ProcessTeacher
@@ -254,9 +255,11 @@ class DashboardController(DomainController):
         )
         row = session.exec(statement).first()
         if row is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No teacher profile is linked to this auth user.",
+                code="dashboard.no_teacher_profile_is_linked_auth_user",
+                message="No teacher profile is linked to this auth user.",
+                params={},
             )
         return row
 
