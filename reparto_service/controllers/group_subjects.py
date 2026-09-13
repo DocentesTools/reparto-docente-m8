@@ -16,11 +16,12 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlalchemy import or_
 from sqlmodel import Session, SQLModel, col, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.controllers.teaching_activities import TeachingActivityController
 from reparto_service.controllers.teaching_plans import TeachingPlanController
@@ -115,12 +116,11 @@ class GroupSubjectController(DomainController):
             DomainController.get_process_or_404(session, process_id)
         )
         if group_subject_in.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "assignment_process_id in the payload does not match the "
-                    "URL process_id."
-                ),
+                code="group_subjects.assignment_process_id_payload_does_not_match_url",
+                message="assignment_process_id in the payload does not match the URL process_id.",
+                params={},
             )
         # Both references must live in the same process.
         GroupSubjectController._get_group_or_404(
@@ -146,12 +146,11 @@ class GroupSubjectController(DomainController):
             session.commit()
         except Exception as exc:
             session.rollback()
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Could not create group-subject: this group/subject pair "
-                    "is already configured in the process."
-                ),
+                code="group_subjects.could_not_create_group_subject_group_subject_pair",
+                message="Could not create group-subject: this group/subject pair is already configured in the process.",
+                params={},
             ) from exc
         session.refresh(group_subject)
         if invalidated:
@@ -174,12 +173,11 @@ class GroupSubjectController(DomainController):
         )
         patch = group_subject_in.model_dump(exclude_unset=True)
         if patch.get("active") is False:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "Use the explicit guarded retirement action to deactivate a "
-                    "GroupSubject."
-                ),
+                code="group_subjects.use_explicit_guarded_retirement_action_deactivate_groupsubject",
+                message="Use the explicit guarded retirement action to deactivate a GroupSubject.",
+                params={},
             )
         before = GroupSubject.model_validate(group_subject.model_dump())
         group_subject.sqlmodel_update(patch)
@@ -226,25 +224,28 @@ class GroupSubjectController(DomainController):
             DomainController.get_process_or_404(session, process_id)
         )
         if process.status != AssignmentProcessStatus.DRAFT:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="GroupSubject retirement is allowed only in a draft process.",
+                code="group_subjects.groupsubject_retirement_is_allowed_only_draft_process",
+                message="GroupSubject retirement is allowed only in a draft process.",
+                params={},
             )
         if not group_subject.active:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="The GroupSubject is already retired.",
+                code="group_subjects.groupsubject_is_already_retired",
+                message="The GroupSubject is already retired.",
+                params={},
             )
         live_activity = GroupSubjectController._live_downstream_activity(
             session, group_subject.id
         )
         if live_activity is not None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "Retire the downstream teaching activity through its guarded "
-                    "retirement and regeneration/reconciliation flow first."
-                ),
+                code="group_subjects.retire_downstream_teaching_activity_through_its_guarded_retiremen",
+                message="Retire the downstream teaching activity through its guarded retirement and regeneration/reconciliation flow first.",
+                params={},
             )
         before = GroupSubject.model_validate(group_subject.model_dump())
         group_subject.active = False
@@ -303,20 +304,23 @@ class GroupSubjectController(DomainController):
             session, process_id, request
         )
         if preview.validation_errors:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="; ".join(preview.validation_errors),
+                code="group_subjects.bulk_validation_failed",
+                message="; ".join(preview.validation_errors),
+                params={"validation_errors": preview.validation_errors},
             )
         # Staleness guard: the confirmed count must still match the recomputed
         # plan, otherwise the underlying selection changed since preview.
         if preview.expected_affected_count != request.expected_affected_count:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "Bulk selection changed since preview "
-                    f"(now {preview.expected_affected_count} affected, "
-                    f"confirmed {request.expected_affected_count}); re-preview."
-                ),
+                code="group_subjects.bulk_selection_changed_since_preview_now_affected_confirmed",
+                message=f"Bulk selection changed since preview (now {preview.expected_affected_count} affected, confirmed {request.expected_affected_count}); re-preview.",
+                params={
+                    "preview_expected_affected_count": preview.expected_affected_count,
+                    "request_expected_affected_count": request.expected_affected_count,
+                },
             )
         affected: list[GroupSubject] = []
         rows_detail: list[dict[str, object]] = []
@@ -404,11 +408,11 @@ class GroupSubjectController(DomainController):
         )
         activity = GroupSubjectSyncService.live_main_activity(session, cell.id)
         if activity is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "This GroupSubject has no live MAIN_GENERATED activity to sync."
-                ),
+                code="group_subjects.groupsubject_has_no_live_main_generated_activity_sync",
+                message="This GroupSubject has no live MAIN_GENERATED activity to sync.",
+                params={},
             )
         plan = GroupSubjectController._plan_for_activity(session, process_id, activity)
         return GroupSubjectSyncService.preview(session, plan, cell, subject, activity)
@@ -436,11 +440,11 @@ class GroupSubjectController(DomainController):
             session, cell.id, lock=True
         )
         if activity is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "This GroupSubject has no live MAIN_GENERATED activity to sync."
-                ),
+                code="group_subjects.groupsubject_has_no_live_main_generated_activity_sync",
+                message="This GroupSubject has no live MAIN_GENERATED activity to sync.",
+                params={},
             )
         plan = GroupSubjectController._plan_for_activity(
             session, process_id, activity, lock=True
@@ -449,17 +453,18 @@ class GroupSubjectController(DomainController):
             session, plan, cell, subject, activity
         )
         if preview.preview_fingerprint != request.expected_preview_fingerprint:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="The sync inputs changed since preview; re-run sync-preview.",
+                code="group_subjects.sync_inputs_changed_since_preview_re_run_sync",
+                message="The sync inputs changed since preview; re-run sync-preview.",
+                params={},
             )
         if preview.retirement_required:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "The source GroupSubject is inactive; use the explicit guarded "
-                    "activity-retirement flow instead of sync-apply."
-                ),
+                code="group_subjects.source_groupsubject_is_inactive_use_explicit_guarded_activity",
+                message="The source GroupSubject is inactive; use the explicit guarded activity-retirement flow instead of sync-apply.",
+                params={},
             )
 
         invalidated = False
@@ -527,12 +532,11 @@ class GroupSubjectController(DomainController):
             statement = statement.with_for_update()
         group_subject = session.exec(statement).first()
         if group_subject is None or group_subject.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(
-                    f"GroupSubject {group_subject_id} not found in process "
-                    f"{process_id}."
-                ),
+                code="group_subjects.groupsubject_not_found_process",
+                message=f"GroupSubject {group_subject_id} not found in process {process_id}.",
+                params={"group_subject_id": group_subject_id, "process_id": process_id},
             )
         return group_subject
 
@@ -707,9 +711,11 @@ class GroupSubjectController(DomainController):
             statement = statement.with_for_update()
         plan = session.exec(statement).first()
         if plan is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="The materialized activity has no owning teaching plan.",
+                code="group_subjects.materialized_activity_has_no_owning_teaching_plan",
+                message="The materialized activity has no owning teaching plan.",
+                params={},
             )
         return plan
 
@@ -720,9 +726,11 @@ class GroupSubjectController(DomainController):
         statement = select(TeachingGroup).where(TeachingGroup.id == group_id)
         group = session.exec(statement).first()
         if group is None or group.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(f"TeachingGroup {group_id} not found in process {process_id}."),
+                code="group_subjects.teachinggroup_not_found_process",
+                message=f"TeachingGroup {group_id} not found in process {process_id}.",
+                params={"group_id": group_id, "process_id": process_id},
             )
         return group
 
@@ -733,9 +741,11 @@ class GroupSubjectController(DomainController):
         statement = select(Subject).where(Subject.id == subject_id)
         subject = session.exec(statement).first()
         if subject is None or subject.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(f"Subject {subject_id} not found in process {process_id}."),
+                code="group_subjects.subject_not_found_process",
+                message=f"Subject {subject_id} not found in process {process_id}.",
+                params={"subject_id": subject_id, "process_id": process_id},
             )
         return subject
 

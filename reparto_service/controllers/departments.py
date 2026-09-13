@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import RoleType, UserModel, has_minimum_role
 from sqlmodel import Session, col, func, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.departments import (
     Department,
@@ -53,25 +54,25 @@ class DepartmentController(DomainController):
         try:
             role = lookup(head_user_id)
         except UserDirectoryUnavailable as ex:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=(
-                    "Could not confirm the department head's role with the "
-                    f"identity service ({ex.reason}); the head was not changed."
-                ),
+                code="departments.could_not_confirm_department_head_s_role_with",
+                message=f"Could not confirm the department head's role with the identity service ({ex.reason}); the head was not changed.",
+                params={"ex_reason": ex.reason},
             ) from ex
         if role is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="The identity service does not know this user.",
+                code="departments.identity_service_does_not_know_user",
+                message="The identity service does not know this user.",
+                params={},
             )
         if not has_minimum_role(role, RoleType.ADMIN):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "A department head must hold at least the admin role; "
-                    f"this account holds {role.value}."
-                ),
+                code="departments.department_head_must_hold_at_least_admin_role",
+                message=f"A department head must hold at least the admin role; this account holds {role.value}.",
+                params={"role": role.value},
             )
 
     @staticmethod
@@ -106,9 +107,11 @@ class DepartmentController(DomainController):
         departments = visible_department_ids(session, current_user)
         if departments is not UNRESTRICTED and department.id not in departments:
             # 404, not 403: confirming the row exists is itself out of scope.
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Department {department_id} not found.",
+                code="departments.department_not_found",
+                message=f"Department {department_id} not found.",
+                params={"department_id": department_id},
             )
         return DepartmentPublic.model_validate(department)
 
@@ -127,10 +130,11 @@ class DepartmentController(DomainController):
             session.commit()
         except Exception as exc:
             session.rollback()
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Could not create department: "
-                "check that the slug is unique within the school.",
+                code="departments.could_not_create_department_check_slug_is_unique",
+                message="Could not create department: check that the slug is unique within the school.",
+                params={},
             ) from exc
         session.refresh(department)
         return DepartmentPublic.model_validate(department)
@@ -154,10 +158,11 @@ class DepartmentController(DomainController):
             session.commit()
         except Exception as exc:
             session.rollback()
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Could not update department: "
-                "check that the slug is unique within the school.",
+                code="departments.could_not_update_department_check_slug_is_unique",
+                message="Could not update department: check that the slug is unique within the school.",
+                params={},
             ) from exc
         session.refresh(department)
         return DepartmentPublic.model_validate(department)

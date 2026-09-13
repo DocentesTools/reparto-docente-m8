@@ -27,10 +27,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, col, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.assignment_processes import AssignmentProcessController
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.assignment_processes import (
@@ -38,9 +39,11 @@ from reparto_service.db_models.assignment_processes import (
     AssignmentProcessPublic,
 )
 from reparto_service.db_models.assignments import Assignment
+from reparto_service.db_models.academic_years import AcademicYear
 from reparto_service.db_models.department_hour_allocation_revisions import (
     DepartmentHourAllocationRevision,
 )
+from reparto_service.db_models.departments import Department
 from reparto_service.db_models.export_artifacts import (
     ExportArtifact,
     ExportBackupRestoreRequest,
@@ -52,7 +55,9 @@ from reparto_service.db_models.group_subjects import GroupSubject
 from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.process_versions import ProcessVersion
+from reparto_service.db_models.schools import School
 from reparto_service.db_models.subjects import Subject
+from reparto_service.db_models.teacher_profiles import TeacherProfile
 from reparto_service.db_models.teaching_activities import (
     TeachingActivity,
     TeachingActivityGroup,
@@ -74,6 +79,10 @@ from reparto_service.enums import (
     TeachingActivitySource,
     TeachingActivitySyncState,
     TeachingPlanStatus,
+)
+from reparto_service.services.document_rendering import (
+    DocumentIdentityContext,
+    DocumentRenderingService,
 )
 from reparto_service.services.validations import AssignmentValidationService
 
@@ -149,11 +158,22 @@ class HistoryController(DomainController):
                 session, process_id, payload.process_version_id
             )
         snapshot = HistoryController._snapshot(session, process_id)
+        versions = HistoryController._version_summaries(session, process_id)
         if payload.export_type == ExportArtifactType.BACKUP:
-            snapshot["versions"] = HistoryController._version_summaries(
-                session, process_id
-            )
-        content = HistoryController._render_artifact(payload.format, snapshot)
+            snapshot["versions"] = versions
+        document_identity = (
+            HistoryController._document_identity(session, process, snapshot)
+            if payload.format == ExportArtifactFormat.PDF
+            and payload.export_type != ExportArtifactType.BACKUP
+            else None
+        )
+        content = HistoryController._render_artifact(
+            payload.format,
+            payload.export_type,
+            snapshot,
+            versions,
+            document_identity,
+        )
         checksum = hashlib.sha256(content.encode("utf-8")).hexdigest()
         artifact = ExportArtifact(
             assignment_process_id=process_id,
@@ -199,9 +219,11 @@ class HistoryController(DomainController):
         target = DomainController.get_process_or_404(session, process_id)
         before = AssignmentProcess.model_validate(target.model_dump())
         if target.status != AssignmentProcessStatus.DRAFT:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Backup restore is only allowed into a draft process.",
+                code="history.backup_restore_is_only_allowed_into_draft_process",
+                message="Backup restore is only allowed into a draft process.",
+                params={},
             )
         AssignmentProcessController._ensure_target_empty(session, target.id)
         snapshot = HistoryController._parse_backup(payload.content)
@@ -397,14 +419,18 @@ class HistoryController(DomainController):
         try:
             raw = json.loads(content)
         except json.JSONDecodeError as exc:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Backup content must be valid JSON.",
+                code="history.backup_content_must_be_valid_json",
+                message="Backup content must be valid JSON.",
+                params={},
             ) from exc
         if not isinstance(raw, dict):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Backup content must be a process snapshot object.",
+                code="history.backup_content_must_be_process_snapshot_object",
+                message="Backup content must be a process snapshot object.",
+                params={},
             )
         HistoryController._process_section(raw)
         for key in (
@@ -437,11 +463,11 @@ class HistoryController(DomainController):
         assignments = HistoryController._list_section(snapshot, "assignments")
 
         if (requirements or assignments) and not isinstance(plan_section, dict):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Backup carries requirements or assignments but no teaching plan."
-                ),
+                code="history.backup_carries_requirements_or_assignments_but_no_teaching",
+                message="Backup carries requirements or assignments but no teaching plan.",
+                params={},
             )
         current_generation = (
             int(plan_section["current_generation_number"])
@@ -457,32 +483,29 @@ class HistoryController(DomainController):
             validated = int(row["last_validated_generation"])
             retired = row.get("retired_generation")
             if created > current_generation or validated > current_generation:
-                raise HTTPException(
+                raise DomainHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Requirement {requirement_id} references a generation "
-                        "beyond the plan's current generation."
-                    ),
+                    code="history.requirement_references_generation_beyond_plan_s_current_generation",
+                    message=f"Requirement {requirement_id} references a generation beyond the plan's current generation.",
+                    params={"requirement_id": requirement_id},
                 )
             if retired is not None and (
                 int(retired) > current_generation or int(retired) < created
             ):
-                raise HTTPException(
+                raise DomainHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Requirement {requirement_id} has an inconsistent "
-                        "retirement generation."
-                    ),
+                    code="history.requirement_has_inconsistent_retirement_generation",
+                    message=f"Requirement {requirement_id} has an inconsistent retirement generation.",
+                    params={"requirement_id": requirement_id},
                 )
         for row in requirements:
             superseded = row.get("superseded_by_requirement_id")
             if superseded is not None and str(superseded) not in requirement_activity:
-                raise HTTPException(
+                raise DomainHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Requirement {row['id']} is superseded by a slot missing "
-                        "from the backup."
-                    ),
+                    code="history.requirement_is_superseded_by_slot_missing_from_backup",
+                    message=f"Requirement {row['id']} is superseded by a slot missing from the backup.",
+                    params={"row_id": row["id"]},
                 )
 
         teacher_ids = {
@@ -494,49 +517,44 @@ class HistoryController(DomainController):
         for row in assignments:
             requirement_id = str(row["hour_requirement_id"])
             if requirement_id not in requirement_activity:
-                raise HTTPException(
+                raise DomainHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Assignment {row['id']} references a requirement missing "
-                        "from the backup."
-                    ),
+                    code="history.assignment_references_requirement_missing_from_backup",
+                    message=f"Assignment {row['id']} references a requirement missing from the backup.",
+                    params={"row_id": row["id"]},
                 )
             activity_id = str(row["teaching_activity_id"])
             if activity_id != requirement_activity[requirement_id]:
-                raise HTTPException(
+                raise DomainHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Assignment {row['id']} activity does not match its "
-                        "requirement slot."
-                    ),
+                    code="history.assignment_activity_does_not_match_its_requirement_slot",
+                    message=f"Assignment {row['id']} activity does not match its requirement slot.",
+                    params={"row_id": row["id"]},
                 )
             teacher_id = str(row["process_teacher_id"])
             if teacher_id not in teacher_ids:
-                raise HTTPException(
+                raise DomainHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Assignment {row['id']} references a teacher missing from "
-                        "the backup."
-                    ),
+                    code="history.assignment_references_teacher_missing_from_backup",
+                    message=f"Assignment {row['id']} references a teacher missing from the backup.",
+                    params={"row_id": row["id"]},
                 )
             if str(row.get("status", _ACTIVE)) != _ACTIVE:
                 continue
             if requirement_id in active_slots:
-                raise HTTPException(
+                raise DomainHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Requirement {requirement_id} has more than one active "
-                        "assignment."
-                    ),
+                    code="history.requirement_has_more_than_one_active_assignment",
+                    message=f"Requirement {requirement_id} has more than one active assignment.",
+                    params={"requirement_id": requirement_id},
                 )
             active_slots.add(requirement_id)
             if (activity_id, teacher_id) in active_activity_teacher:
-                raise HTTPException(
+                raise DomainHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Teacher {teacher_id} is actively assigned twice on one "
-                        "activity."
-                    ),
+                    code="history.teacher_is_actively_assigned_twice_on_one_activity",
+                    message=f"Teacher {teacher_id} is actively assigned twice on one activity.",
+                    params={"teacher_id": teacher_id},
                 )
             active_activity_teacher.add((activity_id, teacher_id))
 
@@ -544,9 +562,11 @@ class HistoryController(DomainController):
     def _process_section(snapshot: dict[str, Any]) -> dict[str, Any]:
         section = snapshot.get("process")
         if not isinstance(section, dict):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Backup snapshot is missing process.",
+                code="history.backup_snapshot_is_missing_process",
+                message="Backup snapshot is missing process.",
+                params={},
             )
         return section
 
@@ -554,9 +574,11 @@ class HistoryController(DomainController):
     def _list_section(snapshot: dict[str, Any], key: str) -> list[Any]:
         section = snapshot.get(key)
         if not isinstance(section, list):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Backup snapshot is missing {key}.",
+                code="history.backup_snapshot_is_missing",
+                message=f"Backup snapshot is missing {key}.",
+                params={"key": key},
             )
         return section
 
@@ -909,8 +931,19 @@ class HistoryController(DomainController):
 
     @staticmethod
     def _render_artifact(
-        artifact_format: ExportArtifactFormat, snapshot: dict[str, Any]
+        artifact_format: ExportArtifactFormat,
+        export_type: ExportArtifactType,
+        snapshot: dict[str, Any],
+        versions: list[dict[str, Any]],
+        document_identity: Optional[DocumentIdentityContext],
     ) -> str:
+        """Render the artifact's stored content for one format/type pair.
+
+        ``json`` and ``csv`` are whole-snapshot dumps and read the same for
+        every type — they are data, and the type is metadata on the row. The
+        ``pdf`` format is the opposite: it is the plan §15 *document*, so it is
+        the one branch that reads ``export_type``.
+        """
         if artifact_format == ExportArtifactFormat.JSON:
             return json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
         if artifact_format == ExportArtifactFormat.CSV:
@@ -930,13 +963,52 @@ class HistoryController(DomainController):
                 writer.writerow(["assignment", row["id"], "", row["status"]])
             return output.getvalue()
         if artifact_format == ExportArtifactFormat.PDF:
-            raise HTTPException(
-                status_code=status.HTTP_501_NOT_IMPLEMENTED,
-                detail="PDF export is not implemented.",
+            if export_type == ExportArtifactType.BACKUP:
+                # A backup is a restorable payload, not a document: rendering
+                # one as prose would produce a file `restore-draft` cannot read.
+                raise DomainHTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    code="history.backup_must_be_exported_as_json_so_it",
+                    message="A backup must be exported as json so it can be restored; pdf renders a document, not a snapshot.",
+                    params={},
+                )
+            if document_identity is None:  # pragma: no cover - controller invariant
+                raise AssertionError("Document exports require identity enrichment")
+            return DocumentRenderingService.render(
+                export_type, snapshot, versions, document_identity
             )
         raise AssertionError(
             f"Unsupported export format: {artifact_format}"
         )  # pragma: no cover
+
+    @staticmethod
+    def _document_identity(
+        session: Session,
+        process: AssignmentProcess,
+        snapshot: dict[str, Any],
+    ) -> DocumentIdentityContext:
+        """Join human labels without widening the restorable snapshot."""
+        school = session.get(School, process.school_id)
+        department = session.get(Department, process.department_id)
+        academic_year = session.get(AcademicYear, process.academic_year_id)
+        profile_ids = {
+            uuid.UUID(str(row["teacher_profile_id"])) for row in snapshot["teachers"]
+        }
+        profiles = (
+            session.exec(
+                select(TeacherProfile).where(col(TeacherProfile.id).in_(profile_ids))
+            ).all()
+            if profile_ids
+            else []
+        )
+        return DocumentIdentityContext(
+            school_name=None if school is None else school.name,
+            department_name=None if department is None else department.name,
+            academic_year_label=None if academic_year is None else academic_year.label,
+            teacher_display_names_by_profile_id={
+                str(profile.id): profile.display_name for profile in profiles
+            },
+        )
 
     @staticmethod
     def _ensure_no_blocking_validations(
@@ -946,9 +1018,11 @@ class HistoryController(DomainController):
             session, process
         )
         if not report.is_final_ready:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Final export is blocked by blocking validations.",
+                code="history.final_export_is_blocked_by_blocking_validations",
+                message="Final export is blocked by blocking validations.",
+                params={},
             )
 
     @staticmethod
@@ -957,9 +1031,11 @@ class HistoryController(DomainController):
     ) -> ProcessVersion:
         version = session.get(ProcessVersion, version_id)
         if version is None or version.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"ProcessVersion {version_id} not found.",
+                code="history.processversion_not_found",
+                message=f"ProcessVersion {version_id} not found.",
+                params={"version_id": version_id},
             )
         return version
 

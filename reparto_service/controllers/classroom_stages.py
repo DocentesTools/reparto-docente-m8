@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.classroom_stages import (
     ClassroomStage,
@@ -60,9 +61,11 @@ class ClassroomStageController(DomainController):
         final_min = values.get("min_grade", stage.min_grade)
         final_max = values.get("max_grade", stage.max_grade)
         if final_min > final_max:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="min_grade must be less than or equal to max_grade",
+                code="classroom_stages.min_grade_must_be_less_than_or_equal",
+                message="min_grade must be less than or equal to max_grade",
+                params={},
             )
         stage.sqlmodel_update(values)
         session.add(stage)
@@ -78,12 +81,11 @@ class ClassroomStageController(DomainController):
             select(TeachingGroup).where(TeachingGroup.classroom_stage_id == stage_id)
         ).first()
         if referenced is not None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "code": "classroom_stage_in_use",
-                    "message": "The classroom stage is referenced by classrooms.",
-                },
+                code="classroom_stage_in_use",
+                message="The classroom stage is referenced by classrooms.",
+                params={},
             )
         public = ClassroomStagePublic.model_validate(stage)
         session.delete(stage)
@@ -96,12 +98,11 @@ class ClassroomStageController(DomainController):
             session.commit()
         except IntegrityError as exc:
             session.rollback()
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "code": "classroom_stage_exists",
-                    "message": "A classroom stage with this name already exists.",
-                },
+                code="classroom_stage_exists",
+                message="A classroom stage with this name already exists.",
+                params={},
             ) from exc
 
 

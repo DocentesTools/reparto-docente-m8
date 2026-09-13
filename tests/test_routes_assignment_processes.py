@@ -296,7 +296,7 @@ def test_teacher_lan_summary_requires_linked_profile(
     process = factories.make_assignment_process(session)
     resp = client.get(f"/reparto/assignment-processes/{process.id}/lan/me")
     assert resp.status_code == 404
-    assert "linked" in resp.json()["detail"]
+    assert "linked" in resp.json()["detail"]["message"]
 
 
 def test_summary_returns_404_for_missing_process(

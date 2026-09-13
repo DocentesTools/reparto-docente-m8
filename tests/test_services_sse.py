@@ -27,6 +27,7 @@ from reparto_service.enums import (
 from reparto_service.schemas.events import DomainEvent
 from reparto_service.services import sse
 from tests.conftest import make_user
+from tests.error_helpers import domain_error_message
 from tests.factories import (
     make_assignment_process,
     make_department,
@@ -156,7 +157,7 @@ def test_resolve_audience_refuses_an_upgrade(reader: UserModel) -> None:
     with pytest.raises(HTTPException) as exc:
         sse.resolve_audience(reader, SseAudience.DEPARTMENT_HEAD)
     assert exc.value.status_code == 403
-    assert "grants at most teacher" in exc.value.detail
+    assert "grants at most teacher" in domain_error_message(exc.value)
 
 
 def test_resolve_audience_allows_the_same_tier(reader: UserModel) -> None:

@@ -100,7 +100,7 @@ def test_issue_claim_code_refuses_an_already_linked_profile(
     profile = make_teacher_profile(session, user_id=uuid.uuid4())
     response = client.post(f"/reparto/teacher-profiles/{profile.id}/claim-code")
     assert response.status_code == 409
-    assert "unlink it before" in response.json()["detail"]
+    assert "unlink it before" in response.json()["detail"]["message"]
 
 
 def test_reissuing_replaces_the_outstanding_code(
@@ -196,7 +196,7 @@ def test_an_unusable_code_is_refused_without_saying_why(
         code if presented == "expired" else "ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ",
     )
     assert response.status_code == 400
-    assert response.json()["detail"] == (
+    assert response.json()["detail"]["message"] == (
         "Claim code is not valid, or has expired or been used."
     )
 
@@ -233,7 +233,10 @@ def test_a_claim_reuses_the_one_profile_per_account_rule(
 
     refused = _claim(session, teacher_user, code)
     assert refused.status_code == 409
-    assert "already linked to another teacher profile" in refused.json()["detail"]
+    assert (
+        "already linked to another teacher profile"
+        in refused.json()["detail"]["message"]
+    )
 
     assert _claim(session, make_user("writer"), code).status_code == 200
 

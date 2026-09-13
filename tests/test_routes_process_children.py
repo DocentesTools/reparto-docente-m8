@@ -203,7 +203,7 @@ def test_update_extra_hours_blocked_below_assigned(
     )
 
     assert resp.status_code == 400
-    assert "assigned" in resp.json()["detail"].lower()
+    assert "assigned" in resp.json()["detail"]["message"].lower()
     # Value unchanged after the blocked attempt.
     current = client.get(f"/reparto/assignment-processes/{process.id}/teachers/{pt.id}")
     assert current.json()["extra_weekly_hours"] == "4.00"
@@ -267,7 +267,7 @@ def test_update_extra_hours_final_process_blocked(
         json={"extra_weekly_hours": "4.00", "reason": "Process is final"},
     )
     assert resp.status_code == 400
-    assert "final" in resp.json()["detail"].lower()
+    assert "final" in resp.json()["detail"]["message"].lower()
 
 
 def test_update_extra_hours_teacher_not_found(

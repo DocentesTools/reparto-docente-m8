@@ -104,7 +104,7 @@ def test_direct_teacher_choice_requires_enabled_session(
     resp = client.post(path, json=payload)
 
     assert resp.status_code == 400
-    assert "disabled" in resp.json()["detail"]
+    assert "disabled" in resp.json()["detail"]["message"]
 
 
 def test_direct_teacher_choice_requires_open_session(
@@ -120,7 +120,7 @@ def test_direct_teacher_choice_requires_open_session(
     resp = client.post(path, json=payload)
 
     assert resp.status_code == 400
-    assert "must be open" in resp.json()["detail"]
+    assert "must be open" in resp.json()["detail"]["message"]
 
 
 def test_direct_teacher_choice_requires_linked_teacher(
@@ -131,7 +131,7 @@ def test_direct_teacher_choice_requires_linked_teacher(
     resp = client.post(path, json=payload)
 
     assert resp.status_code == 404
-    assert "linked" in resp.json()["detail"]
+    assert "linked" in resp.json()["detail"]["message"]
 
 
 def test_direct_teacher_choice_returns_404_for_missing_session(
@@ -145,7 +145,7 @@ def test_direct_teacher_choice_returns_404_for_missing_session(
     resp = client.post(path, json=payload)
 
     assert resp.status_code == 404
-    assert "MeetingSession" in resp.json()["detail"]
+    assert "MeetingSession" in resp.json()["detail"]["message"]
 
 
 def test_strict_direct_choice_rejects_out_of_turn(
@@ -165,7 +165,7 @@ def test_strict_direct_choice_rejects_out_of_turn(
     resp = client.post(path, json=payload)
 
     assert resp.status_code == 400
-    assert "outside the active strict turn" in resp.json()["detail"]
+    assert "outside the active strict turn" in resp.json()["detail"]["message"]
 
 
 def test_strict_direct_choice_completes_active_turn(
@@ -204,4 +204,4 @@ def test_direct_choice_rejects_already_assigned_slot(
     resp = client.post(path, json=payload)
 
     assert resp.status_code == 400
-    assert "already assigned" in resp.json()["detail"]
+    assert "already assigned" in resp.json()["detail"]["message"]

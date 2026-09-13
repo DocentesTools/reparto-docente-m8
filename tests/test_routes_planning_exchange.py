@@ -215,7 +215,7 @@ def test_export_final_blocked_when_unbalanced(
     factories.make_teaching_plan(session, process)
     resp = client.post(_FINAL.format(process.id))
     assert resp.status_code == 400
-    assert "blocking validation" in resp.json()["detail"]
+    assert "blocking validation" in resp.json()["detail"]["message"]
 
 
 def test_export_final_allowed_when_ready(client: TestClient, session: Session) -> None:
@@ -240,7 +240,7 @@ def test_export_final_fails_closed_without_current_feasibility(
     resp = client.post(_FINAL.format(process.id))
 
     assert resp.status_code == 409
-    assert "feasibility" in resp.json()["detail"]
+    assert "feasibility" in resp.json()["detail"]["message"]
 
 
 def test_draft_and_provisional_exports_ignore_unknown_feasibility(

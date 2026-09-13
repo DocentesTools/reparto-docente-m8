@@ -20,10 +20,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, col, desc, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.department_hour_allocation_revisions import (
     DepartmentHourAllocationRevision,
@@ -70,9 +71,11 @@ class DepartmentHourAllocationRevisionController(DomainController):
             session, process_id
         )
         if current is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(f"No current allocation revision for process {process_id}."),
+                code="department_hour_allocation_revisions.no_current_allocation_revision_process",
+                message=f"No current allocation revision for process {process_id}.",
+                params={"process_id": process_id},
             )
         return DepartmentHourAllocationRevisionPublic.model_validate(current)
 
@@ -128,9 +131,11 @@ class DepartmentHourAllocationRevisionController(DomainController):
             session.commit()
         except Exception as exc:  # pragma: no cover - DB race guard
             session.rollback()
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Could not create allocation revision; please retry.",
+                code="department_hour_allocation_revisions.could_not_create_allocation_revision_please",
+                message="Could not create allocation revision; please retry.",
+                params={},
             ) from exc
         session.refresh(revision)
         DepartmentHourAllocationRevisionController.publish_event(

@@ -27,7 +27,16 @@ import uuid
 from decimal import Decimal
 from typing import Annotated, Optional
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PlainSerializer
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+    StrictInt,
+    StrictStr,
+    model_validator,
+)
 
 from reparto_service.core.decimals import quantize_hours
 from reparto_service.enums import (
@@ -35,6 +44,7 @@ from reparto_service.enums import (
     ParticipantBalanceState,
     ValidationSeverity,
 )
+from reparto_service.schemas.validation_findings import VALIDATION_PARAM_CONTRACT
 
 
 # ── Canonical decimal-hour output field ───────────────────────────────────────
@@ -210,8 +220,13 @@ class PlanValidationMessage(BaseModel):
     assignment-stage :class:`AssignmentValidationReport`. ``code`` is a stable
     machine identifier (the frontend keys off it and never off the human
     ``message``); the ``CODE_*`` constants in
-    :mod:`reparto_service.services.validations` are the single source of truth.
-    ``entity_type``/``entity_id`` point at the concrete row a finding is about
+    :mod:`reparto_service.schemas.validation_findings` are the single source of
+    truth.
+    ``params`` carries the language-neutral substitution values declared by
+    :data:`VALIDATION_PARAM_CONTRACT`. It is optional so a tolerant client can
+    still consume an older service; when supplied for a known code its keys and
+    scalar kinds are exact. ``entity_type``/``entity_id`` point at the concrete
+    row a finding is about
     (a ``group_subject`` cell, a ``teaching_activity``, a ``teacher``,
     a requirement slot) or at the whole ``plan``/``assignment_process`` when the
     finding is process-wide.
@@ -225,6 +240,13 @@ class PlanValidationMessage(BaseModel):
         description="Stable identifier (e.g. 'plan.group_hours_imbalanced').",
     )
     message: str = Field(description="Human-readable description.")
+    params: Optional[dict[str, StrictStr | StrictInt]] = Field(
+        default=None,
+        description=(
+            "Optional code-specific template parameters; decimal hours are "
+            "canonical signed strings and counts are integers."
+        ),
+    )
     entity_type: str = Field(
         max_length=50,
         description="Entity the finding refers to ('plan', 'group_subject', …).",
@@ -232,6 +254,24 @@ class PlanValidationMessage(BaseModel):
     entity_id: Optional[uuid.UUID] = Field(
         default=None, description="ID of the related entity, when applicable."
     )
+
+    @model_validator(mode="after")
+    def validate_known_params(self) -> "PlanValidationMessage":
+        """Reject non-contract keys or scalar kinds for a known code."""
+        if self.params is None:
+            return self
+        expected = VALIDATION_PARAM_CONTRACT.get(self.code)
+        if expected is None:
+            return self
+        if self.params.keys() != expected.keys():
+            raise ValueError(f"Invalid parameter names for validation code {self.code}")
+        for name, kind in expected.items():
+            value = self.params[name]
+            if kind == "integer" and type(value) is not int:
+                raise ValueError(f"Parameter {name} must be an integer")
+            if kind == "string" and not isinstance(value, str):
+                raise ValueError(f"Parameter {name} must be a string")
+        return self
 
 
 class PlanValidationReport(BaseModel):

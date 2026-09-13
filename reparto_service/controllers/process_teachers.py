@@ -5,10 +5,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.core.decimals import quantize_hours
 from reparto_service.db_models.assignment_processes import AssignmentProcess
@@ -70,12 +71,11 @@ class ProcessTeacherController(DomainController):
             session, TeacherProfile, process_teacher_in.teacher_profile_id
         )
         if process_teacher_in.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "assignment_process_id in the payload does not match the "
-                    "URL process_id."
-                ),
+                code="process_teachers.assignment_process_id_payload_does_not_match_url",
+                message="assignment_process_id in the payload does not match the URL process_id.",
+                params={},
             )
         process_teacher = ProcessTeacher.model_validate(process_teacher_in.model_dump())
         session.add(process_teacher)
@@ -94,12 +94,11 @@ class ProcessTeacherController(DomainController):
             session.commit()
         except Exception as exc:
             session.rollback()
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Could not create process teacher: a binding for this "
-                    "teacher profile already exists in the process."
-                ),
+                code="process_teachers.could_not_create_process_teacher_binding_teacher_profile",
+                message="Could not create process teacher: a binding for this teacher profile already exists in the process.",
+                params={},
             ) from exc
         session.refresh(process_teacher)
         if invalidated:
@@ -177,12 +176,11 @@ class ProcessTeacherController(DomainController):
             session, process_teacher
         )
         if new_target < assigned:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Cannot reduce extra hours below the hours already assigned: "
-                    f"new target {new_target} h < assigned {assigned} h."
-                ),
+                code="process_teachers.cannot_reduce_extra_hours_below_hours_already_assigned",
+                message=f"Cannot reduce extra hours below the hours already assigned: new target {new_target} h < assigned {assigned} h.",
+                params={"new_target": new_target, "assigned": assigned},
             )
         before = ProcessTeacher.model_validate(process_teacher.model_dump())
         process_teacher.extra_weekly_hours = payload.extra_weekly_hours
@@ -277,12 +275,14 @@ class ProcessTeacherController(DomainController):
             process_teacher is None
             or process_teacher.assignment_process_id != process_id
         ):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(
-                    f"ProcessTeacher {process_teacher_id} not found in process "
-                    f"{process_id}."
-                ),
+                code="process_teachers.processteacher_not_found_process",
+                message=f"ProcessTeacher {process_teacher_id} not found in process {process_id}.",
+                params={
+                    "process_teacher_id": process_teacher_id,
+                    "process_id": process_id,
+                },
             )
         return process_teacher
 

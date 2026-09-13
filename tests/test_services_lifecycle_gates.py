@@ -17,6 +17,7 @@ from sqlmodel import Session
 from reparto_service.enums import TeachingPlanStatus
 from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 from reparto_service.services.lifecycle_gates import PlanReadinessGate
+from tests.error_helpers import domain_error_message
 from tests import factories
 
 
@@ -46,8 +47,8 @@ def test_ready_gate_rejects_missing_plan(session: Session) -> None:
             session, process.id, operation="open a meeting"
         )
     assert exc.value.status_code == 409
-    assert "no teaching plan" in exc.value.detail
-    assert "open a meeting" in exc.value.detail
+    assert "no teaching plan" in domain_error_message(exc.value)
+    assert "open a meeting" in domain_error_message(exc.value)
 
 
 def test_current_feasibility_gate_rejects_missing_plan(session: Session) -> None:
@@ -57,7 +58,7 @@ def test_current_feasibility_gate_rejects_missing_plan(session: Session) -> None
             session, process.id, operation="close the process"
         )
     assert exc.value.status_code == 409
-    assert "no teaching plan" in exc.value.detail
+    assert "no teaching plan" in domain_error_message(exc.value)
 
 
 def test_current_feasibility_gate_rejects_missing_witness(
@@ -72,8 +73,8 @@ def test_current_feasibility_gate_rejects_missing_witness(
             session, process.id, operation="close the process"
         )
     assert exc.value.status_code == 409
-    assert "FEASIBLE" in exc.value.detail
-    assert "close the process" in exc.value.detail
+    assert "FEASIBLE" in domain_error_message(exc.value)
+    assert "close the process" in domain_error_message(exc.value)
 
 
 def test_current_feasibility_gate_preserves_non_conflict_errors(
@@ -117,7 +118,7 @@ def test_ready_gate_rejects_non_generated_statuses(
             session, process.id, operation="open a meeting"
         )
     assert exc.value.status_code == 409
-    assert needle in exc.value.detail
+    assert needle in domain_error_message(exc.value)
 
 
 # ── Lenient mid-flight assignment gate ────────────────────────────────────────
@@ -167,8 +168,8 @@ def test_unblocked_gate_rejects_pending_reconciliation(
             session, process.id, operation="create an assignment"
         )
     assert exc.value.status_code == 409
-    assert needle in exc.value.detail
-    assert "create an assignment" in exc.value.detail
+    assert needle in domain_error_message(exc.value)
+    assert "create an assignment" in domain_error_message(exc.value)
 
 
 def test_gate_isolated_per_process(session: Session) -> None:

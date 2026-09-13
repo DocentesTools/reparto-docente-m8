@@ -259,7 +259,7 @@ def test_apply_rejects_stale_preview(client: TestClient, session: Session) -> No
         json={"expected_preview_fingerprint": preview["preview_fingerprint"]},
     )
     assert response.status_code == 409
-    assert "changed since preview" in response.json()["detail"]
+    assert "changed since preview" in response.json()["detail"]["message"]
 
 
 def test_inactive_source_requires_guarded_retirement(
@@ -310,7 +310,7 @@ def test_sync_apply_rejects_legacy_inactive_source(
         json={"expected_preview_fingerprint": preview["preview_fingerprint"]},
     )
     assert response.status_code == 409
-    assert "guarded activity-retirement" in response.json()["detail"]
+    assert "guarded activity-retirement" in response.json()["detail"]["message"]
 
 
 def test_noop_apply_is_idempotent_and_keeps_plan_state(
@@ -486,7 +486,7 @@ def test_apply_detects_activity_removed_after_preview(
         json={"expected_preview_fingerprint": "0" * 64},
     )
     assert response.status_code == 409
-    assert "no live MAIN_GENERATED" in response.json()["detail"]
+    assert "no live MAIN_GENERATED" in response.json()["detail"]["message"]
 
 
 def test_out_of_sync_invalidation_covers_balanced_locked_and_missing_plans(

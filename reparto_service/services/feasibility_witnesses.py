@@ -17,9 +17,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlmodel import Session, col, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.db_models.assignments import Assignment
 from reparto_service.db_models.feasibility_witnesses import (
     FeasibilityDiagnosticPublic,
@@ -397,12 +398,14 @@ class FeasibilityWitnessService:
             evaluation.status != FeasibilityStatus.FEASIBLE
             or not evaluation.witness_available
         ):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"Cannot {operation}: assignment feasibility is "
-                    f"{evaluation.status.value}; a current FEASIBLE result is required."
-                ),
+                code="feasibility_witnesses.cannot_assignment_feasibility_is_current_feasible_result_i",
+                message=f"Cannot {operation}: assignment feasibility is {evaluation.status.value}; a current FEASIBLE result is required.",
+                params={
+                    "operation": operation,
+                    "evaluation_status": evaluation.status.value,
+                },
             )
         return evaluation
 
@@ -564,12 +567,11 @@ class FeasibilityWitnessService:
             or plan.feasibility_status != FeasibilityStatus.FEASIBLE
             or plan.feasibility_generation != plan.current_generation_number
         ):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "A current deterministic witness is unavailable; an "
-                    "administrative feasibility evaluation is required."
-                ),
+                code="feasibility_witnesses.current_deterministic_witness_is_unavailable_administrativ",
+                message="A current deterministic witness is unavailable; an administrative feasibility evaluation is required.",
+                params={},
             )
         return FeasibilityWitnessPublic(
             teaching_plan_id=plan.id,
@@ -607,12 +609,11 @@ class FeasibilityWitnessService:
             or plan.feasibility_status == FeasibilityStatus.NOT_EVALUATED
             or plan.feasibility_generation != plan.current_generation_number
         ):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "Current feasibility diagnostics are unavailable; an "
-                    "administrative feasibility evaluation is required."
-                ),
+                code="feasibility_witnesses.current_feasibility_diagnostics_are_unavailable_administra",
+                message="Current feasibility diagnostics are unavailable; an administrative feasibility evaluation is required.",
+                params={},
             )
         return FeasibilityDiagnosticsPublic(
             teaching_plan_id=plan.id,
@@ -649,13 +650,11 @@ class FeasibilityWitnessService:
             or plan.feasibility_status != FeasibilityStatus.FEASIBLE
             or plan.feasibility_generation != plan.current_generation_number
         ):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "Selection is blocked because the deterministic witness is "
-                    "missing or stale; administrative feasibility evaluation is "
-                    "required."
-                ),
+                code="feasibility_witnesses.selection_is_blocked_because_deterministic_witness_is_miss",
+                message="Selection is blocked because the deterministic witness is missing or stale; administrative feasibility evaluation is required.",
+                params={},
             )
         remaining_ids = {item.slot_id for item in snapshot.state.slots}
         remaining = tuple(
@@ -693,13 +692,11 @@ class FeasibilityWitnessService:
         snapshot = build_feasibility_snapshot(session, process_id)
         row = FeasibilityWitnessService._current_row(session, plan, snapshot)
         if row is None or plan.feasibility_generation != plan.current_generation_number:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "Reassignment is blocked because the deterministic witness is "
-                    "missing or stale; administrative feasibility evaluation is "
-                    "required."
-                ),
+                code="feasibility_witnesses.reassignment_is_blocked_because_deterministic_witness_is_m",
+                message="Reassignment is blocked because the deterministic witness is missing or stale; administrative feasibility evaluation is required.",
+                params={},
             )
         released_state = FeasibilityWitnessService._released_assignment_state(
             snapshot.state, assignment, requirement
@@ -769,9 +766,11 @@ class FeasibilityWitnessService:
         plan = FeasibilityWitnessService._plan_or_404(session, process_id)
         snapshot = build_feasibility_snapshot(session, process_id)
         if not validate_feasibility_witness(snapshot.state, repaired_remaining):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="The repaired deterministic witness is inconsistent.",
+                code="feasibility_witnesses.repaired_deterministic_witness_is_inconsistent",
+                message="The repaired deterministic witness is inconsistent.",
+                params={},
             )
         complete = snapshot.fixed_assignments + repaired_remaining
         FeasibilityWitnessService._upsert_row(
@@ -950,9 +949,11 @@ class FeasibilityWitnessService:
             select(TeachingPlan).where(TeachingPlan.assignment_process_id == process_id)
         ).first()
         if plan is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No teaching plan for process {process_id}.",
+                code="feasibility_witnesses.no_teaching_plan_process",
+                message=f"No teaching plan for process {process_id}.",
+                params={"process_id": process_id},
             )
         return plan
 

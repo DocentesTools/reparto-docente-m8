@@ -5,6 +5,37 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-09-06
+
+### Fixed
+
+- **Validation findings expose a language-neutral parameter contract.** Every
+  one of the 17 planning and assignment codes now emits exact `params` beside
+  its compatibility `message`: counts are JSON integers, decimal hours are
+  canonical signed strings, and people or teaching entities are named through
+  display labels while `entity_id` remains machine data. The public model keeps
+  `params` optional so the tolerant client can be released before this service
+  shape is deployed, but validates exact keys and scalar kinds whenever a known
+  code supplies them.
+
+- **`POST .../exports` renders the plan §15 documents instead of refusing
+  them.** Every `pdf` request answered `501`, so three of the four document
+  buttons — internal draft, school leadership, teacher summary — and the
+  final export could never succeed; only the JSON backup ever worked.
+  `DocumentRenderingService` is a pure function of the snapshot (no clock, no
+  session, no query), so two exports of an unchanged process are
+  byte-identical, and it never refuses: a missing plan, an unbalanced plan or
+  an incomplete reparto travel *inside* the document — in the balances, the
+  uncovered-slot list and a warnings section — rather than failing the
+  request. The strict `final` gate is unchanged and still runs ahead of
+  rendering. `pdf` + `backup` is now refused with `400` rather than rendered:
+  a backup is a restorable payload, and prose is not something
+  `restore-draft` can read back. No schema change and no contract move — the
+  `format`/`export_type` fields were already declared and accepted; this
+  closes the gap between what the request schema promised and what the
+  handler actually served. The contract stays `reparto-docente-m8@2.0.0`, so
+  no client upgrade is required.
+
 ## [2.1.0] - 2026-08-30
 
 ### Fixed

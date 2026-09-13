@@ -1,0 +1,358 @@
+{
+  "schema_version": 1,
+  "scope": "Free-string and opaque JSON fields reachable from declared FastAPI response models, plus public prose surfaces that are not represented by a response model. Closed enum references and strings formatted as UUIDs or dates are machine types outside this prose boundary.",
+  "ownership_classes": {
+    "service-authored-prose": "The service creates human-readable prose. A stable code or catalog owner is mandatory.",
+    "mixed-authorship": "The same field may contain service-generated or user-authored text. The service-generated path needs a stable code or catalog owner; user text stays verbatim.",
+    "user-authored-content": "A user or operator supplies the content. It stays verbatim and is never translated as service copy.",
+    "human-readable-identity": "A domain label or name identifies an entity. It is data, not translatable sentence copy.",
+    "machine-data": "A code, trace value, filename, checksum, path, or opaque contract payload. It is not translated."
+  },
+  "fields": [
+    {
+      "field": "AcademicYearPublic.label",
+      "ownership": "human-readable-identity",
+      "catalog_owner": null,
+      "notes": "Operator-authored academic-year label; it is domain data, not interface copy."
+    },
+    {
+      "field": "AssignmentPublic.notes",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Free-form assignment notes stay verbatim."
+    },
+    {
+      "field": "AuditEventPublic.after_json",
+      "ownership": "mixed-authorship",
+      "catalog_owner": "The nested source field owns its code/catalog policy; service-generated nested stale reasons move under C14-document-catalog while user fields remain verbatim",
+      "notes": "Opaque audit snapshots can contain entity labels, user notes, and service-generated values."
+    },
+    {
+      "field": "AuditEventPublic.before_json",
+      "ownership": "mixed-authorship",
+      "catalog_owner": "The nested source field owns its code/catalog policy; service-generated nested stale reasons move under C14-document-catalog while user fields remain verbatim",
+      "notes": "Opaque audit snapshots can contain entity labels, user notes, and service-generated values."
+    },
+    {
+      "field": "AuditEventPublic.reason",
+      "ownership": "mixed-authorship",
+      "catalog_owner": "AuditEventPublic.event_type identifies generated lifecycle/audit reasons; user-supplied action reasons remain verbatim",
+      "notes": "Today this field can echo a user justification or carry a service lifecycle/status/source reference."
+    },
+    {
+      "field": "ClassroomStagePublic.label",
+      "ownership": "human-readable-identity",
+      "catalog_owner": null,
+      "notes": "Operator-authored classroom-stage label."
+    },
+    {
+      "field": "ClassroomStageSummary.label",
+      "ownership": "human-readable-identity",
+      "catalog_owner": null,
+      "notes": "Nested view of the operator-authored classroom-stage label."
+    },
+    {
+      "field": "DepartmentHourAllocationRevisionPublic.reason",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Mandatory operator justification for the allocation revision."
+    },
+    {
+      "field": "DepartmentHourAllocationRevisionPublic.source_reference",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Optional operator-supplied external source reference."
+    },
+    {
+      "field": "DepartmentPublic.name",
+      "ownership": "human-readable-identity",
+      "catalog_owner": null,
+      "notes": "Department name is domain identity data."
+    },
+    {
+      "field": "DepartmentPublic.notes",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Free-form department notes stay verbatim."
+    },
+    {
+      "field": "ExportArtifactPublic.content",
+      "ownership": "mixed-authorship",
+      "catalog_owner": "C14-document-catalog owns human-readable document bytes; backup JSON and data CSV/JSON remain language-neutral contract data",
+      "notes": "The field stores either service-rendered document prose or a machine-oriented export payload."
+    },
+    {
+      "field": "FeasibilityDiagnosticPublic.message",
+      "ownership": "service-authored-prose",
+      "catalog_owner": "FeasibilityDiagnosticPublic.code and the closed astro-reparto-m8 feasibility catalog delivered by C2-feasibility-catalog",
+      "notes": "The English service message is a compatibility fallback; known codes render from the client catalog."
+    },
+    {
+      "field": "GroupSubjectBulkConflict.reason",
+      "ownership": "service-authored-prose",
+      "catalog_owner": "C11-non-exception-prose stable code/params or closed client catalog",
+      "notes": "Currently includes the service literal 'No existing group-subject row to update.' and is rendered verbatim by the client."
+    },
+    {
+      "field": "GroupSubjectBulkPreview.validation_errors",
+      "ownership": "service-authored-prose",
+      "catalog_owner": "C11-non-exception-prose stable code/params or closed client catalog",
+      "notes": "Selection-level validation sentences are generated by the service and rendered verbatim by the client."
+    },
+    {
+      "field": "GroupSubjectPublic.notes",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Free-form group-subject notes stay verbatim."
+    },
+    {
+      "field": "MeetingSessionPublic.notes",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Free-form meeting notes stay verbatim."
+    },
+    {
+      "field": "ParticipantBalance.display_name",
+      "ownership": "human-readable-identity",
+      "catalog_owner": null,
+      "notes": "Resolved teacher display name; it is identity data and must not fall back to a UUID."
+    },
+    {
+      "field": "PlanValidationMessage.message",
+      "ownership": "service-authored-prose",
+      "catalog_owner": "PlanValidationMessage.code plus params and the astro-reparto-m8 validation-finding catalog delivered by C4-validation-params-contract",
+      "notes": "Known findings render from the client catalog; this service prose remains the older/unknown-code compatibility fallback."
+    },
+    {
+      "field": "ProcessTeacherPublic.extra_hours_reason",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Audited operator justification supplied to the dedicated extra-hours action."
+    },
+    {
+      "field": "ProcessTeacherPublic.selection_criteria_label",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Free-form operator label describing the selection criterion."
+    },
+    {
+      "field": "ProcessTeacherPublic.selection_notes",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Free-form selection notes stay verbatim."
+    },
+    {
+      "field": "ProcessVersionPublic.reason",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Optional reason supplied when an administrator creates the version."
+    },
+    {
+      "field": "ProcessVersionPublic.snapshot_json",
+      "ownership": "mixed-authorship",
+      "catalog_owner": "The nested source field owns its code/catalog policy; C14-document-catalog owns service-generated stale reasons while backup content remains byte-stable",
+      "notes": "The restorable snapshot deliberately preserves domain labels, user content, and legacy generated stale reasons verbatim."
+    },
+    {
+      "field": "SchoolPublic.address",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Operator-supplied address data stays verbatim."
+    },
+    {
+      "field": "SchoolPublic.locality",
+      "ownership": "human-readable-identity",
+      "catalog_owner": null,
+      "notes": "Geographic name is domain data."
+    },
+    {
+      "field": "SchoolPublic.name",
+      "ownership": "human-readable-identity",
+      "catalog_owner": null,
+      "notes": "Official school name is domain identity data."
+    },
+    {
+      "field": "SchoolPublic.notes",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Free-form school notes stay verbatim."
+    },
+    {
+      "field": "SchoolPublic.province",
+      "ownership": "human-readable-identity",
+      "catalog_owner": null,
+      "notes": "Geographic name is domain data."
+    },
+    {
+      "field": "SchoolPublic.region",
+      "ownership": "human-readable-identity",
+      "catalog_owner": null,
+      "notes": "Geographic name is domain data."
+    },
+    {
+      "field": "SelectionTurnPublic.notes",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Free-form selection-turn notes stay verbatim."
+    },
+    {
+      "field": "SelectionTurnPublic.skip_reason",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "The skip/override action requires this operator-supplied reason."
+    },
+    {
+      "field": "SubjectPublic.name",
+      "ownership": "human-readable-identity",
+      "catalog_owner": null,
+      "notes": "Subject name is domain identity data."
+    },
+    {
+      "field": "SubjectPublic.notes",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Free-form subject notes stay verbatim."
+    },
+    {
+      "field": "TeacherProfileClaimCode.display_name",
+      "ownership": "human-readable-identity",
+      "catalog_owner": null,
+      "notes": "Teacher display name shown with the one-time claim code."
+    },
+    {
+      "field": "TeacherProfilePublic.display_name",
+      "ownership": "human-readable-identity",
+      "catalog_owner": null,
+      "notes": "Teacher display name is service-owned domain identity data."
+    },
+    {
+      "field": "TeacherProfilePublic.notes",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Free-form teacher-profile notes stay verbatim."
+    },
+    {
+      "field": "TeachingActivityPublic.notes",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Free-form teaching-activity notes stay verbatim."
+    },
+    {
+      "field": "TeachingGroupPublic.label",
+      "ownership": "human-readable-identity",
+      "catalog_owner": null,
+      "notes": "Group label is domain identity data; it may be supplied or deterministically assembled from other domain labels."
+    },
+    {
+      "field": "TeachingGroupPublic.notes",
+      "ownership": "user-authored-content",
+      "catalog_owner": null,
+      "notes": "Free-form teaching-group notes stay verbatim."
+    },
+    {
+      "field": "TeachingPlanPublic.stale_reason",
+      "ownership": "mixed-authorship",
+      "catalog_owner": "C14-document-catalog stable stale-reason code and params for generated reasons; explicitly identified user reasons remain verbatim",
+      "notes": "Three current controller paths persist English service literals, while other paths may carry an operator reason."
+    },
+    {
+      "field": "ValidationError.msg",
+      "ownership": "service-authored-prose",
+      "catalog_owner": "FastAPI/Pydantic framework validation taxonomy, recorded by C7-error-taxonomy and translated only by the separately authorized fastapi-m8 promotion",
+      "notes": "Framework-generated request-validation message in the standard 422 response."
+    }
+  ],
+  "machine_fields": [
+    "AssignmentProcessPublic.default_teacher_hours_reference",
+    "AssignmentSummary.total_assigned_hours",
+    "AssignmentSummary.total_remaining_hours",
+    "AssignmentSummary.total_target_hours",
+    "AuditEventPublic.actor_role",
+    "AuditEventPublic.entity_type",
+    "AuditEventPublic.event_type",
+    "ClassroomStagePublic.stage",
+    "ClassroomStageSummary.stage",
+    "DepartmentHourAllocationRevisionPublic.allocated_group_weekly_hours",
+    "DepartmentPublic.slug",
+    "ExportArtifactPublic.checksum",
+    "ExportArtifactPublic.file_path",
+    "FeasibilityDiagnosticPublic.code",
+    "FeasibilityEvaluationPublic.input_fingerprint",
+    "FeasibilityEvaluationPublic.solver_version",
+    "FeasibilityWitnessPublic.input_fingerprint",
+    "FeasibilityWitnessPublic.solver_version",
+    "GroupBalance.allocated_group_weekly_hours",
+    "GroupBalance.allocation_difference",
+    "GroupBalance.total_group_load",
+    "GroupSubjectBulkChange.group_weekly_hours",
+    "GroupSubjectBulkChange.teacher_weekly_hours_per_position",
+    "GroupSubjectPublic.group_weekly_hours",
+    "GroupSubjectPublic.teacher_weekly_hours_per_position",
+    "HourRequirementPublic.required_teacher_hours",
+    "MainActivitySyncDifference.current_value",
+    "MainActivitySyncDifference.field",
+    "MainActivitySyncDifference.source_value",
+    "MainActivitySyncPreview.preview_fingerprint",
+    "MainActivitySyncValues.group_weekly_hours_per_group",
+    "MainActivitySyncValues.teacher_weekly_hours_per_position",
+    "ParticipantBalance.assigned_weekly_hours",
+    "ParticipantBalance.base_weekly_hours",
+    "ParticipantBalance.extra_weekly_hours",
+    "ParticipantBalance.remaining_weekly_hours",
+    "ParticipantBalance.target_weekly_hours",
+    "PlanValidationMessage.code",
+    "PlanValidationMessage.entity_type",
+    "PlanValidationMessage.params",
+    "PlanningExportActivity.group_load",
+    "PlanningExportActivity.group_weekly_hours_per_group",
+    "PlanningExportActivity.teacher_load",
+    "PlanningExportActivity.teacher_weekly_hours_per_position",
+    "ProcessTeacherPublic.base_weekly_hours",
+    "ProcessTeacherPublic.extra_weekly_hours",
+    "ProcessTeacherPublic.target_weekly_hours",
+    "RequirementConflictDetail.current_required_teacher_hours",
+    "RequirementConflictDetail.new_required_teacher_hours",
+    "RequirementConflictDetail.resolution",
+    "RequirementSlotPlan.required_teacher_hours",
+    "ServiceContract.name",
+    "ServiceContract.range",
+    "ServiceContract.version",
+    "ServiceMeta.api_version",
+    "ServiceMeta.service",
+    "ServiceMeta.version",
+    "SubjectPublic.default_group_weekly_hours",
+    "SubjectPublic.default_teacher_weekly_hours_per_position",
+    "TeacherLoadBalance.participant_target_total",
+    "TeacherLoadBalance.teacher_load_difference",
+    "TeacherLoadBalance.total_teacher_load",
+    "TeacherProfileClaimCode.claim_code",
+    "TeachingActivityPublic.group_weekly_hours_per_group",
+    "TeachingActivityPublic.teacher_weekly_hours_per_position",
+    "TeachingGroupPublic.group_code",
+    "TeachingPlanPublic.feasibility_diagnostics_ref",
+    "TeachingPlanPublic.feasibility_input_fingerprint",
+    "TeachingPlanPublic.feasibility_solver_version",
+    "ValidationError.loc",
+    "ValidationError.type",
+    "VersionComparison.allocation_delta",
+    "VersionComparison.changed_sections",
+    "VersionComparison.group_load_delta",
+    "VersionComparison.participant_target_total_delta",
+    "VersionComparison.teacher_load_delta"
+  ],
+  "machine_fields_note": "These string-serialized fields are codes, enum/status tokens, decimal values, fingerprints, versions, checksums, paths, or other machine contract data. They are enumerated so an arbitrary new string response field still fails the gate until classified.",
+  "non_model_surfaces": [
+    {
+      "surface": "fastapi.HTTPException.detail",
+      "ownership": "service-authored-prose",
+      "catalog_owner": "C7-error-taxonomy for Reparto domain errors; framework and authentication errors remain framework-owned until the separately authorized fastapi-m8 promotion",
+      "notes": "Reparto-owned controller and service failures use the structured {code, message, params} detail envelope. FastAPI validation arrays and framework/authentication failures remain separately owned and are classified by HTTP status until their owning framework promotes a stable code contract."
+    },
+    {
+      "surface": "GET /reparto/assignment-processes/{process_id}/events text/event-stream payload.reason",
+      "ownership": "mixed-authorship",
+      "catalog_owner": "SSE event type plus the future code/params owner for service-generated reason values; user-supplied reasons remain verbatim",
+      "notes": "The event stream is assembled as dictionaries and has no FastAPI response model."
+    }
+  ]
+}

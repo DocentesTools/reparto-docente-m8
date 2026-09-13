@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, col, func, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.schools import (
     School,
@@ -50,9 +51,11 @@ class SchoolController(DomainController):
         schools = visible_school_ids(session, current_user)
         if schools is not UNRESTRICTED and school.id not in schools:
             # 404, not 403: confirming the row exists is itself out of scope.
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"School {school_id} not found.",
+                code="schools.school_not_found",
+                message=f"School {school_id} not found.",
+                params={"school_id": school_id},
             )
         return SchoolPublic.model_validate(school)
 
