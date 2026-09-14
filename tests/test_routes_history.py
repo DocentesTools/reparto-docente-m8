@@ -9,6 +9,7 @@ and generation/reconciliation consistency validation.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import uuid
@@ -20,6 +21,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, col, select
 
 from reparto_service.db_models.assignments import Assignment
+from reparto_service.db_models.export_artifacts import ExportArtifact
 from reparto_service.db_models.department_hour_allocation_revisions import (
     DepartmentHourAllocationRevision,
 )
@@ -33,6 +35,8 @@ from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
     AssignmentProcessStatus,
     AssignmentStatus,
+    ExportArtifactFormat,
+    ExportArtifactLocale,
     ExportArtifactType,
     FeasibilityStatus,
     HourRequirementStatus,
@@ -287,6 +291,214 @@ def test_create_csv_export_with_version(client: TestClient, session: Session) ->
     assert content.startswith("section,id,hours,status")
     assert "requirement," in content
     assert "assignment," in content
+
+
+# ── Export locale (C13, plan §5.1 = B) ───────────────────────────────────────
+
+
+def _export(
+    client: TestClient,
+    process_id: uuid.UUID,
+    body: dict[str, Any],
+    *,
+    accept_language: str | None = None,
+) -> Any:
+    headers = {} if accept_language is None else {"Accept-Language": accept_language}
+    return client.post(
+        f"/reparto/assignment-processes/{process_id}/exports",
+        json=body,
+        headers=headers,
+    )
+
+
+def test_export_locale_is_body_then_negotiated_header_then_english(
+    client: TestClient, session: Session
+) -> None:
+    """The persisted locale resolves explicit → negotiated → default.
+
+    An older client sends neither a body ``locale`` nor ``Accept-Language`` and
+    gets English, exactly as before the column existed; the C9 client sends
+    the route locale as a header; the C13 client also names it in the body,
+    and the body wins so a head may ask for another language's copy.
+    """
+    process, *_ = _full_source(session)
+    document = {"export_type": "internal_draft", "format": "pdf"}
+
+    silent = _export(client, process.id, document)
+    negotiated = _export(
+        client, process.id, document, accept_language="es-ES, en;q=0.5"
+    )
+    explicit = _export(
+        client, process.id, {**document, "locale": "fr"}, accept_language="es"
+    )
+
+    for resp in (silent, negotiated, explicit):
+        assert resp.status_code == 201, resp.text
+    assert silent.json()["locale"] == "en"
+    assert negotiated.json()["locale"] == "es"
+    assert explicit.json()["locale"] == "fr"
+    # The response declares the language the *row* carries — not the header
+    # — and that a body without a locale varies by ``Accept-Language``.
+    assert explicit.headers["content-language"] == "fr"
+    assert "accept-language" in explicit.headers["vary"].lower()
+    assert silent.headers["content-language"] == "en"
+
+    listed = client.get(f"/reparto/assignment-processes/{process.id}/exports")
+    assert listed.status_code == 200
+    assert sorted(row["locale"] for row in listed.json()["data"]) == ["en", "es", "fr"]
+    # Stored bytes do not vary by request language (plan §6 invariant 4), so
+    # the inventory declares no language negotiation at all.
+    assert "content-language" not in listed.headers
+    assert "accept-language" not in listed.headers.get("vary", "").lower()
+
+
+def test_export_locale_outside_the_closed_set_is_refused(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+
+    resp = _export(
+        client, process.id, {"export_type": "backup", "format": "json", "locale": "de"}
+    )
+
+    assert resp.status_code == 422
+    assert (
+        client.get(f"/reparto/assignment-processes/{process.id}/exports").json()[
+            "count"
+        ]
+        == 0
+    )
+
+
+def test_data_formats_are_byte_stable_across_locales(
+    client: TestClient, session: Session
+) -> None:
+    """``json``/``csv`` accept a locale, record it, and never read it.
+
+    Backup JSON is the restore artifact and CSV is machine data (plan §6
+    invariant 5): the bytes, and therefore the checksum, are identical whatever
+    language the row was requested under. The row still records the request
+    language, because that is a fact about the request rather than the file.
+    """
+    process, *_ = _full_source(session)
+    client.post(
+        f"/reparto/assignment-processes/{process.id}/versions",
+        json={"reason": "locale stability"},
+    )
+
+    rows = {
+        (fmt, locale): _export(
+            client,
+            process.id,
+            {
+                "export_type": "backup" if fmt == "json" else "internal_draft",
+                "format": fmt,
+                "locale": locale,
+            },
+        ).json()
+        for fmt in ("json", "csv")
+        for locale in ("en", "es", "fr")
+    }
+
+    for fmt in ("json", "csv"):
+        contents = {rows[(fmt, locale)]["content"] for locale in ("en", "es", "fr")}
+        checksums = {rows[(fmt, locale)]["checksum"] for locale in ("en", "es", "fr")}
+        assert len(contents) == 1, fmt
+        assert len(checksums) == 1, fmt
+    for (fmt, locale), row in rows.items():
+        assert row["locale"] == locale, (fmt, locale)
+    # The Spanish-requested backup restores exactly like the English one.
+    target = factories.make_assignment_process(session)
+    restored = _restore(client, target.id, rows[("json", "es")]["content"])
+    assert restored.status_code == 201, restored.text
+
+
+def test_document_checksum_is_the_content_hash_never_salted_with_locale(
+    client: TestClient, session: Session
+) -> None:
+    """``checksum == sha256(content)`` in every language (plan §6 invariant 3).
+
+    Two languages are two rows with two locales; whether they differ by
+    checksum is decided by their bytes alone. Today the document catalog has
+    not landed (C14) and every locale renders the same English text, so the
+    checksums coincide — the moment the text depends on the locale they will
+    diverge through content, and nothing here has to change for that.
+    """
+    process, *_ = _full_source(session)
+
+    english = _export(
+        client,
+        process.id,
+        {"export_type": "school_leadership", "format": "pdf", "locale": "en"},
+    ).json()
+    spanish = _export(
+        client,
+        process.id,
+        {"export_type": "school_leadership", "format": "pdf", "locale": "es"},
+    ).json()
+
+    for row in (english, spanish):
+        assert (
+            row["checksum"]
+            == hashlib.sha256(row["content"].encode("utf-8")).hexdigest()
+        )
+        assert row["file_path"].endswith(f"{row['checksum'][:12]}.pdf")
+    assert english["locale"] == "en"
+    assert spanish["locale"] == "es"
+    assert (english["checksum"] == spanish["checksum"]) == (
+        english["content"] == spanish["content"]
+    )
+
+
+def test_rows_written_before_the_locale_column_read_back_as_english(
+    client: TestClient, session: Session
+) -> None:
+    """The backfill is the column's own server default, applied by the database.
+
+    A row inserted without a locale — what every existing row looks like when
+    the autogenerated ``ADD COLUMN … NOT NULL DEFAULT`` runs against it — reads
+    back as ``en``, which is the language it was rendered in.
+    """
+    process = factories.make_assignment_process(session)
+    content = "REPARTO — INTERNAL DRAFT\n"
+    row = ExportArtifact(
+        assignment_process_id=process.id,
+        export_type=ExportArtifactType.INTERNAL_DRAFT,
+        format=ExportArtifactFormat.PDF,
+        file_path=f"exports/{process.id}/internal_draft-legacy.pdf",
+        created_by_user_id=uuid.uuid4(),
+        checksum=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        content=content,
+    )
+    session.add(row)
+    session.commit()
+
+    listed = client.get(f"/reparto/assignment-processes/{process.id}/exports").json()
+
+    assert listed["count"] == 1
+    assert listed["data"][0]["locale"] == "en"
+    assert listed["data"][0]["content"] == content
+
+
+def test_renderer_refuses_a_locale_that_is_not_the_closed_enum(
+    client: TestClient, session: Session
+) -> None:
+    """A bare string is a programming error, not a language."""
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+
+    try:
+        DocumentRenderingService.render(
+            ExportArtifactType.INTERNAL_DRAFT,
+            snapshot,
+            [],
+            _document_identity(snapshot),
+            "es",  # type: ignore[arg-type]
+        )
+    except TypeError as error:
+        assert "ExportArtifactLocale" in str(error)
+    else:  # pragma: no cover - the assertion above is the test
+        raise AssertionError("a str locale must be refused")
 
 
 def test_list_artifacts_endpoint(client: TestClient, session: Session) -> None:
@@ -939,7 +1151,11 @@ def test_renderer_skips_a_link_whose_group_subject_is_missing(
         link["group_subject_id"] = str(uuid.uuid4())
 
     content = DocumentRenderingService.render(
-        ExportArtifactType.INTERNAL_DRAFT, snapshot, [], _document_identity(snapshot)
+        ExportArtifactType.INTERNAL_DRAFT,
+        snapshot,
+        [],
+        _document_identity(snapshot),
+        ExportArtifactLocale.EN,
     )
 
     # The document is still produced, and the activity is simply named without
@@ -958,7 +1174,11 @@ def test_renderer_skips_a_link_whose_teaching_group_is_missing(
         cell["teaching_group_id"] = str(uuid.uuid4())
 
     content = DocumentRenderingService.render(
-        ExportArtifactType.INTERNAL_DRAFT, snapshot, [], _document_identity(snapshot)
+        ExportArtifactType.INTERNAL_DRAFT,
+        snapshot,
+        [],
+        _document_identity(snapshot),
+        ExportArtifactLocale.EN,
     )
 
     assert content
@@ -993,7 +1213,11 @@ def test_renderer_lists_a_repeated_group_code_once(
     )
 
     content = DocumentRenderingService.render(
-        ExportArtifactType.INTERNAL_DRAFT, snapshot, [], _document_identity(snapshot)
+        ExportArtifactType.INTERNAL_DRAFT,
+        snapshot,
+        [],
+        _document_identity(snapshot),
+        ExportArtifactLocale.EN,
     )
 
     group = next(
@@ -1031,6 +1255,7 @@ def test_renderer_uses_placeholders_for_missing_activity_and_process_teacher(
         snapshot,
         [],
         _document_identity(snapshot),
+        ExportArtifactLocale.EN,
     )
 
     assert "(teaching activity unavailable)" in content
@@ -1055,6 +1280,7 @@ def test_renderer_uses_a_placeholder_when_a_teacher_profile_is_missing(
         snapshot,
         [],
         _document_identity(snapshot, missing_profile_id=missing_profile_id),
+        ExportArtifactLocale.EN,
     )
 
     assert "(teacher profile unavailable)" in content
@@ -1076,6 +1302,7 @@ def test_renderer_uses_a_placeholder_when_an_activity_subject_is_missing(
         snapshot,
         [],
         _document_identity(snapshot),
+        ExportArtifactLocale.EN,
     )
 
     assert "(subject unavailable)" in content
@@ -1101,7 +1328,9 @@ def test_document_uuid_lines_are_limited_to_the_trace_allowlist(
         ExportArtifactType.TEACHER_SUMMARY,
         ExportArtifactType.FINAL,
     ):
-        content = DocumentRenderingService.render(export_type, snapshot, [], identity)
+        content = DocumentRenderingService.render(
+            export_type, snapshot, [], identity, ExportArtifactLocale.EN
+        )
         uuid_lines = [
             line for line in content.splitlines() if uuid_pattern.search(line)
         ]
@@ -1121,7 +1350,11 @@ def test_renderer_warns_that_a_stale_plan_is_stale(
     snapshot["teaching_plan"]["stale_reason"] = "allocation changed after locking"
 
     content = DocumentRenderingService.render(
-        ExportArtifactType.INTERNAL_DRAFT, snapshot, [], _document_identity(snapshot)
+        ExportArtifactType.INTERNAL_DRAFT,
+        snapshot,
+        [],
+        _document_identity(snapshot),
+        ExportArtifactLocale.EN,
     )
 
     assert "Plan is stale: allocation changed after locking" in content
@@ -1146,7 +1379,11 @@ def test_renderer_warns_that_an_unvalidated_plan_is_not_validated(
     snapshot["teaching_plan"]["feasibility_status"] = FeasibilityStatus.INFEASIBLE.value
 
     content = DocumentRenderingService.render(
-        ExportArtifactType.INTERNAL_DRAFT, snapshot, [], _document_identity(snapshot)
+        ExportArtifactType.INTERNAL_DRAFT,
+        snapshot,
+        [],
+        _document_identity(snapshot),
+        ExportArtifactLocale.EN,
     )
 
     assert "Feasibility is INFEASIBLE" in content

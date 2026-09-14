@@ -62,6 +62,21 @@ def test_accept_language_negotiation(header: str | None, expected: str) -> None:
     assert negotiate_locale(header) == expected
 
 
+def test_export_locale_enum_is_the_negotiated_locale_set() -> None:
+    """``ExportArtifactLocale(current_locale())`` must never raise (C13).
+
+    The controller converts the negotiated request locale into the persisted
+    enum, so the two closed sets are one set; a language added to one side
+    alone would turn every header-only export into a 500.
+    """
+    from reparto_service.enums import ExportArtifactLocale
+
+    assert {member.value for member in ExportArtifactLocale} == set(
+        i18n.SUPPORTED_LOCALES
+    )
+    assert ExportArtifactLocale(i18n.DEFAULT_LOCALE) is ExportArtifactLocale.EN
+
+
 def test_accept_language_input_is_bounded() -> None:
     oversized = "es," + ("x" * MAX_ACCEPT_LANGUAGE_BYTES)
     assert negotiate_locale(oversized) == "en"

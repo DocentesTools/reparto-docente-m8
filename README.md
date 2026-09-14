@@ -344,8 +344,16 @@ and `GET /compare-previous-year` diff two snapshots along the plan §10.3
 dimensions: whether the allocation, group hours, teacher load, subject category,
 activities, group links, teacher-position count, participant targets or
 requirement generation changed, plus signed hour and count deltas (hours as
-canonical decimal strings). `POST /exports` generates an export artifact (JSON or
-CSV); a `backup` artifact carries the complete restorable three-stage domain —
+canonical decimal strings). `POST /exports` generates an export artifact (JSON,
+CSV or a `pdf` document) and persists the language it was requested under: an
+optional body `locale` (`en` / `es` / `fr`) wins, else the locale negotiated
+from `Accept-Language`, else English; every row answers with its `locale`, and
+rows written before the column existed read back as `en`, the language they
+were rendered in. Only the `pdf` document renderer reads it — the locale is an
+explicit renderer input, never the request context — while JSON and CSV bytes
+are language-neutral and identical whatever language the row records. The
+`checksum` stays `sha256(content)` and is never salted with the locale. A
+`backup` artifact carries the complete restorable three-stage domain —
 process settings, allocation revisions, teaching plan, subjects, groups,
 group-subject matrix, teaching activities and their links, the generated
 indivisible requirement slots and the assignments — plus the version list, while a

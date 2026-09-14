@@ -8,13 +8,19 @@ into the document plan §15 describes for the requested type.
 
 Two properties the rest of the export flow depends on:
 
-* **It is a pure function of its inputs.** No clock, no session, no query. The
+* **It is a pure function of its inputs.** No clock, no session, no query, and
+  no ambient locale: the language a document is rendered in is an explicit
+  ``locale`` argument the controller resolves and persists on the artifact row
+  (C13), never the request ``ContextVar`` the HTTP error boundary reads. The
   artifact's ``checksum`` is a SHA-256 of what this returns, so two exports of
   an unchanged process must produce the same bytes — that is what makes the
   checksum able to answer "has anything moved since the last document?". Where
   plan §15.1 asks for a "date", the document prints the process's own
   ``updated_at`` (the state it describes) rather than the wall clock, which
-  keeps that property intact and is the more useful date besides.
+  keeps that property intact and is the more useful date besides. The checksum
+  is never salted with the locale: once the catalog (C14) makes the text
+  depend on it, two languages differ by content, and therefore by checksum,
+  on their own.
 * **It never refuses.** A document describes the process as it stands, so a
   missing plan, an unbalanced plan or an incomplete reparto are *reported in
   the document* rather than raised. Only the strict ``final`` export is gated,
@@ -35,7 +41,7 @@ from decimal import Decimal
 from typing import Any, Mapping, Optional
 
 from reparto_service.core.decimals import quantize_hours
-from reparto_service.enums import ExportArtifactType
+from reparto_service.enums import ExportArtifactLocale, ExportArtifactType
 
 #: The literal JSON value an ``ACTIVE`` assignment status serialises to.
 _ACTIVE_ASSIGNMENT = "active"
@@ -84,14 +90,25 @@ class DocumentRenderingService:
         snapshot: dict[str, Any],
         versions: list[dict[str, Any]],
         identity: DocumentIdentityContext,
+        locale: ExportArtifactLocale,
     ) -> str:
         """Render ``export_type`` from ``snapshot``, or raise for a non-document.
 
         ``versions`` is the process's version summaries, oldest first, as
         :meth:`HistoryController._version_summaries` builds them; the leadership
         and final documents name the latest one (plan §15.2, §15.3).
+
+        ``locale`` is the language the document is requested in. It is a
+        modelled input of the render — injected, never read from the request
+        context — so the same snapshot in two languages is two distinct
+        renders. Until the document catalog lands (C14) every locale produces
+        the same English text; what this step fixes is the *contract*: the
+        locale reaches the renderer explicitly and is persisted beside the
+        bytes it produced.
         """
-        view = _SnapshotView(snapshot, versions, identity)
+        if not isinstance(locale, ExportArtifactLocale):
+            raise TypeError(f"locale must be an ExportArtifactLocale, got {locale!r}")
+        view = _SnapshotView(snapshot, versions, identity, locale)
         if export_type == ExportArtifactType.INTERNAL_DRAFT:
             return _render_internal_draft(view)
         if export_type == ExportArtifactType.SCHOOL_LEADERSHIP:
@@ -123,11 +140,14 @@ class _SnapshotView:
         snapshot: dict[str, Any],
         versions: list[dict[str, Any]],
         identity: DocumentIdentityContext,
+        locale: ExportArtifactLocale,
     ):
         self.process: dict[str, Any] = snapshot["process"]
         self.plan: Optional[dict[str, Any]] = snapshot.get("teaching_plan")
         self.versions = versions
         self.identity = identity
+        #: The document language, carried to the renderers for C14's catalog.
+        self.locale = locale
         self.teachers: list[dict[str, Any]] = snapshot["teachers"]
         self.requirements: list[dict[str, Any]] = snapshot["requirements"]
         self.assignments: list[dict[str, Any]] = snapshot["assignments"]

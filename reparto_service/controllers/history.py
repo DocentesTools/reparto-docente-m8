@@ -32,6 +32,7 @@ from fastapi_m8 import UserModel
 from sqlmodel import Session, col, select
 
 from reparto_service.core.errors import DomainHTTPException
+from reparto_service.core.i18n import current_locale
 from reparto_service.controllers.assignment_processes import AssignmentProcessController
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.assignment_processes import (
@@ -71,6 +72,7 @@ from reparto_service.enums import (
     AssignmentStatus,
     DepartmentHourAllocationSource,
     ExportArtifactFormat,
+    ExportArtifactLocale,
     ExportArtifactType,
     FeasibilityStatus,
     HourRequirementStatus,
@@ -167,12 +169,14 @@ class HistoryController(DomainController):
             and payload.export_type != ExportArtifactType.BACKUP
             else None
         )
+        locale = HistoryController._resolve_locale(payload)
         content = HistoryController._render_artifact(
             payload.format,
             payload.export_type,
             snapshot,
             versions,
             document_identity,
+            locale,
         )
         checksum = hashlib.sha256(content.encode("utf-8")).hexdigest()
         artifact = ExportArtifact(
@@ -187,6 +191,7 @@ class HistoryController(DomainController):
             created_by_user_id=uuid.UUID(str(current_user.id)),
             checksum=checksum,
             content=content,
+            locale=locale,
         )
         if payload.export_type == ExportArtifactType.FINAL:
             process.status = AssignmentProcessStatus.ARCHIVED
@@ -930,19 +935,38 @@ class HistoryController(DomainController):
     # ── Rendering / gating ───────────────────────────────────────────────────
 
     @staticmethod
+    def _resolve_locale(payload: ExportArtifactCreate) -> ExportArtifactLocale:
+        """The language an artifact is produced and persisted under (C13).
+
+        An explicit body ``locale`` wins; absent one, the locale the request
+        negotiated from ``Accept-Language`` (the ``ContextVar`` the HTTP
+        boundary binds) is read *here*, in the controller, and handed on as a
+        plain value — the renderer never touches the request context (plan §6
+        invariant 1). A client that sends neither is an older one and gets
+        English, exactly as before this column existed.
+        """
+        if payload.locale is not None:
+            return payload.locale
+        return ExportArtifactLocale(current_locale())
+
+    @staticmethod
     def _render_artifact(
         artifact_format: ExportArtifactFormat,
         export_type: ExportArtifactType,
         snapshot: dict[str, Any],
         versions: list[dict[str, Any]],
         document_identity: Optional[DocumentIdentityContext],
+        locale: ExportArtifactLocale,
     ) -> str:
         """Render the artifact's stored content for one format/type pair.
 
         ``json`` and ``csv`` are whole-snapshot dumps and read the same for
         every type — they are data, and the type is metadata on the row. The
         ``pdf`` format is the opposite: it is the plan §15 *document*, so it is
-        the one branch that reads ``export_type``.
+        the one branch that reads ``export_type`` — and the one branch that
+        reads ``locale``: the data formats stay language-neutral and
+        byte-stable whatever language the row was requested under (plan §6
+        invariant 5).
         """
         if artifact_format == ExportArtifactFormat.JSON:
             return json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
@@ -975,7 +999,7 @@ class HistoryController(DomainController):
             if document_identity is None:  # pragma: no cover - controller invariant
                 raise AssertionError("Document exports require identity enrichment")
             return DocumentRenderingService.render(
-                export_type, snapshot, versions, document_identity
+                export_type, snapshot, versions, document_identity, locale
             )
         raise AssertionError(
             f"Unsupported export format: {artifact_format}"
