@@ -34,6 +34,7 @@ from reparto_service.db_models.group_subjects import (
     GroupSubjectBulkPreview,
     GroupSubjectBulkRequest,
     GroupSubjectBulkResult,
+    GroupSubjectBulkValidationError,
     GroupSubjectCreate,
     GroupSubjectPublic,
     GroupSubjectsPublic,
@@ -60,6 +61,10 @@ from reparto_service.enums import (
 from reparto_service.services.calculations import PlanningCalculationService
 from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 from reparto_service.services.group_subject_sync import GroupSubjectSyncService
+from reparto_service.schemas.non_exception_prose import (
+    CODE_GROUP_SUBJECT_INVERTED_GRADE_RANGE,
+    CODE_GROUP_SUBJECT_NO_ROW_TO_UPDATE,
+)
 
 # Planning-value fields a bulk operation may set on a cell.
 _BULK_VALUE_FIELDS = (
@@ -304,11 +309,12 @@ class GroupSubjectController(DomainController):
             session, process_id, request
         )
         if preview.validation_errors:
+            validation_messages = [error.message for error in preview.validation_errors]
             raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 code="group_subjects.bulk_validation_failed",
-                message="; ".join(preview.validation_errors),
-                params={"validation_errors": preview.validation_errors},
+                message="; ".join(validation_messages),
+                params={"validation_errors": validation_messages},
             )
         # Staleness guard: the confirmed count must still match the recomputed
         # plan, otherwise the underlying selection changed since preview.
@@ -799,6 +805,7 @@ class GroupSubjectController(DomainController):
                         GroupSubjectBulkConflict(
                             teaching_group_id=group.id,
                             reason="No existing group-subject row to update.",
+                            code=CODE_GROUP_SUBJECT_NO_ROW_TO_UPDATE,
                         )
                     )
                     continue
@@ -839,15 +846,22 @@ class GroupSubjectController(DomainController):
         session: Session,
         process_id: uuid.UUID,
         request: GroupSubjectBulkRequest,
-    ) -> tuple[list[TeachingGroup], list[str]]:
+    ) -> tuple[list[TeachingGroup], list[GroupSubjectBulkValidationError]]:
         """Resolve the groups a bulk request targets and any selection errors."""
-        errors: list[str] = []
+        errors: list[GroupSubjectBulkValidationError] = []
         if (
             request.minimum_grade is not None
             and request.maximum_grade is not None
             and request.minimum_grade > request.maximum_grade
         ):
-            errors.append("minimum_grade must be less than or equal to maximum_grade.")
+            errors.append(
+                GroupSubjectBulkValidationError(
+                    code=CODE_GROUP_SUBJECT_INVERTED_GRADE_RANGE,
+                    message=(
+                        "minimum_grade must be less than or equal to maximum_grade."
+                    ),
+                )
+            )
             return [], errors
         statement = select(TeachingGroup).where(
             TeachingGroup.assignment_process_id == process_id

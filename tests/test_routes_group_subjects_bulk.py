@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
@@ -78,7 +79,12 @@ def test_bulk_preview_update_existing_reports_conflicts(
     assert body["to_update"][0]["group_weekly_hours"] == "5.00"
     # g2 has no row -> cannot update -> conflict.
     assert len(body["conflicts"]) == 1
-    assert body["conflicts"][0]["teaching_group_id"] == str(g2.id)
+    assert body["conflicts"][0] == {
+        "teaching_group_id": str(g2.id),
+        "reason": "No existing group-subject row to update.",
+        "code": "group_subject.no_row_to_update",
+        "params": {},
+    }
     assert body["expected_affected_count"] == 1
 
 
@@ -185,8 +191,70 @@ def test_bulk_preview_invalid_grade_range(client: TestClient, session: Session) 
     assert resp.status_code == 200
     body = resp.json()
     assert body["matched_group_ids"] == []
-    assert len(body["validation_errors"]) == 1
+    assert body["validation_errors"] == [
+        {
+            "code": "group_subject.inverted_grade_range",
+            "message": ("minimum_grade must be less than or equal to maximum_grade."),
+            "params": {},
+        }
+    ]
     assert body["expected_affected_count"] == 0
+
+
+@pytest.mark.parametrize(
+    ("locale", "validation_message", "conflict_reason"),
+    [
+        (
+            "es",
+            "El curso mínimo debe ser menor o igual que el curso máximo.",
+            "No existe ninguna relación grupo-materia que se pueda actualizar.",
+        ),
+        (
+            "fr",
+            "Le niveau minimum doit être inférieur ou égal au niveau maximum.",
+            "Il n'existe aucune relation groupe-matière à mettre à jour.",
+        ),
+    ],
+)
+def test_bulk_preview_localizes_coded_prose_at_the_http_boundary(
+    client: TestClient,
+    session: Session,
+    locale: str,
+    validation_message: str,
+    conflict_reason: str,
+) -> None:
+    process = factories.make_assignment_process(session)
+    subject = factories.make_subject(session, process)
+    factories.make_teaching_group(session, process, grade=1, group_code="A")
+
+    invalid = client.post(
+        _preview_url(process.id),
+        headers={"Accept-Language": locale},
+        json={
+            "subject_id": str(subject.id),
+            "mode": "create_missing",
+            "minimum_grade": 5,
+            "maximum_grade": 2,
+        },
+    )
+    conflict = client.post(
+        _preview_url(process.id),
+        headers={"Accept-Language": locale},
+        json={
+            "subject_id": str(subject.id),
+            "mode": "update_existing",
+        },
+    )
+
+    assert invalid.json()["validation_errors"][0] == {
+        "code": "group_subject.inverted_grade_range",
+        "message": validation_message,
+        "params": {},
+    }
+    assert conflict.json()["conflicts"][0]["reason"] == conflict_reason
+    for response in (invalid, conflict):
+        assert response.headers["content-language"] == locale
+        assert response.headers["vary"] == "accept-language"
 
 
 def test_bulk_preview_subject_not_in_process_404(

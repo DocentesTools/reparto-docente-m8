@@ -610,7 +610,7 @@
     },
     {
       "code": "group_subjects.bulk_validation_failed",
-      "message_template": "'; '.join(preview.validation_errors)",
+      "message_template": "'; '.join(validation_messages)",
       "param_names": [
         "validation_errors"
       ],

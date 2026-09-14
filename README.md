@@ -429,6 +429,12 @@ errors are translated at the HTTP boundary and include `Content-Language` plus
 change. Missing or incompatible translations fall back to the existing English
 message.
 
+The two bulk-preview prose fields outside the exception envelope use the same
+boundary and catalog. Their additive stable-code contract is tracked in
+[`docs/non-exception-prose-taxonomy.json`](docs/non-exception-prose-taxonomy.json):
+codes and parameters stay language-neutral, while `reason`/`message` vary with
+the negotiated request locale.
+
 Spanish and French gettext sources live under
 `reparto_service/locales/<locale>/LC_MESSAGES/reparto.po`. After editing them,
 install the development requirements and refresh the committed runtime

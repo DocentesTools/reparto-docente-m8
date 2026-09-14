@@ -37,6 +37,7 @@ from sqlmodel import Column, Field as SQLField, SQLModel
 from reparto_service.core.decimals import HoursNumeric, OptionalHoursDecimal
 from reparto_service.core.db_models import UUIDString, prefixed_tables
 from reparto_service.enums import GroupSubjectBulkMode
+from reparto_service.schemas.non_exception_prose import ServiceProseParam
 
 
 # ── Base, Create, Update schemas ──────────────────────────────────────────────
@@ -223,6 +224,30 @@ class GroupSubjectBulkConflict(SQLModel):
 
     teaching_group_id: uuid.UUID = Field(description="Matched teaching group ID.")
     reason: str = Field(description="Why the group cannot be applied in this mode.")
+    code: str = Field(
+        min_length=1,
+        max_length=80,
+        description="Stable code identifying the service-authored reason.",
+    )
+    params: dict[str, ServiceProseParam] = Field(
+        default_factory=dict,
+        description="Language-neutral substitution values for the reason.",
+    )
+
+
+class GroupSubjectBulkValidationError(SQLModel):
+    """One coded selection-level problem in a bulk dry run."""
+
+    code: str = Field(
+        min_length=1,
+        max_length=80,
+        description="Stable code identifying the validation problem.",
+    )
+    message: str = Field(description="Localized validation fallback text.")
+    params: dict[str, ServiceProseParam] = Field(
+        default_factory=dict,
+        description="Language-neutral substitution values for the message.",
+    )
 
 
 class GroupSubjectBulkPreview(SQLModel):
@@ -241,7 +266,7 @@ class GroupSubjectBulkPreview(SQLModel):
     conflicts: list[GroupSubjectBulkConflict] = Field(
         description="Matched groups the mode cannot satisfy."
     )
-    validation_errors: list[str] = Field(
+    validation_errors: list[GroupSubjectBulkValidationError] = Field(
         description="Selection-level validation problems blocking apply."
     )
     expected_affected_count: int = Field(
@@ -266,6 +291,7 @@ __all__ = [
     "GroupSubjectBulkPreview",
     "GroupSubjectBulkRequest",
     "GroupSubjectBulkResult",
+    "GroupSubjectBulkValidationError",
     "GroupSubjectCreate",
     "GroupSubjectPublic",
     "GroupSubjectsPublic",

@@ -259,6 +259,12 @@ def test_required_service_prose_surfaces_are_inventoried() -> None:
     assert by_field["GroupSubjectBulkConflict.reason"]["ownership"] == (
         "service-authored-prose"
     )
-    assert by_field["GroupSubjectBulkPreview.validation_errors"]["ownership"] == (
+    assert by_field["GroupSubjectBulkValidationError.message"]["ownership"] == (
         "service-authored-prose"
+    )
+    assert "C11-non-exception-prose" in str(
+        by_field["GroupSubjectBulkConflict.reason"]["catalog_owner"]
+    )
+    assert "C11-non-exception-prose" in str(
+        by_field["GroupSubjectBulkValidationError.message"]["catalog_owner"]
     )

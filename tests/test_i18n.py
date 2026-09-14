@@ -36,6 +36,7 @@ from reparto_service.core.i18n import (
 
 ROOT = Path(__file__).parents[1]
 CATALOG_PATH = ROOT / "docs" / "error-taxonomy.json"
+NON_EXCEPTION_CATALOG_PATH = ROOT / "docs" / "non-exception-prose-taxonomy.json"
 
 
 @pytest.mark.parametrize(
@@ -246,6 +247,12 @@ def _fields(template: str) -> frozenset[str]:
 def test_po_and_mo_catalogs_cover_the_complete_c7_contract(locale: str) -> None:
     taxonomy = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
     expected = {record["code"]: record for record in taxonomy["codes"]}
+    non_exception_taxonomy = json.loads(
+        NON_EXCEPTION_CATALOG_PATH.read_text(encoding="utf-8")
+    )
+    expected.update(
+        {record["code"]: record for record in non_exception_taxonomy["codes"]}
+    )
     po_path = LOCALE_DIR / locale / "LC_MESSAGES" / f"{GETTEXT_DOMAIN}.po"
     mo_path = po_path.with_suffix(".mo")
 

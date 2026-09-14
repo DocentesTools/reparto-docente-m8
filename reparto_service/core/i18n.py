@@ -163,7 +163,7 @@ def _formatted_or_default(
         return default
 
 
-def translate_domain_message(
+def translate_service_message(
     code: str,
     default: str,
     params: Mapping[str, JsonValue],
@@ -171,7 +171,7 @@ def translate_domain_message(
     locale: str | None = None,
     localedir: Path | None = None,
 ) -> str:
-    """Translate one stable domain-error code, falling back without raising."""
+    """Translate one stable service-prose code, falling back without raising."""
     selected_locale = locale or current_locale()
     if selected_locale not in SUPPORTED_LOCALES or selected_locale == DEFAULT_LOCALE:
         return default
@@ -190,6 +190,24 @@ def translate_domain_message(
     return _formatted_or_default(template, default, params)
 
 
+def translate_domain_message(
+    code: str,
+    default: str,
+    params: Mapping[str, JsonValue],
+    *,
+    locale: str | None = None,
+    localedir: Path | None = None,
+) -> str:
+    """Translate a domain-error code through the shared service catalog."""
+    return translate_service_message(
+        code,
+        default,
+        params,
+        locale=locale,
+        localedir=localedir,
+    )
+
+
 def translated_error_detail(error: DomainHTTPException) -> dict[str, JsonValue]:
     """Build the localized wire detail while preserving code and parameters."""
     return {
@@ -203,18 +221,24 @@ def translated_error_detail(error: DomainHTTPException) -> dict[str, JsonValue]:
     }
 
 
-def _response_headers(error: DomainHTTPException, locale: str) -> dict[str, str]:
-    headers = dict(error.headers or {})
-    vary_key = next((key for key in headers if key.lower() == "vary"), "Vary")
+def localized_response_headers(
+    headers: Mapping[str, str] | None = None,
+    *,
+    locale: str | None = None,
+) -> dict[str, str]:
+    """Return headers declaring that localized response prose varies by locale."""
+    selected_locale = locale or current_locale()
+    localized_headers = dict(headers or {})
+    vary_key = next((key for key in localized_headers if key.lower() == "vary"), "Vary")
     vary_values = {
         value.strip().lower()
-        for value in headers.get(vary_key, "").split(",")
+        for value in localized_headers.get(vary_key, "").split(",")
         if value.strip()
     }
     vary_values.add("accept-language")
-    headers[vary_key] = ", ".join(sorted(vary_values))
-    headers["Content-Language"] = locale
-    return headers
+    localized_headers[vary_key] = ", ".join(sorted(vary_values))
+    localized_headers["Content-Language"] = selected_locale
+    return localized_headers
 
 
 async def domain_http_exception_handler(
@@ -227,7 +251,7 @@ async def domain_http_exception_handler(
     return JSONResponse(
         status_code=error.status_code,
         content={"detail": translated_error_detail(error)},
-        headers=_response_headers(error, locale),
+        headers=localized_response_headers(error.headers, locale=locale),
     )
 
 
@@ -265,9 +289,11 @@ __all__ = [
     "LocaleMiddleware",
     "current_locale",
     "domain_http_exception_handler",
+    "localized_response_headers",
     "negotiate_locale",
     "reset_current_locale",
     "set_current_locale",
     "translate_domain_message",
+    "translate_service_message",
     "translated_error_detail",
 ]

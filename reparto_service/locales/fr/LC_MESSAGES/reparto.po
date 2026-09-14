@@ -226,6 +226,12 @@ msgstr "Le groupe d'enseignement {group_id} est introuvable dans le processus {p
 msgid "group_subjects.use_explicit_guarded_retirement_action_deactivate_groupsubject"
 msgstr "Utilisez l'action protégée explicite de retrait pour désactiver une relation groupe-matière."
 
+msgid "group_subject.inverted_grade_range"
+msgstr "Le niveau minimum doit être inférieur ou égal au niveau maximum."
+
+msgid "group_subject.no_row_to_update"
+msgstr "Il n'existe aucune relation groupe-matière à mettre à jour."
+
 msgid "history.assignment_activity_does_not_match_its_requirement_slot"
 msgstr "L'activité de l'affectation {row_id} ne correspond pas au créneau de son exigence."
 

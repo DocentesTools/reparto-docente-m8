@@ -226,6 +226,12 @@ msgstr "No se encontró el grupo docente {group_id} en el proceso {process_id}."
 msgid "group_subjects.use_explicit_guarded_retirement_action_deactivate_groupsubject"
 msgstr "Use la acción protegida explícita de retirada para desactivar una relación grupo-materia."
 
+msgid "group_subject.inverted_grade_range"
+msgstr "El curso mínimo debe ser menor o igual que el curso máximo."
+
+msgid "group_subject.no_row_to_update"
+msgstr "No existe ninguna relación grupo-materia que se pueda actualizar."
+
 msgid "history.assignment_activity_does_not_match_its_requirement_slot"
 msgstr "La actividad de la asignación {row_id} no coincide con la franja de su requisito."
 
