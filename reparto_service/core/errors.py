@@ -44,10 +44,14 @@ class DomainHTTPException(HTTPException):
     ) -> None:
         if _ERROR_CODE_PATTERN.fullmatch(code) is None:
             raise ValueError(f"Invalid domain error code: {code!r}")
+        normalized_params = {key: _json_value(value) for key, value in params.items()}
+        self.code = code
+        self.message = message
+        self.params = normalized_params
         detail: dict[str, JsonValue] = {
-            "code": code,
-            "message": message,
-            "params": {key: _json_value(value) for key, value in params.items()},
+            "code": self.code,
+            "message": self.message,
+            "params": self.params,
         }
         super().__init__(
             status_code=status_code,

@@ -23,6 +23,8 @@ asyncpg==0.31.0
     # via -r reparto_service/requirements_base.txt
 auth-sdk-m8[config,events,fastapi,observability,security]==3.2.0
     # via fastapi-m8
+babel==2.18.0
+    # via -r reparto_service/requirements_build.txt
 bandit==1.9.4
     # via -r reparto_service/requirements_dev.txt
 bcrypt==5.0.0

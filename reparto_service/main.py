@@ -20,7 +20,9 @@ from fastapi_m8 import (
 from .app.main import api_router as domain_router
 from .core.config import settings
 from .core.deps import auth, engine
+from .core.errors import DomainHTTPException
 from .core.events import make_lifespan_extras
+from .core.i18n import LocaleMiddleware, domain_http_exception_handler
 
 
 async def check_db() -> HealthCheckResult:
@@ -81,3 +83,5 @@ app = create_app(
         lifespan_extras=make_lifespan_extras(settings, auth),
     ),
 )
+app.add_middleware(LocaleMiddleware)
+app.add_exception_handler(DomainHTTPException, domain_http_exception_handler)

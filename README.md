@@ -420,6 +420,29 @@ additive-only code catalog in
 [`docs/error-taxonomy.json`](docs/error-taxonomy.json) is checked against all
 controller and service call sites by `tests/test_error_taxonomy.py`.
 
+### Domain-error translations
+
+Every Reparto request negotiates `en`, `es`, or `fr` from `Accept-Language`;
+regional tags such as `es-ES` select their base locale. Reparto-owned domain
+errors are translated at the HTTP boundary and include `Content-Language` plus
+`Vary: Accept-Language`. The stable code and language-neutral parameters do not
+change. Missing or incompatible translations fall back to the existing English
+message.
+
+Spanish and French gettext sources live under
+`reparto_service/locales/<locale>/LC_MESSAGES/reparto.po`. After editing them,
+install the development requirements and refresh the committed runtime
+catalogs:
+
+```bash
+python -m babel.messages.frontend compile \
+  --directory reparto_service/locales --domain reparto
+```
+
+Babel is a build/development dependency only. Production loads the compiled
+catalogs with Python's standard-library `gettext`; the Docker build fails if a
+shipped catalog is missing or unreadable.
+
 ## Quality gates
 
 Run these commands from the repository root in the repository's Python

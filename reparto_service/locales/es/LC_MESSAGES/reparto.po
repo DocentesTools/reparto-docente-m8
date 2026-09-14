@@ -1,0 +1,485 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: reparto-docente-m8 2.1.1\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "academic_years.end_date_must_be_strictly_after_start_date"
+msgstr "La fecha de fin debe ser posterior a la fecha de inicio."
+
+msgid "assignment_processes.copy_is_only_allowed_into_process_status_draft"
+msgstr "Solo se puede copiar en un proceso con estado «borrador»."
+
+msgid "assignment_processes.only_processes_status_final_can_be_reopened"
+msgstr "Solo se pueden reabrir los procesos con estado «final»."
+
+msgid "assignment_processes.process_status_is_owned_by_transition_endpoint_post"
+msgstr "El estado del proceso se modifica mediante el endpoint de transición. Use POST /assignment-processes/{{id}}/transition."
+
+msgid "assignment_processes.reopen_must_go_through_post_assignment_processes_id"
+msgstr "La reapertura debe realizarse mediante POST /assignment-processes/{{id}}/reopen e incluir un motivo."
+
+msgid "assignment_processes.source_and_target_process_must_differ"
+msgstr "El proceso de origen y el de destino deben ser distintos."
+
+msgid "assignment_processes.source_and_target_processes_must_belong_same_school"
+msgstr "Los procesos de origen y destino deben pertenecer al mismo centro."
+
+msgid "assignment_processes.target_process_already_has_group_subject_cells"
+msgstr "El proceso de destino ya contiene celdas de grupo y materia."
+
+msgid "assignment_processes.target_process_already_has_subjects"
+msgstr "El proceso de destino ya contiene materias."
+
+msgid "assignment_processes.target_process_already_has_teachers"
+msgstr "El proceso de destino ya contiene docentes."
+
+msgid "assignment_processes.target_process_already_has_teaching_groups"
+msgstr "El proceso de destino ya contiene grupos docentes."
+
+msgid "assignment_processes.target_process_already_has_teaching_plan"
+msgstr "El proceso de destino ya contiene un plan docente."
+
+msgid "assignment_processes.transition_rejected"
+msgstr "Transición rechazada: {reason}"
+
+msgid "assignments.assignment_not_found_process"
+msgstr "No se encontró la asignación {assignment_id} en el proceso {process_id}."
+
+msgid "assignments.direct_teacher_selection_is_disabled_session"
+msgstr "La selección directa por el docente está desactivada para esta sesión."
+
+msgid "assignments.hourrequirement_not_found_process"
+msgstr "No se encontró el requisito horario {requirement_id} en el proceso {process_id}."
+
+msgid "assignments.meeting_session_must_be_open_direct_selection"
+msgstr "La sesión de reunión debe estar abierta para realizar una selección directa."
+
+msgid "assignments.meetingsession_not_found"
+msgstr "No se encontró la sesión de reunión {meeting_session_id}."
+
+msgid "assignments.only_active_assignment_can_be_undone_or_reassigned"
+msgstr "Solo se puede deshacer o reasignar una asignación activa."
+
+msgid "assignments.only_active_process_teacher_is_eligible_assignment"
+msgstr "Solo un docente activo del proceso puede recibir una asignación."
+
+msgid "assignments.processteacher_not_found_process"
+msgstr "No se encontró el docente del proceso {process_teacher_id} en el proceso {process_id}."
+
+msgid "assignments.reassignment_requires_different_process_teacher"
+msgstr "La reasignación requiere un docente del proceso distinto."
+
+msgid "assignments.reassignment_would_strand_remaining_assignment_state_administrative"
+msgstr "La reasignación dejaría el estado de asignación restante sin solución ({repaired_code}); se requiere una evaluación administrativa de viabilidad."
+
+msgid "assignments.requirement_is_already_assigned_slot_cannot_be_shared"
+msgstr "El requisito {requirement_id} ya está asignado; una franja no se puede compartir ni dividir."
+
+msgid "assignments.requirement_is_not_available_assignment_status"
+msgstr "El requisito {requirement_id} no está disponible para asignación (estado {requirement_status})."
+
+msgid "assignments.requirement_needs_hours_but_participant_has_only_remaining"
+msgstr "El requisito {requirement_id} necesita {slot_hours} horas, pero al participante solo le quedan {remaining} antes de alcanzar el objetivo de {target}; una franja no se puede dividir, por lo que primero debe autorizar horas adicionales."
+
+msgid "assignments.selection_is_blocked_because_deterministic_witness_could_not"
+msgstr "La selección está bloqueada porque no se pudo reparar el testigo determinista ({repair_code}); se requiere una evaluación administrativa de viabilidad. Vaya a la página de Planificación, ejecute de nuevo la evaluación de viabilidad y vuelva al tablero: nada se ha dañado ni perdido."
+
+msgid "assignments.selection_would_strand_remaining_assignment_state_administrative_fea"
+msgstr "La selección dejaría el estado de asignación restante sin solución: {finding_code}{related}. Se requiere una evaluación administrativa de viabilidad."
+
+msgid "assignments.teacher_already_occupies_position_activity_distinct_teachers_are"
+msgstr "El docente ya ocupa una plaza de la actividad {teaching_activity_id}; se requieren docentes distintos."
+
+msgid "assignments.teacher_cannot_choose_outside_active_strict_turn"
+msgstr "El docente no puede elegir fuera de su turno estricto activo."
+
+msgid "base.assignmentprocess_not_found"
+msgstr "No se encontró el proceso de reparto {process_id}."
+
+msgid "base.cannot_mutate_process_status_reopen_it_first"
+msgstr "No se puede modificar un proceso con estado {process_status}; debe reabrirlo primero."
+
+msgid "base.no_teacher_profile_is_linked_auth_user"
+msgstr "No hay ningún perfil docente vinculado a este usuario."
+
+msgid "base.not_found"
+msgstr "No se encontró {model___name__} {item_id}."
+
+msgid "base.role_required"
+msgstr "Se requiere el rol {minimum_role}."
+
+msgid "base.you_may_only_act_on_your_own_participation"
+msgstr "Solo puede actuar sobre su propia participación en este proceso."
+
+msgid "base.you_may_only_update_your_own_teacher_profile"
+msgstr "Solo puede actualizar su propio perfil docente."
+
+msgid "classroom_conflict"
+msgstr "Ya existe un aula con esta etiqueta."
+
+msgid "classroom_stage_exists"
+msgstr "Ya existe una etapa educativa con este nombre."
+
+msgid "classroom_stage_in_use"
+msgstr "Hay aulas que hacen referencia a esta etapa educativa."
+
+msgid "classroom_stages.min_grade_must_be_less_than_or_equal"
+msgstr "El curso mínimo debe ser menor o igual que el curso máximo."
+
+msgid "dashboard.no_teacher_profile_is_linked_auth_user"
+msgstr "No hay ningún perfil docente vinculado a este usuario."
+
+msgid "department_hour_allocation_revisions.could_not_create_allocation_revision_please"
+msgstr "No se pudo crear la revisión de la asignación horaria; inténtelo de nuevo."
+
+msgid "department_hour_allocation_revisions.no_current_allocation_revision_process"
+msgstr "No hay una revisión actual de la asignación horaria para el proceso {process_id}."
+
+msgid "departments.could_not_confirm_department_head_s_role_with"
+msgstr "No se pudo confirmar el rol de la jefatura de departamento con el servicio de identidad ({ex_reason}); la jefatura no se modificó."
+
+msgid "departments.could_not_create_department_check_slug_is_unique"
+msgstr "No se pudo crear el departamento: compruebe que el identificador corto sea único en el centro."
+
+msgid "departments.could_not_update_department_check_slug_is_unique"
+msgstr "No se pudo actualizar el departamento: compruebe que el identificador corto sea único en el centro."
+
+msgid "departments.department_head_must_hold_at_least_admin_role"
+msgstr "La jefatura de departamento debe tener como mínimo el rol de administración; esta cuenta tiene {role}."
+
+msgid "departments.department_not_found"
+msgstr "No se encontró el departamento {department_id}."
+
+msgid "departments.identity_service_does_not_know_user"
+msgstr "El servicio de identidad no reconoce a este usuario."
+
+msgid "feasibility_controls.solve_in_progress"
+msgstr "Ya hay una evaluación de viabilidad en curso para este proceso; inténtelo de nuevo cuando termine."
+
+msgid "feasibility_witnesses.cannot_assignment_feasibility_is_current_feasible_result_i"
+msgstr "No se puede {operation}: el estado de viabilidad de la asignación es {evaluation_status}; se requiere un resultado VIABLE actual."
+
+msgid "feasibility_witnesses.current_deterministic_witness_is_unavailable_administrativ"
+msgstr "El testigo determinista actual no está disponible; se requiere una evaluación administrativa de viabilidad."
+
+msgid "feasibility_witnesses.current_feasibility_diagnostics_are_unavailable_administra"
+msgstr "Los diagnósticos de viabilidad actuales no están disponibles; se requiere una evaluación administrativa de viabilidad."
+
+msgid "feasibility_witnesses.no_teaching_plan_process"
+msgstr "No hay un plan docente para el proceso {process_id}."
+
+msgid "feasibility_witnesses.reassignment_is_blocked_because_deterministic_witness_is_m"
+msgstr "La reasignación está bloqueada porque el testigo determinista falta o está obsoleto; se requiere una evaluación administrativa de viabilidad."
+
+msgid "feasibility_witnesses.repaired_deterministic_witness_is_inconsistent"
+msgstr "El testigo determinista reparado es incoherente."
+
+msgid "feasibility_witnesses.selection_is_blocked_because_deterministic_witness_is_miss"
+msgstr "La selección está bloqueada porque el testigo determinista falta o está obsoleto; se requiere una evaluación administrativa de viabilidad."
+
+msgid "group_subjects.assignment_process_id_payload_does_not_match_url"
+msgstr "El identificador del proceso de reparto del contenido no coincide con el identificador de la URL."
+
+msgid "group_subjects.bulk_selection_changed_since_preview_now_affected_confirmed"
+msgstr "La selección masiva cambió desde la vista previa (ahora afecta a {preview_expected_affected_count}, se confirmaron {request_expected_affected_count}); genere otra vista previa."
+
+msgid "group_subjects.bulk_validation_failed"
+msgstr "La validación masiva falló: {validation_errors}"
+
+msgid "group_subjects.could_not_create_group_subject_group_subject_pair"
+msgstr "No se pudo crear la relación grupo-materia: esta pareja ya está configurada en el proceso."
+
+msgid "group_subjects.groupsubject_has_no_live_main_generated_activity_sync"
+msgstr "Esta relación grupo-materia no tiene una actividad principal generada activa que se pueda sincronizar."
+
+msgid "group_subjects.groupsubject_is_already_retired"
+msgstr "La relación grupo-materia ya está retirada."
+
+msgid "group_subjects.groupsubject_not_found_process"
+msgstr "No se encontró la relación grupo-materia {group_subject_id} en el proceso {process_id}."
+
+msgid "group_subjects.groupsubject_retirement_is_allowed_only_draft_process"
+msgstr "La relación grupo-materia solo se puede retirar en un proceso en borrador."
+
+msgid "group_subjects.materialized_activity_has_no_owning_teaching_plan"
+msgstr "La actividad materializada no pertenece a ningún plan docente."
+
+msgid "group_subjects.retire_downstream_teaching_activity_through_its_guarded_retiremen"
+msgstr "Retire primero la actividad docente derivada mediante su flujo protegido de retirada y regeneración o conciliación."
+
+msgid "group_subjects.source_groupsubject_is_inactive_use_explicit_guarded_activity"
+msgstr "La relación grupo-materia de origen está inactiva; use el flujo protegido explícito de retirada de actividad en lugar de aplicar la sincronización."
+
+msgid "group_subjects.subject_not_found_process"
+msgstr "No se encontró la materia {subject_id} en el proceso {process_id}."
+
+msgid "group_subjects.sync_inputs_changed_since_preview_re_run_sync"
+msgstr "Los datos de sincronización cambiaron desde la vista previa; vuelva a generar la vista previa de sincronización."
+
+msgid "group_subjects.teachinggroup_not_found_process"
+msgstr "No se encontró el grupo docente {group_id} en el proceso {process_id}."
+
+msgid "group_subjects.use_explicit_guarded_retirement_action_deactivate_groupsubject"
+msgstr "Use la acción protegida explícita de retirada para desactivar una relación grupo-materia."
+
+msgid "history.assignment_activity_does_not_match_its_requirement_slot"
+msgstr "La actividad de la asignación {row_id} no coincide con la franja de su requisito."
+
+msgid "history.assignment_references_requirement_missing_from_backup"
+msgstr "La asignación {row_id} hace referencia a un requisito que falta en la copia de seguridad."
+
+msgid "history.assignment_references_teacher_missing_from_backup"
+msgstr "La asignación {row_id} hace referencia a un docente que falta en la copia de seguridad."
+
+msgid "history.backup_carries_requirements_or_assignments_but_no_teaching"
+msgstr "La copia de seguridad contiene requisitos o asignaciones, pero no contiene un plan docente."
+
+msgid "history.backup_content_must_be_process_snapshot_object"
+msgstr "El contenido de la copia de seguridad debe ser un objeto de instantánea del proceso."
+
+msgid "history.backup_content_must_be_valid_json"
+msgstr "El contenido de la copia de seguridad debe ser JSON válido."
+
+msgid "history.backup_must_be_exported_as_json_so_it"
+msgstr "Una copia de seguridad debe exportarse como JSON para poder restaurarla; PDF genera un documento, no una instantánea."
+
+msgid "history.backup_restore_is_only_allowed_into_draft_process"
+msgstr "Solo se puede restaurar una copia de seguridad en un proceso en borrador."
+
+msgid "history.backup_snapshot_is_missing"
+msgstr "Falta {key} en la instantánea de la copia de seguridad."
+
+msgid "history.backup_snapshot_is_missing_process"
+msgstr "Falta el proceso en la instantánea de la copia de seguridad."
+
+msgid "history.final_export_is_blocked_by_blocking_validations"
+msgstr "Las validaciones bloqueantes impiden la exportación final."
+
+msgid "history.processversion_not_found"
+msgstr "No se encontró la versión del proceso {version_id}."
+
+msgid "history.requirement_has_inconsistent_retirement_generation"
+msgstr "El requisito {requirement_id} tiene una generación de retirada incoherente."
+
+msgid "history.requirement_has_more_than_one_active_assignment"
+msgstr "El requisito {requirement_id} tiene más de una asignación activa."
+
+msgid "history.requirement_is_superseded_by_slot_missing_from_backup"
+msgstr "El requisito {row_id} ha sido sustituido por una franja que falta en la copia de seguridad."
+
+msgid "history.requirement_references_generation_beyond_plan_s_current_generation"
+msgstr "El requisito {requirement_id} hace referencia a una generación posterior a la generación actual del plan."
+
+msgid "history.teacher_is_actively_assigned_twice_on_one_activity"
+msgstr "El docente {teacher_id} está asignado de forma activa dos veces a una misma actividad."
+
+msgid "hour_requirements.assigned_requirement_slot_s_would_change_resolve_them"
+msgid_plural "hour_requirements.assigned_requirement_slot_s_would_change_resolve_them.plural"
+msgstr[0] "{generation_conflicts_count} franja de requisito asignada cambiaría; resuélvala mediante conciliación antes de regenerar (plan §7.5, §9)."
+msgstr[1] "{generation_conflicts_count} franjas de requisito asignadas cambiarían; resuélvalas mediante conciliación antes de regenerar (plan §7.5, §9)."
+
+msgid "hour_requirements.expected_conflict_s_reconcile_but_plan_now_has"
+msgid_plural "hour_requirements.expected_conflict_s_reconcile_but_plan_now_has.plural"
+msgstr[0] "Se esperaba conciliar {request_expected_conflict_count} conflicto, pero el plan tiene ahora {generation_conflicts_count}; vuelva a generar la vista previa de conciliación y confirme el recuento actual."
+msgstr[1] "Se esperaban conciliar {request_expected_conflict_count} conflictos, pero el plan tiene ahora {generation_conflicts_count}; vuelva a generar la vista previa de conciliación y confirme el recuento actual."
+
+msgid "hour_requirements.hourrequirement_not_found_process"
+msgstr "No se encontró el requisito horario {requirement_id} en el proceso {process_id}."
+
+msgid "hour_requirements.process_has_no_teaching_plan_create_and_lock"
+msgstr "El proceso {process_id} no tiene un plan docente; créelo y bloquéelo antes de generar requisitos."
+
+msgid "hour_requirements.process_has_no_teaching_plan_reconcile"
+msgstr "El proceso {process_id} no tiene un plan docente que se pueda conciliar."
+
+msgid "hour_requirements.reconciliation_changed_during_feasibility_evaluation_re_run_re"
+msgstr "La conciliación cambió durante la evaluación de viabilidad; vuelva a generar la vista previa de conciliación y confirme el recuento actual."
+
+msgid "hour_requirements.teaching_plan_is_lock_plan_or_regenerate_stale"
+msgstr "El plan docente está {plan_status}; bloquee el plan, o regenere un plan obsoleto, antes de generar requisitos (plan §7.5, §20.8)."
+
+msgid "hour_requirements.teaching_plan_is_reconciliation_runs_only_on_stale"
+msgstr "El plan docente está {plan_status}; la conciliación solo se ejecuta en un plan obsoleto o que requiere conciliación (plan §7.5, §9)."
+
+msgid "lifecycle_gates.plan_readiness_conflict"
+msgstr "No se puede {operation}: {reason}."
+
+msgid "meeting_sessions.active_meeting_session_already_exists_process"
+msgstr "Ya existe una sesión de reunión activa para este proceso."
+
+msgid "meeting_sessions.assignment_process_id_payload_does_not_match_url"
+msgstr "El identificador del proceso de reparto del contenido no coincide con el identificador de la URL."
+
+msgid "meeting_sessions.direct_teacher_selection_requires_lan_access"
+msgstr "La selección directa por el docente requiere acceso a la red local."
+
+msgid "meeting_sessions.meetingsession_not_found_process"
+msgstr "No se encontró la sesión de reunión {meeting_session_id} en el proceso {process_id}."
+
+msgid "planning_exchange.final_planning_export_is_blocked_by_blocking_validation"
+msgid_plural "planning_exchange.final_planning_export_is_blocked_by_blocking_validation.plural"
+msgstr[0] "La exportación final de la planificación está bloqueada por {validations_blocking_count} validación bloqueante; resuélvala o exporte como borrador o provisional (plan §7.8)."
+msgstr[1] "La exportación final de la planificación está bloqueada por {validations_blocking_count} validaciones bloqueantes; resuélvalas o exporte como borrador o provisional (plan §7.8)."
+
+msgid "planning_exchange.no_teaching_plan_process"
+msgstr "No hay un plan docente para el proceso {process_id}."
+
+msgid "process_teachers.assignment_process_id_payload_does_not_match_url"
+msgstr "El identificador del proceso de reparto del contenido no coincide con el identificador de la URL."
+
+msgid "process_teachers.cannot_reduce_extra_hours_below_hours_already_assigned"
+msgstr "No se pueden reducir las horas adicionales por debajo de las ya asignadas: nuevo objetivo {new_target} h < asignadas {assigned} h."
+
+msgid "process_teachers.could_not_create_process_teacher_binding_teacher_profile"
+msgstr "No se pudo añadir el docente al proceso: ya existe en el proceso un vínculo para este perfil docente."
+
+msgid "process_teachers.processteacher_not_found_process"
+msgstr "No se encontró el docente del proceso {process_teacher_id} en el proceso {process_id}."
+
+msgid "process_versions.process_has_no_previous_year_source_process"
+msgstr "El proceso no tiene un proceso de origen del curso anterior."
+
+msgid "process_versions.processversion_not_found"
+msgstr "No se encontró la versión del proceso {version_id}."
+
+msgid "read_scope.assignmentprocess_not_found"
+msgstr "No se encontró el proceso de reparto {process_id}."
+
+msgid "schools.school_not_found"
+msgstr "No se encontró el centro {school_id}."
+
+msgid "selection_turns.duplicate_selection_positions_are_not_allowed"
+msgstr "No se permiten posiciones de selección duplicadas."
+
+msgid "selection_turns.every_participating_teacher_needs_selection_position"
+msgstr "Cada docente participante necesita una posición de selección."
+
+msgid "selection_turns.meeting_session_must_be_open_before_turns_can"
+msgstr "La sesión de reunión debe estar abierta antes de iniciar los turnos."
+
+msgid "selection_turns.only_active_turn_can_be_completed"
+msgstr "Solo se puede completar el turno activo."
+
+msgid "selection_turns.only_pending_or_active_turns_can_be_skipped"
+msgstr "Solo se pueden omitir los turnos pendientes o activos."
+
+msgid "selection_turns.only_pending_turns_can_be_started"
+msgstr "Solo se pueden iniciar los turnos pendientes."
+
+msgid "selection_turns.selection_turn_is_already_active"
+msgstr "Ya hay un turno de selección activo."
+
+msgid "selection_turns.selection_turns_already_exist_meeting_session"
+msgstr "Ya existen turnos de selección para esta sesión de reunión."
+
+msgid "selection_turns.selectionturn_not_found"
+msgstr "No se encontró el turno de selección {turn_id}."
+
+msgid "selection_turns.turn_assignment_must_target_active_turn_teacher"
+msgstr "La asignación del turno debe dirigirse al docente del turno activo."
+
+msgid "snapshots.assignmentprocess_not_found"
+msgstr "No se encontró el proceso de reparto {process_id}."
+
+msgid "sse.cannot_subscribe_as_role_grants_at_most"
+msgstr "No puede suscribirse como {requested}: este rol concede como máximo {granted}."
+
+msgid "subjects.assignment_process_id_payload_does_not_match_url"
+msgstr "El identificador del proceso de reparto del contenido no coincide con el identificador de la URL."
+
+msgid "subjects.could_not_create_subject_subject_with_name_already"
+msgstr "No se pudo crear la materia: ya existe una materia con este nombre en el proceso."
+
+msgid "subjects.could_not_update_subject_subject_with_name_already"
+msgstr "No se pudo actualizar la materia: ya existe una materia con este nombre en el proceso."
+
+msgid "subjects.subject_not_found_process"
+msgstr "No se encontró la materia {subject_id} en el proceso {process_id}."
+
+msgid "teacher_profiles.auth_user_is_already_linked_another_teacher_profile"
+msgstr "El usuario ya está vinculado a otro perfil docente."
+
+msgid "teacher_profiles.claim_code_is_not_valid_or_has_expired"
+msgstr "El código de vinculación no es válido, ha caducado o ya se ha utilizado."
+
+msgid "teacher_profiles.only_department_head_may_change_on_teacher_profile"
+msgstr "Solo la jefatura de departamento puede modificar {forbidden} en un perfil docente."
+
+msgid "teacher_profiles.teacher_profile_is_already_linked_auth_user_unlink"
+msgstr "El perfil docente ya está vinculado a un usuario; desvincúlelo antes de emitir un código de vinculación."
+
+msgid "teacher_profiles.teacherprofile_not_found"
+msgstr "No se encontró el perfil docente {profile_id}."
+
+msgid "teaching_activities.activity_has_no_owning_teaching_plan"
+msgstr "La actividad no pertenece a ningún plan docente."
+
+msgid "teaching_activities.activity_without_generated_requirements_can_be_retired_only"
+msgstr "Una actividad sin requisitos generados solo se puede retirar mientras su plan docente esté desbloqueado."
+
+msgid "teaching_activities.duplicate_linked_group_subject"
+msgstr "La relación grupo-materia vinculada {cell_id} está duplicada."
+
+msgid "teaching_activities.groupsubject_not_found_process"
+msgstr "No se encontró la relación grupo-materia {cell_id} en el proceso {process_id}."
+
+msgid "teaching_activities.linked_group_subject_teaches_different_subject_than_activity"
+msgstr "La relación grupo-materia {cell_id} imparte una materia distinta de la actividad (plan §5.7)."
+
+msgid "teaching_activities.multi_group_activity_requires_subject_allows_multiple_groups"
+msgstr "Una actividad con varios grupos requiere una materia que permita varios grupos (plan §5.6, §20.10)."
+
+msgid "teaching_activities.only_secondary_manual_activities_can_be_created_here"
+msgstr "Aquí solo se pueden crear actividades SECUNDARIAS_MANUALES; las actividades PRINCIPALES_GENERADAS se materializan a partir de las relaciones grupo-materia (plan §20.10)."
+
+msgid "teaching_activities.process_has_no_teaching_plan_create_one_before"
+msgstr "El proceso {process_id} no tiene un plan docente; créelo antes de añadir actividades."
+
+msgid "teaching_activities.subject_not_found_process"
+msgstr "No se encontró la materia {subject_id} en el proceso {process_id}."
+
+msgid "teaching_activities.teaching_activity_is_already_retired"
+msgstr "La actividad docente ya está retirada."
+
+msgid "teaching_activities.teaching_plan_is_unlock_it_before_mutating_activities"
+msgstr "El plan docente está {plan_status}; desbloquéelo antes de modificar actividades (plan §5.6, §20.14)."
+
+msgid "teaching_activities.teachingactivity_not_found_process"
+msgstr "No se encontró la actividad docente {activity_id} en el proceso {process_id}."
+
+msgid "teaching_activities.zero_group_activity_requires_subject_allows_zero_groups"
+msgstr "Una actividad sin grupos requiere una materia que permita cero grupos (plan §5.6)."
+
+msgid "teaching_groups.classroomstage_not_found"
+msgstr "No se encontró la etapa educativa {stage_id}."
+
+msgid "teaching_groups.grade_must_be_between_and_classroom_stage"
+msgstr "El curso debe estar entre {stage_min_grade} y {stage_max_grade} para esta etapa educativa."
+
+msgid "teaching_groups.group_start_and_group_end_must_define_ascending"
+msgstr "El grupo inicial y el grupo final deben definir un intervalo ascendente de A a Z."
+
+msgid "teaching_groups.payload_assignment_process_id_does_not_match_url"
+msgstr "El identificador del proceso de reparto del contenido no coincide con el de la URL."
+
+msgid "teaching_groups.teachinggroup_not_found_process"
+msgstr "No se encontró el grupo docente {group_id} en el proceso {process_id}."
+
+msgid "teaching_plans.cannot_lock_teaching_plan_while_it_is_both"
+msgstr "No se puede bloquear el plan docente mientras esté {plan_status}; primero deben cuadrar exactamente ambos balances de planificación."
+
+msgid "teaching_plans.cannot_unlock_teaching_plan_while_it_is_only"
+msgstr "No se puede desbloquear el plan docente mientras esté {plan_status}; solo se puede desbloquear un plan bloqueado anterior a la generación."
+
+msgid "teaching_plans.no_teaching_plan_process"
+msgstr "No hay un plan docente para el proceso {process_id}."
+
+msgid "teaching_plans.process_already_has_teaching_plan"
+msgstr "El proceso {process_id} ya tiene un plan docente."
+
+msgid "teaching_plans.status_transition_rejected"
+msgstr "Transición de estado rechazada: {reason}"
