@@ -32,6 +32,11 @@ from reparto_service.core.i18n import (
     set_current_locale,
     translate_domain_message,
 )
+from reparto_service.services.document_catalog import (
+    DOCUMENT_ENUM_DEFAULTS,
+    DOCUMENT_MESSAGE_DEFAULTS,
+    DOCUMENT_PLURAL_DEFAULTS,
+)
 
 
 ROOT = Path(__file__).parents[1]
@@ -259,7 +264,9 @@ def _fields(template: str) -> frozenset[str]:
 
 
 @pytest.mark.parametrize("locale", ["es", "fr"])
-def test_po_and_mo_catalogs_cover_the_complete_c7_contract(locale: str) -> None:
+def test_po_and_mo_catalogs_cover_all_service_and_document_text(
+    locale: str,
+) -> None:
     taxonomy = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
     expected = {record["code"]: record for record in taxonomy["codes"]}
     non_exception_taxonomy = json.loads(
@@ -268,6 +275,14 @@ def test_po_and_mo_catalogs_cover_the_complete_c7_contract(locale: str) -> None:
     expected.update(
         {record["code"]: record for record in non_exception_taxonomy["codes"]}
     )
+    for code, default in {
+        **DOCUMENT_MESSAGE_DEFAULTS,
+        **DOCUMENT_ENUM_DEFAULTS,
+    }.items():
+        expected[code] = {"param_names": sorted(_fields(default))}
+    for code, (singular, plural) in DOCUMENT_PLURAL_DEFAULTS.items():
+        assert _fields(singular) == _fields(plural)
+        expected[code] = {"param_names": sorted(_fields(singular))}
     po_path = LOCALE_DIR / locale / "LC_MESSAGES" / f"{GETTEXT_DOMAIN}.po"
     mo_path = po_path.with_suffix(".mo")
 
@@ -295,7 +310,7 @@ def test_po_and_mo_catalogs_cover_the_complete_c7_contract(locale: str) -> None:
             else (message.string,)
         )
         assert all(_fields(text) == expected_fields for text in strings)
-        if code in PLURAL_COUNT_PARAMS:
+        if code in PLURAL_COUNT_PARAMS or code in DOCUMENT_PLURAL_DEFAULTS:
             assert isinstance(message.id, tuple)
         else:
             assert isinstance(message.id, str)

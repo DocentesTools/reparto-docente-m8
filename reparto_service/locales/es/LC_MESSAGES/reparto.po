@@ -489,3 +489,268 @@ msgstr "El proceso {process_id} ya tiene un plan docente."
 
 msgid "teaching_plans.status_transition_rejected"
 msgstr "Transición de estado rechazada: {reason}"
+
+msgid "document.assignment.count"
+msgid_plural "document.assignment.count.plural"
+msgstr[0] "  {teacher} — {count} asignación, {hours} h"
+msgstr[1] "  {teacher} — {count} asignaciones, {hours} h"
+
+msgid "document.balance.allocated_group_hours"
+msgstr "  Horas asignadas a grupos   {hours}"
+
+msgid "document.balance.assigned_hours"
+msgstr "  Horas asignadas            {hours}"
+
+msgid "document.balance.required_slot_hours"
+msgstr "  Horas requeridas           {hours}"
+
+msgid "document.balance.uncovered_hours"
+msgstr "  Horas sin cubrir           {hours}"
+
+msgid "document.enum.archived"
+msgstr "ARCHIVADO"
+
+msgid "document.enum.assigned"
+msgstr "ASIGNADO"
+
+msgid "document.enum.assigning"
+msgstr "EN ASIGNACIÓN"
+
+msgid "document.enum.available"
+msgstr "DISPONIBLE"
+
+msgid "document.enum.balanced"
+msgstr "EQUILIBRADO"
+
+msgid "document.enum.department_head"
+msgstr "RESPONSABLE DEL DEPARTAMENTO"
+
+msgid "document.enum.department_proposal"
+msgstr "PROPUESTA DEL DEPARTAMENTO"
+
+msgid "document.enum.draft"
+msgstr "BORRADOR"
+
+msgid "document.enum.feasible"
+msgstr "FACTIBLE"
+
+msgid "document.enum.final"
+msgstr "DEFINITIVO"
+
+msgid "document.enum.imported_from_previous_year"
+msgstr "IMPORTADO DEL CURSO ANTERIOR"
+
+msgid "document.enum.infeasible"
+msgstr "INVIABLE"
+
+msgid "document.enum.internal_revision"
+msgstr "REVISIÓN INTERNA"
+
+msgid "document.enum.locked"
+msgstr "BLOQUEADO"
+
+msgid "document.enum.meeting_open"
+msgstr "REUNIÓN ABIERTA"
+
+msgid "document.enum.not_evaluated"
+msgstr "NO EVALUADO"
+
+msgid "document.enum.ready_for_meeting"
+msgstr "LISTO PARA LA REUNIÓN"
+
+msgid "document.enum.reconciliation_required"
+msgstr "REQUIERE CONCILIACIÓN"
+
+msgid "document.enum.reopened"
+msgstr "REABIERTO"
+
+msgid "document.enum.requirements_generated"
+msgstr "REQUISITOS GENERADOS"
+
+msgid "document.enum.returned_by_school_leadership"
+msgstr "DEVUELTO POR EL EQUIPO DIRECTIVO"
+
+msgid "document.enum.sent_to_school_leadership"
+msgstr "ENVIADO AL EQUIPO DIRECTIVO"
+
+msgid "document.enum.stale"
+msgstr "DESACTUALIZADO"
+
+msgid "document.enum.system_copy"
+msgstr "COPIA DEL SISTEMA"
+
+msgid "document.enum.teacher_direct"
+msgstr "ELECCIÓN DIRECTA DEL DOCENTE"
+
+msgid "document.enum.unbalanced"
+msgstr "DESEQUILIBRADO"
+
+msgid "document.enum.unknown"
+msgstr "DESCONOCIDO"
+
+msgid "document.exception.justification"
+msgstr "      justificación: {reason}"
+
+msgid "document.exception.no_reason_recorded"
+msgstr "(no consta ningún motivo)"
+
+msgid "document.exception.summary"
+msgstr "  {teacher} — base {base_hours} h + adicionales {extra_hours} h"
+
+msgid "document.field.academic_year"
+msgstr "Curso académico: {value}"
+
+msgid "document.field.closed_at"
+msgstr "Cerrado el: {value}"
+
+msgid "document.field.department"
+msgstr "Departamento: {value}"
+
+msgid "document.field.feasibility"
+msgstr "Viabilidad: {value}"
+
+msgid "document.field.generation"
+msgstr "Generación: {value}"
+
+msgid "document.field.plan_missing"
+msgstr "Plan: ninguno — la planificación no ha comenzado"
+
+msgid "document.field.plan_status"
+msgstr "Estado del plan: {value}"
+
+msgid "document.field.process_reference"
+msgstr "Referencia del proceso: {value}"
+
+msgid "document.field.process_status"
+msgstr "Estado: {value}"
+
+msgid "document.field.school"
+msgstr "Centro: {value}"
+
+msgid "document.field.state_as_of"
+msgstr "Estado a fecha de: {value} (UTC)"
+
+msgid "document.field.version"
+msgstr "Versión: v{number} ({status})"
+
+msgid "document.field.version_missing"
+msgstr "Versión: no capturada"
+
+msgid "document.group.assignment"
+msgstr "      {activity}  {hours} h  →  {teacher}"
+
+msgid "document.group.heading"
+msgstr "  Grupo {code}"
+
+msgid "document.header.final"
+msgstr "REPARTO — DOCUMENTO FINAL"
+
+msgid "document.header.internal_draft"
+msgstr "REPARTO — BORRADOR INTERNO"
+
+msgid "document.header.internal_draft_banner"
+msgstr "BORRADOR — documento de trabajo interno, no distribuible."
+
+msgid "document.header.school_leadership"
+msgstr "REPARTO — COPIA PARA EL EQUIPO DIRECTIVO"
+
+msgid "document.header.teacher_summary"
+msgstr "REPARTO — RESUMEN POR DOCENTE"
+
+msgid "document.placeholder.academic_year_unavailable"
+msgstr "(curso académico no disponible)"
+
+msgid "document.placeholder.department_unavailable"
+msgstr "(departamento no disponible)"
+
+msgid "document.placeholder.not_recorded"
+msgstr "(no consta)"
+
+msgid "document.placeholder.process_teacher_unavailable"
+msgstr "(docente del proceso no disponible)"
+
+msgid "document.placeholder.school_unavailable"
+msgstr "(centro no disponible)"
+
+msgid "document.placeholder.subject_unavailable"
+msgstr "(materia no disponible)"
+
+msgid "document.placeholder.teacher_profile_unavailable"
+msgstr "(perfil docente no disponible)"
+
+msgid "document.placeholder.teaching_activity_unavailable"
+msgstr "(actividad docente no disponible)"
+
+msgid "document.placeholder.unlinked"
+msgstr "(sin grupo vinculado)"
+
+msgid "document.requirement.uncovered"
+msgstr "  {activity}  posición {position}  {hours} h  [{status}]"
+
+msgid "document.section.assignment_by_group"
+msgstr "REPARTO POR GRUPO"
+
+msgid "document.section.assignment_by_teacher"
+msgstr "REPARTO POR DOCENTE"
+
+msgid "document.section.empty"
+msgstr "  (ninguno)"
+
+msgid "document.section.exceptions_and_justifications"
+msgstr "EXCEPCIONES Y JUSTIFICACIONES"
+
+msgid "document.section.final_assignment_list"
+msgstr "LISTA FINAL DEL REPARTO"
+
+msgid "document.section.final_summary"
+msgstr "RESUMEN FINAL"
+
+msgid "document.section.global_balance"
+msgstr "BALANCE GLOBAL"
+
+msgid "document.section.hours_summary"
+msgstr "RESUMEN DE HORAS"
+
+msgid "document.section.teacher_balances"
+msgstr "BALANCES POR DOCENTE"
+
+msgid "document.section.uncovered_requirements"
+msgstr "REQUISITOS SIN CUBRIR"
+
+msgid "document.section.warnings_and_incidents"
+msgstr "ADVERTENCIAS E INCIDENCIAS"
+
+msgid "document.stale_reason.main_generated_activity_out_of_sync"
+msgstr "Una actividad PRINCIPAL_GENERADA no está sincronizada con su origen."
+
+msgid "document.stale_reason.main_generated_activity_values_changed"
+msgstr "Los valores de una actividad PRINCIPAL_GENERADA cambiaron durante la sincronización con su origen."
+
+msgid "document.stale_reason.teaching_activity_retired"
+msgstr "Se retiró una actividad docente."
+
+msgid "document.teacher.assignment_detail"
+msgstr "      {activity}  {hours} h  [{source}]"
+
+msgid "document.teacher.balance"
+msgstr "  {teacher}\n      objetivo {target}  asignadas {assigned}  diferencia {difference}{flags}"
+
+msgid "document.teacher.overload_authorized"
+msgstr " [SOBRECARGA AUTORIZADA]"
+
+msgid "document.warning.feasibility_not_validated"
+msgstr "  La viabilidad es {status} — este documento no describe un plan validado."
+
+msgid "document.warning.hours_difference"
+msgstr "  Las horas requeridas y asignadas difieren en {hours} h."
+
+msgid "document.warning.no_teaching_plan"
+msgstr "  Todavía no existe ningún plan docente para este proceso."
+
+msgid "document.warning.plan_stale"
+msgstr "  El plan está desactualizado: {reason}"
+
+msgid "document.warning.uncovered_requirements"
+msgid_plural "document.warning.uncovered_requirements.plural"
+msgstr[0] "  Queda {count} requisito sin cubrir."
+msgstr[1] "  Quedan {count} requisitos sin cubrir."

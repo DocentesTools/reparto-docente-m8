@@ -1,0 +1,40 @@
+========================================================================
+RÉPARTITION — BROUILLON INTERNE
+========================================================================
+BROUILLON — document de travail interne, non destiné à la diffusion.
+
+Référence du processus : 00000000-0000-4000-8000-000000000001
+État : PRÊT POUR LA RÉUNION
+État au : 2026-09-14T08:30:00+00:00 (UTC)
+État du plan : OBSOLÈTE
+Faisabilité : IRRÉALISABLE
+Génération : 3
+
+------------------------------------------------------------------------
+ÉQUILIBRE GLOBAL
+------------------------------------------------------------------------
+  Heures allouées aux groupes         4.00
+  Heures requises                     3.50
+  Heures attribuées                   2.00
+  Heures non couvertes                1.50
+
+------------------------------------------------------------------------
+ÉQUILIBRES PAR ENSEIGNANT
+------------------------------------------------------------------------
+  Alice Martin
+      cible 2.00  attribuées 2.00  différence 0.00
+  Bruno García
+      cible 1.50  attribuées 0.00  différence -1.50 [SURCHARGE AUTORISÉE]
+
+------------------------------------------------------------------------
+EXIGENCES NON COUVERTES
+------------------------------------------------------------------------
+  Physics (2A)  position 2  1.50 h  [RÉCONCILIATION REQUISE]
+
+------------------------------------------------------------------------
+AVERTISSEMENTS ET INCIDENTS
+------------------------------------------------------------------------
+  Le plan est obsolète : Les valeurs d'une activité PRINCIPALE_GÉNÉRÉE ont changé pendant la synchronisation avec sa source.
+  La faisabilité est IRRÉALISABLE — ce document ne décrit pas un plan validé.
+  1 exigence reste non couverte.
+  Les heures requises et attribuées diffèrent de 1.50 h.

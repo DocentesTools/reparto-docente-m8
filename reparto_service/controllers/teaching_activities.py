@@ -60,6 +60,7 @@ from reparto_service.enums import (
 )
 from reparto_service.services.calculations import PlanningCalculationService
 from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
+from reparto_service.services.stale_reasons import TEACHING_ACTIVITY_RETIRED
 
 # Plan statuses in which normal activity mutation is allowed (plan §5.6, §20.14):
 # still-planning states. LOCKED / REQUIREMENTS_GENERATED / STALE /
@@ -528,7 +529,7 @@ class TeachingActivityController(DomainController):
         has_requirements: bool,
         has_assignments: bool,
     ) -> None:
-        reason = "A teaching activity was retired."
+        reason = TEACHING_ACTIVITY_RETIRED
         if plan.status in _MUTABLE_PLAN_STATUSES:
             TeachingActivityController._recompute_unlocked_plan_balance(session, plan)
         elif plan.status == TeachingPlanStatus.LOCKED:
@@ -547,9 +548,9 @@ class TeachingActivityController(DomainController):
                 stale_reason=reason if target == TeachingPlanStatus.STALE else None,
             )
             if target == TeachingPlanStatus.RECONCILIATION_REQUIRED:
-                plan.stale_reason = reason
+                TeachingPlanController.set_stale_reason(plan, reason)
         elif has_requirements and plan.stale_reason is None:
-            plan.stale_reason = reason
+            TeachingPlanController.set_stale_reason(plan, reason)
         session.add(plan)
 
     @staticmethod

@@ -489,3 +489,268 @@ msgstr "Le processus {process_id} possède déjà un plan d'enseignement."
 
 msgid "teaching_plans.status_transition_rejected"
 msgstr "Transition d'état refusée : {reason}"
+
+msgid "document.assignment.count"
+msgid_plural "document.assignment.count.plural"
+msgstr[0] "  {teacher} — {count} affectation, {hours} h"
+msgstr[1] "  {teacher} — {count} affectations, {hours} h"
+
+msgid "document.balance.allocated_group_hours"
+msgstr "  Heures allouées aux groupes   {hours}"
+
+msgid "document.balance.assigned_hours"
+msgstr "  Heures attribuées             {hours}"
+
+msgid "document.balance.required_slot_hours"
+msgstr "  Heures requises               {hours}"
+
+msgid "document.balance.uncovered_hours"
+msgstr "  Heures non couvertes          {hours}"
+
+msgid "document.enum.archived"
+msgstr "ARCHIVÉ"
+
+msgid "document.enum.assigned"
+msgstr "ATTRIBUÉ"
+
+msgid "document.enum.assigning"
+msgstr "EN COURS D'ATTRIBUTION"
+
+msgid "document.enum.available"
+msgstr "DISPONIBLE"
+
+msgid "document.enum.balanced"
+msgstr "ÉQUILIBRÉ"
+
+msgid "document.enum.department_head"
+msgstr "RESPONSABLE DU DÉPARTEMENT"
+
+msgid "document.enum.department_proposal"
+msgstr "PROPOSITION DU DÉPARTEMENT"
+
+msgid "document.enum.draft"
+msgstr "BROUILLON"
+
+msgid "document.enum.feasible"
+msgstr "RÉALISABLE"
+
+msgid "document.enum.final"
+msgstr "DÉFINITIF"
+
+msgid "document.enum.imported_from_previous_year"
+msgstr "IMPORTÉ DE L'ANNÉE PRÉCÉDENTE"
+
+msgid "document.enum.infeasible"
+msgstr "IRRÉALISABLE"
+
+msgid "document.enum.internal_revision"
+msgstr "RÉVISION INTERNE"
+
+msgid "document.enum.locked"
+msgstr "VERROUILLÉ"
+
+msgid "document.enum.meeting_open"
+msgstr "RÉUNION OUVERTE"
+
+msgid "document.enum.not_evaluated"
+msgstr "NON ÉVALUÉ"
+
+msgid "document.enum.ready_for_meeting"
+msgstr "PRÊT POUR LA RÉUNION"
+
+msgid "document.enum.reconciliation_required"
+msgstr "RÉCONCILIATION REQUISE"
+
+msgid "document.enum.reopened"
+msgstr "ROUVERT"
+
+msgid "document.enum.requirements_generated"
+msgstr "EXIGENCES GÉNÉRÉES"
+
+msgid "document.enum.returned_by_school_leadership"
+msgstr "RENVOYÉ PAR LA DIRECTION"
+
+msgid "document.enum.sent_to_school_leadership"
+msgstr "ENVOYÉ À LA DIRECTION"
+
+msgid "document.enum.stale"
+msgstr "OBSOLÈTE"
+
+msgid "document.enum.system_copy"
+msgstr "COPIE SYSTÈME"
+
+msgid "document.enum.teacher_direct"
+msgstr "CHOIX DIRECT DE L'ENSEIGNANT"
+
+msgid "document.enum.unbalanced"
+msgstr "DÉSÉQUILIBRÉ"
+
+msgid "document.enum.unknown"
+msgstr "INCONNU"
+
+msgid "document.exception.justification"
+msgstr "      justification : {reason}"
+
+msgid "document.exception.no_reason_recorded"
+msgstr "(aucun motif enregistré)"
+
+msgid "document.exception.summary"
+msgstr "  {teacher} — base {base_hours} h + supplément {extra_hours} h"
+
+msgid "document.field.academic_year"
+msgstr "Année scolaire : {value}"
+
+msgid "document.field.closed_at"
+msgstr "Clôturé le : {value}"
+
+msgid "document.field.department"
+msgstr "Département : {value}"
+
+msgid "document.field.feasibility"
+msgstr "Faisabilité : {value}"
+
+msgid "document.field.generation"
+msgstr "Génération : {value}"
+
+msgid "document.field.plan_missing"
+msgstr "Plan : aucun — la planification n'a pas commencé"
+
+msgid "document.field.plan_status"
+msgstr "État du plan : {value}"
+
+msgid "document.field.process_reference"
+msgstr "Référence du processus : {value}"
+
+msgid "document.field.process_status"
+msgstr "État : {value}"
+
+msgid "document.field.school"
+msgstr "Établissement : {value}"
+
+msgid "document.field.state_as_of"
+msgstr "État au : {value} (UTC)"
+
+msgid "document.field.version"
+msgstr "Version : v{number} ({status})"
+
+msgid "document.field.version_missing"
+msgstr "Version : aucune capture"
+
+msgid "document.group.assignment"
+msgstr "      {activity}  {hours} h  →  {teacher}"
+
+msgid "document.group.heading"
+msgstr "  Groupe {code}"
+
+msgid "document.header.final"
+msgstr "RÉPARTITION — DOCUMENT FINAL"
+
+msgid "document.header.internal_draft"
+msgstr "RÉPARTITION — BROUILLON INTERNE"
+
+msgid "document.header.internal_draft_banner"
+msgstr "BROUILLON — document de travail interne, non destiné à la diffusion."
+
+msgid "document.header.school_leadership"
+msgstr "RÉPARTITION — COPIE POUR LA DIRECTION"
+
+msgid "document.header.teacher_summary"
+msgstr "RÉPARTITION — RÉCAPITULATIF PAR ENSEIGNANT"
+
+msgid "document.placeholder.academic_year_unavailable"
+msgstr "(année scolaire indisponible)"
+
+msgid "document.placeholder.department_unavailable"
+msgstr "(département indisponible)"
+
+msgid "document.placeholder.not_recorded"
+msgstr "(non enregistré)"
+
+msgid "document.placeholder.process_teacher_unavailable"
+msgstr "(enseignant du processus indisponible)"
+
+msgid "document.placeholder.school_unavailable"
+msgstr "(établissement indisponible)"
+
+msgid "document.placeholder.subject_unavailable"
+msgstr "(matière indisponible)"
+
+msgid "document.placeholder.teacher_profile_unavailable"
+msgstr "(profil enseignant indisponible)"
+
+msgid "document.placeholder.teaching_activity_unavailable"
+msgstr "(activité d'enseignement indisponible)"
+
+msgid "document.placeholder.unlinked"
+msgstr "(sans groupe lié)"
+
+msgid "document.requirement.uncovered"
+msgstr "  {activity}  position {position}  {hours} h  [{status}]"
+
+msgid "document.section.assignment_by_group"
+msgstr "RÉPARTITION PAR GROUPE"
+
+msgid "document.section.assignment_by_teacher"
+msgstr "RÉPARTITION PAR ENSEIGNANT"
+
+msgid "document.section.empty"
+msgstr "  (aucun)"
+
+msgid "document.section.exceptions_and_justifications"
+msgstr "EXCEPTIONS ET JUSTIFICATIONS"
+
+msgid "document.section.final_assignment_list"
+msgstr "LISTE FINALE DES AFFECTATIONS"
+
+msgid "document.section.final_summary"
+msgstr "RÉCAPITULATIF FINAL"
+
+msgid "document.section.global_balance"
+msgstr "ÉQUILIBRE GLOBAL"
+
+msgid "document.section.hours_summary"
+msgstr "RÉCAPITULATIF DES HEURES"
+
+msgid "document.section.teacher_balances"
+msgstr "ÉQUILIBRES PAR ENSEIGNANT"
+
+msgid "document.section.uncovered_requirements"
+msgstr "EXIGENCES NON COUVERTES"
+
+msgid "document.section.warnings_and_incidents"
+msgstr "AVERTISSEMENTS ET INCIDENTS"
+
+msgid "document.stale_reason.main_generated_activity_out_of_sync"
+msgstr "Une activité PRINCIPALE_GÉNÉRÉE n'est plus synchronisée avec sa source."
+
+msgid "document.stale_reason.main_generated_activity_values_changed"
+msgstr "Les valeurs d'une activité PRINCIPALE_GÉNÉRÉE ont changé pendant la synchronisation avec sa source."
+
+msgid "document.stale_reason.teaching_activity_retired"
+msgstr "Une activité d'enseignement a été retirée."
+
+msgid "document.teacher.assignment_detail"
+msgstr "      {activity}  {hours} h  [{source}]"
+
+msgid "document.teacher.balance"
+msgstr "  {teacher}\n      cible {target}  attribuées {assigned}  différence {difference}{flags}"
+
+msgid "document.teacher.overload_authorized"
+msgstr " [SURCHARGE AUTORISÉE]"
+
+msgid "document.warning.feasibility_not_validated"
+msgstr "  La faisabilité est {status} — ce document ne décrit pas un plan validé."
+
+msgid "document.warning.hours_difference"
+msgstr "  Les heures requises et attribuées diffèrent de {hours} h."
+
+msgid "document.warning.no_teaching_plan"
+msgstr "  Aucun plan d'enseignement n'existe encore pour ce processus."
+
+msgid "document.warning.plan_stale"
+msgstr "  Le plan est obsolète : {reason}"
+
+msgid "document.warning.uncovered_requirements"
+msgid_plural "document.warning.uncovered_requirements.plural"
+msgstr[0] "  {count} exigence reste non couverte."
+msgstr[1] "  {count} exigences restent non couvertes."

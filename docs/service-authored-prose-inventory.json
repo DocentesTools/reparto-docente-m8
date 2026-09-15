@@ -24,13 +24,13 @@
     {
       "field": "AuditEventPublic.after_json",
       "ownership": "mixed-authorship",
-      "catalog_owner": "The nested source field owns its code/catalog policy; service-generated nested stale reasons move under C14-document-catalog while user fields remain verbatim",
+      "catalog_owner": "The nested source field owns its code/catalog policy; C14-document-catalog owns stable service-generated stale-reason codes while user fields remain verbatim",
       "notes": "Opaque audit snapshots can contain entity labels, user notes, and service-generated values."
     },
     {
       "field": "AuditEventPublic.before_json",
       "ownership": "mixed-authorship",
-      "catalog_owner": "The nested source field owns its code/catalog policy; service-generated nested stale reasons move under C14-document-catalog while user fields remain verbatim",
+      "catalog_owner": "The nested source field owns its code/catalog policy; C14-document-catalog owns stable service-generated stale-reason codes while user fields remain verbatim",
       "notes": "Opaque audit snapshots can contain entity labels, user notes, and service-generated values."
     },
     {

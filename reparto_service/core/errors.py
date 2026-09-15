@@ -10,9 +10,8 @@ from typing import TypeAlias
 from fastapi import HTTPException
 
 
-JsonValue: TypeAlias = (
-    str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
-)
+ScalarJsonValue: TypeAlias = str | int | float | bool | None
+JsonValue: TypeAlias = ScalarJsonValue | list["JsonValue"] | dict[str, "JsonValue"]
 
 _ERROR_CODE_PATTERN = re.compile(r"^[a-z][a-z0-9_.]{0,79}$")
 
@@ -60,4 +59,4 @@ class DomainHTTPException(HTTPException):
         )
 
 
-__all__ = ["DomainHTTPException", "JsonValue"]
+__all__ = ["DomainHTTPException", "JsonValue", "ScalarJsonValue"]

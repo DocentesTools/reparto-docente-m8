@@ -86,6 +86,8 @@ from reparto_service.services.document_rendering import (
     DocumentIdentityContext,
     DocumentRenderingService,
 )
+from reparto_service.services.document_catalog import load_document_catalog
+from reparto_service.services.stale_reasons import ServiceStaleReason
 from reparto_service.services.validations import AssignmentValidationService
 
 #: The literal JSON value the ``ACTIVE`` assignment status serialises to.
@@ -169,6 +171,11 @@ class HistoryController(DomainController):
             and payload.export_type != ExportArtifactType.BACKUP
             else None
         )
+        document_stale_reason = (
+            HistoryController._document_stale_reason(session, process_id)
+            if document_identity is not None
+            else None
+        )
         locale = HistoryController._resolve_locale(payload)
         content = HistoryController._render_artifact(
             payload.format,
@@ -177,6 +184,7 @@ class HistoryController(DomainController):
             versions,
             document_identity,
             locale,
+            document_stale_reason,
         )
         checksum = hashlib.sha256(content.encode("utf-8")).hexdigest()
         artifact = ExportArtifact(
@@ -309,7 +317,14 @@ class HistoryController(DomainController):
                     .order_by(col(DepartmentHourAllocationRevision.revision_number))
                 ).all()
             ],
-            "teaching_plan": (None if plan is None else plan.model_dump(mode="json")),
+            "teaching_plan": (
+                None
+                if plan is None
+                else plan.model_dump(
+                    mode="json",
+                    exclude={"stale_reason_code", "stale_reason_params"},
+                )
+            ),
             "subjects": [
                 row.model_dump(mode="json")
                 for row in session.exec(
@@ -957,6 +972,7 @@ class HistoryController(DomainController):
         versions: list[dict[str, Any]],
         document_identity: Optional[DocumentIdentityContext],
         locale: ExportArtifactLocale,
+        document_stale_reason: ServiceStaleReason | None,
     ) -> str:
         """Render the artifact's stored content for one format/type pair.
 
@@ -998,8 +1014,14 @@ class HistoryController(DomainController):
                 )
             if document_identity is None:  # pragma: no cover - controller invariant
                 raise AssertionError("Document exports require identity enrichment")
+            catalog = load_document_catalog(locale)
             return DocumentRenderingService.render(
-                export_type, snapshot, versions, document_identity, locale
+                export_type,
+                snapshot,
+                versions,
+                document_identity,
+                catalog,
+                document_stale_reason,
             )
         raise AssertionError(
             f"Unsupported export format: {artifact_format}"
@@ -1032,6 +1054,21 @@ class HistoryController(DomainController):
             teacher_display_names_by_profile_id={
                 str(profile.id): profile.display_name for profile in profiles
             },
+        )
+
+    @staticmethod
+    def _document_stale_reason(
+        session: Session,
+        process_id: uuid.UUID,
+    ) -> ServiceStaleReason | None:
+        """Inject new structured metadata; old and user prose remain verbatim."""
+        plan = HistoryController._plan(session, process_id)
+        if plan is None or plan.stale_reason_code is None or plan.stale_reason is None:
+            return None
+        return ServiceStaleReason(
+            code=plan.stale_reason_code,
+            message=plan.stale_reason,
+            params=plan.stale_reason_params or {},
         )
 
     @staticmethod

@@ -8,10 +8,11 @@ into the document plan §15 describes for the requested type.
 
 Two properties the rest of the export flow depends on:
 
-* **It is a pure function of its inputs.** No clock, no session, no query, and
-  no ambient locale: the language a document is rendered in is an explicit
-  ``locale`` argument the controller resolves and persists on the artifact row
-  (C13), never the request ``ContextVar`` the HTTP error boundary reads. The
+* **It is a pure function of its inputs.** No clock, no session, no query, no
+  ambient locale and no ambient catalog load: the controller injects a
+  revision-labelled :class:`DocumentCatalog` whose locale is persisted on the
+  artifact row (C13/C14), never the request ``ContextVar`` the HTTP error
+  boundary reads. The
   artifact's ``checksum`` is a SHA-256 of what this returns, so two exports of
   an unchanged process must produce the same bytes — that is what makes the
   checksum able to answer "has anything moved since the last document?". Where
@@ -41,7 +42,12 @@ from decimal import Decimal
 from typing import Any, Mapping, Optional
 
 from reparto_service.core.decimals import quantize_hours
-from reparto_service.enums import ExportArtifactLocale, ExportArtifactType
+from reparto_service.enums import ExportArtifactType
+from reparto_service.services.document_catalog import (
+    DOCUMENT_TRACE_ID_LINE_PREFIXES,
+    DocumentCatalog,
+)
+from reparto_service.services.stale_reasons import ServiceStaleReason
 
 #: The literal JSON value an ``ACTIVE`` assignment status serialises to.
 _ACTIVE_ASSIGNMENT = "active"
@@ -59,11 +65,6 @@ _ZERO = Decimal("0.00")
 
 _RULE = "=" * 72
 _THIN_RULE = "-" * 72
-
-#: Human-facing line prefixes that may carry a UUID as secondary trace data.
-#: Every other renderer-owned document line must use a human label or a
-#: non-identifying missing-data marker.
-DOCUMENT_TRACE_ID_LINE_PREFIXES = frozenset({"Process reference:"})
 
 
 @dataclass(frozen=True)
@@ -90,7 +91,8 @@ class DocumentRenderingService:
         snapshot: dict[str, Any],
         versions: list[dict[str, Any]],
         identity: DocumentIdentityContext,
-        locale: ExportArtifactLocale,
+        catalog: DocumentCatalog,
+        stale_reason: ServiceStaleReason | None = None,
     ) -> str:
         """Render ``export_type`` from ``snapshot``, or raise for a non-document.
 
@@ -98,17 +100,15 @@ class DocumentRenderingService:
         :meth:`HistoryController._version_summaries` builds them; the leadership
         and final documents name the latest one (plan §15.2, §15.3).
 
-        ``locale`` is the language the document is requested in. It is a
-        modelled input of the render — injected, never read from the request
-        context — so the same snapshot in two languages is two distinct
-        renders. Until the document catalog lands (C14) every locale produces
-        the same English text; what this step fixes is the *contract*: the
-        locale reaches the renderer explicitly and is persisted beside the
-        bytes it produced.
+        ``catalog`` models the language, vocabulary revision, and gettext
+        translator as one injected input. The renderer never reads the request
+        context or loads catalog files. ``stale_reason`` is supplied only for a
+        newly structured generated reason; absent metadata is a historical or
+        user-authored string and remains verbatim.
         """
-        if not isinstance(locale, ExportArtifactLocale):
-            raise TypeError(f"locale must be an ExportArtifactLocale, got {locale!r}")
-        view = _SnapshotView(snapshot, versions, identity, locale)
+        if not isinstance(catalog, DocumentCatalog):
+            raise TypeError(f"catalog must be a DocumentCatalog, got {catalog!r}")
+        view = _SnapshotView(snapshot, versions, identity, catalog, stale_reason)
         if export_type == ExportArtifactType.INTERNAL_DRAFT:
             return _render_internal_draft(view)
         if export_type == ExportArtifactType.SCHOOL_LEADERSHIP:
@@ -140,14 +140,15 @@ class _SnapshotView:
         snapshot: dict[str, Any],
         versions: list[dict[str, Any]],
         identity: DocumentIdentityContext,
-        locale: ExportArtifactLocale,
+        catalog: DocumentCatalog,
+        stale_reason: ServiceStaleReason | None,
     ):
         self.process: dict[str, Any] = snapshot["process"]
         self.plan: Optional[dict[str, Any]] = snapshot.get("teaching_plan")
         self.versions = versions
         self.identity = identity
-        #: The document language, carried to the renderers for C14's catalog.
-        self.locale = locale
+        self.catalog = catalog
+        self.stale_reason = stale_reason
         self.teachers: list[dict[str, Any]] = snapshot["teachers"]
         self.requirements: list[dict[str, Any]] = snapshot["requirements"]
         self.assignments: list[dict[str, Any]] = snapshot["assignments"]
@@ -280,9 +281,15 @@ class _SnapshotView:
         """``Subject (GROUP-A, GROUP-B)`` or a non-identifying placeholder."""
         activity = self.activity_by_id.get(str(activity_id))
         if activity is None:
-            return "(teaching activity unavailable)"
+            return self.catalog.text(
+                "document.placeholder.teaching_activity_unavailable"
+            )
         subject = self.subject_by_id.get(str(activity["subject_id"]))
-        name = str(subject["name"]) if subject else "(subject unavailable)"
+        name = (
+            str(subject["name"])
+            if subject
+            else self.catalog.text("document.placeholder.subject_unavailable")
+        )
         codes = self.group_codes_by_activity.get(str(activity_id), [])
         return f"{name} ({', '.join(codes)})" if codes else name
 
@@ -290,26 +297,34 @@ class _SnapshotView:
         """Resolve a participant through the separately enriched profile map."""
         teacher = self.teacher_by_id.get(str(teacher_id))
         if teacher is None:
-            return "(process teacher unavailable)"
+            return self.catalog.text("document.placeholder.process_teacher_unavailable")
         display_name = self.identity.teacher_display_names_by_profile_id.get(
             str(teacher["teacher_profile_id"])
         )
-        return display_name or "(teacher profile unavailable)"
+        return display_name or self.catalog.text(
+            "document.placeholder.teacher_profile_unavailable"
+        )
 
     @property
     def school_label(self) -> str:
         """School name, with no identifier fallback."""
-        return self.identity.school_name or "(school unavailable)"
+        return self.identity.school_name or self.catalog.text(
+            "document.placeholder.school_unavailable"
+        )
 
     @property
     def department_label(self) -> str:
         """Department name, with no identifier fallback."""
-        return self.identity.department_name or "(department unavailable)"
+        return self.identity.department_name or self.catalog.text(
+            "document.placeholder.department_unavailable"
+        )
 
     @property
     def academic_year_label(self) -> str:
         """Academic-year label, with no identifier fallback."""
-        return self.identity.academic_year_label or "(academic year unavailable)"
+        return self.identity.academic_year_label or self.catalog.text(
+            "document.placeholder.academic_year_unavailable"
+        )
 
 
 def _by_id(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -342,17 +357,30 @@ def _fmt(value: Decimal) -> str:
 # ── Shared document furniture ────────────────────────────────────────────────
 
 
-def _header(view: _SnapshotView, title: str, banner: Optional[str]) -> list[str]:
+def _header(
+    view: _SnapshotView,
+    title_code: str,
+    banner_code: Optional[str],
+) -> list[str]:
     """The block every document opens with (plan §15.1: date and status)."""
-    lines = [_RULE, title, _RULE]
-    if banner is not None:
-        lines.append(banner)
+    lines = [_RULE, view.catalog.text(title_code), _RULE]
+    if banner_code is not None:
+        lines.append(view.catalog.text(banner_code))
         lines.append("")
     lines.extend(
         [
-            f"Process reference: {view.process['id']}",
-            f"Status:         {_label(view.process['status'])}",
-            f"State as of:    {view.process['updated_at']} (UTC)",
+            view.catalog.text(
+                "document.field.process_reference",
+                {"value": str(view.process["id"])},
+            ),
+            view.catalog.text(
+                "document.field.process_status",
+                {"value": view.catalog.enum_label(view.process["status"])},
+            ),
+            view.catalog.text(
+                "document.field.state_as_of",
+                {"value": str(view.process["updated_at"])},
+            ),
         ]
     )
     return lines
@@ -360,30 +388,41 @@ def _header(view: _SnapshotView, title: str, banner: Optional[str]) -> list[str]
 
 def _plan_lines(view: _SnapshotView) -> list[str]:
     if view.plan is None:
-        return ["Plan:           none — planning has not started"]
+        return [view.catalog.text("document.field.plan_missing")]
     return [
-        f"Plan status:    {_label(view.plan['status'])}",
-        f"Feasibility:    {_label(view.plan['feasibility_status'])}",
-        f"Generation:     {view.plan['current_generation_number']}",
+        view.catalog.text(
+            "document.field.plan_status",
+            {"value": view.catalog.enum_label(view.plan["status"])},
+        ),
+        view.catalog.text(
+            "document.field.feasibility",
+            {"value": view.catalog.enum_label(view.plan["feasibility_status"])},
+        ),
+        view.catalog.text(
+            "document.field.generation",
+            {"value": int(view.plan["current_generation_number"])},
+        ),
     ]
 
 
 def _version_line(view: _SnapshotView) -> str:
     version = view.latest_version
     if version is None:
-        return "Version:        none captured"
-    return f"Version:        v{version['version_number']} ({_label(version['status'])})"
+        return view.catalog.text("document.field.version_missing")
+    return view.catalog.text(
+        "document.field.version",
+        {
+            "number": int(version["version_number"]),
+            "status": view.catalog.enum_label(version["status"]),
+        },
+    )
 
 
-def _section(title: str, rows: list[str]) -> list[str]:
+def _section(view: _SnapshotView, title_code: str, rows: list[str]) -> list[str]:
     """A titled block, or an explicit empty marker — never a silent gap."""
-    lines = ["", _THIN_RULE, title, _THIN_RULE]
-    lines.extend(rows if rows else ["  (none)"])
+    lines = ["", _THIN_RULE, view.catalog.text(title_code), _THIN_RULE]
+    lines.extend(rows if rows else [view.catalog.text("document.section.empty")])
     return lines
-
-
-def _label(value: Any) -> str:
-    return str(value).replace("_", " ").upper()
 
 
 def _balance_rows(view: _SnapshotView) -> list[str]:
@@ -391,10 +430,22 @@ def _balance_rows(view: _SnapshotView) -> list[str]:
     required = view.required_hours
     assigned = view.assigned_hours
     return [
-        f"  Allocated group hours   {_fmt(allocated):>10}",
-        f"  Required slot hours     {_fmt(required):>10}",
-        f"  Assigned hours          {_fmt(assigned):>10}",
-        f"  Uncovered hours         {_fmt(quantize_hours(required - assigned)):>10}",
+        view.catalog.text(
+            "document.balance.allocated_group_hours",
+            {"hours": f"{_fmt(allocated):>10}"},
+        ),
+        view.catalog.text(
+            "document.balance.required_slot_hours",
+            {"hours": f"{_fmt(required):>10}"},
+        ),
+        view.catalog.text(
+            "document.balance.assigned_hours",
+            {"hours": f"{_fmt(assigned):>10}"},
+        ),
+        view.catalog.text(
+            "document.balance.uncovered_hours",
+            {"hours": f"{_fmt(quantize_hours(required - assigned)):>10}"},
+        ),
     ]
 
 
@@ -405,12 +456,22 @@ def _teacher_balance_rows(view: _SnapshotView) -> list[str]:
         target = view.teacher_target(teacher)
         assigned = view.assigned_hours_for_teacher(teacher_id)
         difference = quantize_hours(assigned - target)
-        flags = " [OVERLOAD AUTHORIZED]" if view.teacher_is_overloaded(teacher) else ""
+        flags = (
+            view.catalog.text("document.teacher.overload_authorized")
+            if view.teacher_is_overloaded(teacher)
+            else ""
+        )
         rows.append(
-            f"  {view.teacher_label(teacher_id)}"
-            f"\n      target {_fmt(target)}"
-            f"  assigned {_fmt(assigned)}"
-            f"  difference {_fmt(difference)}{flags}"
+            view.catalog.text(
+                "document.teacher.balance",
+                {
+                    "teacher": view.teacher_label(teacher_id),
+                    "target": _fmt(target),
+                    "assigned": _fmt(assigned),
+                    "difference": _fmt(difference),
+                    "flags": flags,
+                },
+            )
         )
     return rows
 
@@ -426,14 +487,27 @@ def _assignments_by_teacher_rows(view: _SnapshotView) -> list[str]:
         ]
         assigned = view.assigned_hours_for_teacher(teacher_id)
         rows.append(
-            f"  {view.teacher_label(teacher_id)}"
-            f" — {len(mine)} assignment(s), {_fmt(assigned)} h"
+            view.catalog.plural(
+                "document.assignment.count",
+                len(mine),
+                {
+                    "teacher": view.teacher_label(teacher_id),
+                    "count": len(mine),
+                    "hours": _fmt(assigned),
+                },
+            )
         )
         for row in sorted(mine, key=lambda item: str(item["id"])):
             hours = view.requirement_hours(row["hour_requirement_id"])
             rows.append(
-                f"      {view.activity_label(row['teaching_activity_id'])}"
-                f"  {hours} h  [{_label(row['source'])}]"
+                view.catalog.text(
+                    "document.teacher.assignment_detail",
+                    {
+                        "activity": view.activity_label(row["teaching_activity_id"]),
+                        "hours": hours,
+                        "source": view.catalog.enum_label(row["source"]),
+                    },
+                )
             )
     return rows
 
@@ -443,27 +517,39 @@ def _assignments_by_group_rows(view: _SnapshotView) -> list[str]:
     by_group: dict[str, list[str]] = {}
     for row in sorted(view.active_assignments, key=lambda item: str(item["id"])):
         codes = view.group_codes_by_activity.get(
-            str(row["teaching_activity_id"]), ["(unlinked)"]
+            str(row["teaching_activity_id"]),
+            [view.catalog.text("document.placeholder.unlinked")],
         )
         hours = view.requirement_hours(row["hour_requirement_id"])
         for code in codes:
             by_group.setdefault(code, []).append(
-                f"      {view.activity_label(row['teaching_activity_id'])}"
-                f"  {hours} h  →  {view.teacher_label(row['process_teacher_id'])}"
+                view.catalog.text(
+                    "document.group.assignment",
+                    {
+                        "activity": view.activity_label(row["teaching_activity_id"]),
+                        "hours": hours,
+                        "teacher": view.teacher_label(row["process_teacher_id"]),
+                    },
+                )
             )
     rows = []
     for code in sorted(by_group):
-        rows.append(f"  Group {code}")
+        rows.append(view.catalog.text("document.group.heading", {"code": code}))
         rows.extend(by_group[code])
     return rows
 
 
 def _uncovered_rows(view: _SnapshotView) -> list[str]:
     return [
-        f"  {view.activity_label(row['teaching_activity_id'])}"
-        f"  position {row['position_index']}"
-        f"  {row['required_teacher_hours']} h"
-        f"  [{_label(row['status'])}]"
+        view.catalog.text(
+            "document.requirement.uncovered",
+            {
+                "activity": view.activity_label(row["teaching_activity_id"]),
+                "position": int(row["position_index"]),
+                "hours": str(row["required_teacher_hours"]),
+                "status": view.catalog.enum_label(row["status"]),
+            },
+        )
         for row in view.uncovered_requirements
     ]
 
@@ -474,12 +560,26 @@ def _exception_rows(view: _SnapshotView) -> list[str]:
     for teacher in view.teachers:
         if not view.teacher_is_overloaded(teacher):
             continue
-        reason = teacher.get("extra_hours_reason") or "(no reason recorded)"
+        reason = teacher.get("extra_hours_reason") or view.catalog.text(
+            "document.exception.no_reason_recorded"
+        )
         rows.append(
-            f"  {view.teacher_label(teacher['id'])}"
-            f" — base {teacher['base_weekly_hours']} h"
-            f" + extra {teacher['extra_weekly_hours']} h"
-            f"\n      justification: {reason}"
+            "\n".join(
+                (
+                    view.catalog.text(
+                        "document.exception.summary",
+                        {
+                            "teacher": view.teacher_label(teacher["id"]),
+                            "base_hours": str(teacher["base_weekly_hours"]),
+                            "extra_hours": str(teacher["extra_weekly_hours"]),
+                        },
+                    ),
+                    view.catalog.text(
+                        "document.exception.justification",
+                        {"reason": str(reason)},
+                    ),
+                )
+            )
         )
     return rows
 
@@ -488,22 +588,50 @@ def _warning_rows(view: _SnapshotView) -> list[str]:
     """Everything a reader must not mistake for a settled plan (plan §15.1)."""
     rows = []
     if view.plan is None:
-        rows.append("  No teaching plan exists for this process yet.")
+        rows.append(view.catalog.text("document.warning.no_teaching_plan"))
     else:
         if view.plan.get("stale_reason"):
-            rows.append(f"  Plan is stale: {view.plan['stale_reason']}")
+            stored_reason = str(view.plan["stale_reason"])
+            reason = (
+                view.catalog.stored_reason(
+                    view.stale_reason.code,
+                    view.stale_reason.message,
+                    view.stale_reason.params,
+                )
+                if view.stale_reason is not None
+                else stored_reason
+            )
+            rows.append(
+                view.catalog.text("document.warning.plan_stale", {"reason": reason})
+            )
         if str(view.plan["feasibility_status"]).lower() != "feasible":
             rows.append(
-                "  Feasibility is "
-                f"{_label(view.plan['feasibility_status'])} — this document does "
-                "not describe a validated plan."
+                view.catalog.text(
+                    "document.warning.feasibility_not_validated",
+                    {
+                        "status": view.catalog.enum_label(
+                            view.plan["feasibility_status"]
+                        )
+                    },
+                )
             )
     uncovered = view.uncovered_requirements
     if uncovered:
-        rows.append(f"  {len(uncovered)} requirement slot(s) are still uncovered.")
+        rows.append(
+            view.catalog.plural(
+                "document.warning.uncovered_requirements",
+                len(uncovered),
+                {"count": len(uncovered)},
+            )
+        )
     difference = quantize_hours(view.required_hours - view.assigned_hours)
     if difference != _ZERO:
-        rows.append(f"  Required and assigned hours differ by {_fmt(difference)} h.")
+        rows.append(
+            view.catalog.text(
+                "document.warning.hours_difference",
+                {"hours": _fmt(difference)},
+            )
+        )
     return rows
 
 
@@ -514,14 +642,28 @@ def _render_internal_draft(view: _SnapshotView) -> str:
     """Plan §15.1: the department's own working document."""
     lines = _header(
         view,
-        "REPARTO — INTERNAL DRAFT",
-        "DRAFT — internal working document, not for distribution.",
+        "document.header.internal_draft",
+        "document.header.internal_draft_banner",
     )
     lines.extend(_plan_lines(view))
-    lines.extend(_section("GLOBAL BALANCE", _balance_rows(view)))
-    lines.extend(_section("TEACHER BALANCES", _teacher_balance_rows(view)))
-    lines.extend(_section("UNCOVERED REQUIREMENTS", _uncovered_rows(view)))
-    lines.extend(_section("WARNINGS AND INCIDENTS", _warning_rows(view)))
+    lines.extend(_section(view, "document.section.global_balance", _balance_rows(view)))
+    lines.extend(
+        _section(view, "document.section.teacher_balances", _teacher_balance_rows(view))
+    )
+    lines.extend(
+        _section(
+            view,
+            "document.section.uncovered_requirements",
+            _uncovered_rows(view),
+        )
+    )
+    lines.extend(
+        _section(
+            view,
+            "document.section.warnings_and_incidents",
+            _warning_rows(view),
+        )
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -529,23 +671,52 @@ def _render_school_leadership(view: _SnapshotView) -> str:
     """Plan §15.2: the copy that leaves the department."""
     lines = _header(
         view,
-        "REPARTO — SCHOOL LEADERSHIP COPY",
+        "document.header.school_leadership",
         None,
     )
     lines.extend(
         [
-            f"School:         {view.school_label}",
-            f"Department:     {view.department_label}",
-            f"Academic year:  {view.academic_year_label}",
+            view.catalog.text("document.field.school", {"value": view.school_label}),
+            view.catalog.text(
+                "document.field.department", {"value": view.department_label}
+            ),
+            view.catalog.text(
+                "document.field.academic_year",
+                {"value": view.academic_year_label},
+            ),
             _version_line(view),
         ]
     )
     lines.extend(_plan_lines(view))
-    lines.extend(_section("ASSIGNMENT BY TEACHER", _assignments_by_teacher_rows(view)))
-    lines.extend(_section("ASSIGNMENT BY GROUP", _assignments_by_group_rows(view)))
-    lines.extend(_section("HOURS SUMMARY", _balance_rows(view)))
-    lines.extend(_section("EXCEPTIONS AND JUSTIFICATIONS", _exception_rows(view)))
-    lines.extend(_section("WARNINGS AND INCIDENTS", _warning_rows(view)))
+    lines.extend(
+        _section(
+            view,
+            "document.section.assignment_by_teacher",
+            _assignments_by_teacher_rows(view),
+        )
+    )
+    lines.extend(
+        _section(
+            view,
+            "document.section.assignment_by_group",
+            _assignments_by_group_rows(view),
+        )
+    )
+    lines.extend(_section(view, "document.section.hours_summary", _balance_rows(view)))
+    lines.extend(
+        _section(
+            view,
+            "document.section.exceptions_and_justifications",
+            _exception_rows(view),
+        )
+    )
+    lines.extend(
+        _section(
+            view,
+            "document.section.warnings_and_incidents",
+            _warning_rows(view),
+        )
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -556,29 +727,54 @@ def _render_teacher_summary(view: _SnapshotView) -> str:
     participant's balance — the confidentiality tier §20.25 calls
     department-head stays in the two documents above.
     """
-    lines = _header(view, "REPARTO — TEACHER SUMMARY", None)
+    lines = _header(view, "document.header.teacher_summary", None)
     lines.append(_version_line(view))
-    lines.extend(_section("ASSIGNMENT BY TEACHER", _assignments_by_teacher_rows(view)))
+    lines.extend(
+        _section(
+            view,
+            "document.section.assignment_by_teacher",
+            _assignments_by_teacher_rows(view),
+        )
+    )
     return "\n".join(lines) + "\n"
 
 
 def _render_final(view: _SnapshotView) -> str:
     """Plan §15.3: the closing document, produced only from an accepted reparto."""
-    lines = _header(view, "REPARTO — FINAL", None)
-    closed_at = view.process.get("closed_at") or "(not recorded)"
+    lines = _header(view, "document.header.final", None)
+    closed_at = view.process.get("closed_at") or view.catalog.text(
+        "document.placeholder.not_recorded"
+    )
     lines.extend(
         [
-            f"School:         {view.school_label}",
-            f"Department:     {view.department_label}",
-            f"Academic year:  {view.academic_year_label}",
+            view.catalog.text("document.field.school", {"value": view.school_label}),
+            view.catalog.text(
+                "document.field.department", {"value": view.department_label}
+            ),
+            view.catalog.text(
+                "document.field.academic_year",
+                {"value": view.academic_year_label},
+            ),
             _version_line(view),
-            f"Closed at:      {closed_at}",
+            view.catalog.text("document.field.closed_at", {"value": str(closed_at)}),
         ]
     )
     lines.extend(_plan_lines(view))
-    lines.extend(_section("FINAL ASSIGNMENT LIST", _assignments_by_teacher_rows(view)))
-    lines.extend(_section("FINAL SUMMARY", _balance_rows(view)))
-    lines.extend(_section("EXCEPTIONS AND JUSTIFICATIONS", _exception_rows(view)))
+    lines.extend(
+        _section(
+            view,
+            "document.section.final_assignment_list",
+            _assignments_by_teacher_rows(view),
+        )
+    )
+    lines.extend(_section(view, "document.section.final_summary", _balance_rows(view)))
+    lines.extend(
+        _section(
+            view,
+            "document.section.exceptions_and_justifications",
+            _exception_rows(view),
+        )
+    )
     return "\n".join(lines) + "\n"
 
 

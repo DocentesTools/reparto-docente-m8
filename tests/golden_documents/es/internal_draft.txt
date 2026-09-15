@@ -1,0 +1,40 @@
+========================================================================
+REPARTO — BORRADOR INTERNO
+========================================================================
+BORRADOR — documento de trabajo interno, no distribuible.
+
+Referencia del proceso: 00000000-0000-4000-8000-000000000001
+Estado: LISTO PARA LA REUNIÓN
+Estado a fecha de: 2026-09-14T08:30:00+00:00 (UTC)
+Estado del plan: DESACTUALIZADO
+Viabilidad: INVIABLE
+Generación: 3
+
+------------------------------------------------------------------------
+BALANCE GLOBAL
+------------------------------------------------------------------------
+  Horas asignadas a grupos         4.00
+  Horas requeridas                 3.50
+  Horas asignadas                  2.00
+  Horas sin cubrir                 1.50
+
+------------------------------------------------------------------------
+BALANCES POR DOCENTE
+------------------------------------------------------------------------
+  Alice Martin
+      objetivo 2.00  asignadas 2.00  diferencia 0.00
+  Bruno García
+      objetivo 1.50  asignadas 0.00  diferencia -1.50 [SOBRECARGA AUTORIZADA]
+
+------------------------------------------------------------------------
+REQUISITOS SIN CUBRIR
+------------------------------------------------------------------------
+  Physics (2A)  posición 2  1.50 h  [REQUIERE CONCILIACIÓN]
+
+------------------------------------------------------------------------
+ADVERTENCIAS E INCIDENCIAS
+------------------------------------------------------------------------
+  El plan está desactualizado: Los valores de una actividad PRINCIPAL_GENERADA cambiaron durante la sincronización con su origen.
+  La viabilidad es INVIABLE — este documento no describe un plan validado.
+  Queda 1 requisito sin cubrir.
+  Las horas requeridas y asignadas difieren en 1.50 h.

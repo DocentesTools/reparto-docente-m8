@@ -28,7 +28,7 @@ from typing import Optional
 
 from fastapi_m8 import TimestampMixin
 from pydantic import Field
-from sqlalchemy import DateTime, UniqueConstraint
+from sqlalchemy import JSON, DateTime, UniqueConstraint
 from sqlmodel import Column, Field as SQLField, SQLModel
 
 from reparto_service.core.db_models import (
@@ -36,6 +36,7 @@ from reparto_service.core.db_models import (
     enum_column_type,
     prefixed_tables,
 )
+from reparto_service.core.errors import ScalarJsonValue
 from reparto_service.enums import FeasibilityStatus, TeachingPlanStatus
 
 
@@ -108,6 +109,22 @@ class TeachingPlan(TimestampMixin, SQLModel, table=True):
         default=None,
         max_length=500,
         description="Why the plan was marked stale (plan §5.2, §20.14).",
+    )
+    stale_reason_code: Optional[str] = SQLField(
+        default=None,
+        max_length=80,
+        description=(
+            "Internal stable code for a service-authored stale reason; NULL for "
+            "historical and user-authored reasons (C14)."
+        ),
+    )
+    stale_reason_params: Optional[dict[str, ScalarJsonValue]] = SQLField(
+        default=None,
+        sa_column=Column("stale_reason_params", JSON, nullable=True),
+        description=(
+            "Language-neutral parameters for stale_reason_code; excluded from "
+            "the public and restorable snapshot contracts (C14)."
+        ),
     )
     feasibility_status: FeasibilityStatus = SQLField(
         default=FeasibilityStatus.NOT_EVALUATED,

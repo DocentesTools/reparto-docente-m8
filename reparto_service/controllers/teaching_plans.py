@@ -53,6 +53,7 @@ from reparto_service.services.planning_lifecycle import (
     TEACHING_PLAN_LIFECYCLE,
     IllegalStateTransitionError,
 )
+from reparto_service.services.stale_reasons import ServiceStaleReason
 from reparto_service.services.validations import PlanValidationService
 from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 
@@ -376,14 +377,15 @@ class TeachingPlanController(DomainController):
         plan: TeachingPlan,
         target: TeachingPlanStatus,
         *,
-        stale_reason: str | None = None,
+        stale_reason: str | ServiceStaleReason | None = None,
     ) -> None:
         """Validate and apply a plan status change against the lifecycle table.
 
-        Raises 409 on an illegal edge. Moving to ``STALE`` records the reason
-        and resets feasibility to ``NOT_EVALUATED`` (plan §20.14); leaving
-        ``STALE`` clears the reason. Does not commit — the caller owns the
-        transaction.
+        Raises 409 on an illegal edge. Moving to ``STALE`` records a generated
+        reason as stable code/params or a user reason as verbatim prose, then
+        resets feasibility to ``NOT_EVALUATED`` (plan §20.14); leaving
+        ``STALE`` clears all reason fields. Does not commit — the caller owns
+        the transaction.
         """
         try:
             TEACHING_PLAN_LIFECYCLE.assert_allowed(plan.status, target)
@@ -396,10 +398,30 @@ class TeachingPlanController(DomainController):
             ) from exc
         plan.status = target
         if target == TeachingPlanStatus.STALE:
-            plan.stale_reason = stale_reason
+            TeachingPlanController.set_stale_reason(plan, stale_reason)
             TeachingPlanController._reset_feasibility(plan)
         else:
-            plan.stale_reason = None
+            TeachingPlanController.set_stale_reason(plan, None)
+
+    @staticmethod
+    def set_stale_reason(
+        plan: TeachingPlan,
+        reason: str | ServiceStaleReason | None,
+    ) -> None:
+        """Persist generated reason metadata without changing the public prose.
+
+        A plain string is explicitly user-authored (or historical on restore),
+        so it remains verbatim and carries no catalog code. The stable fields
+        are internal and excluded from the backup/public contracts.
+        """
+        if isinstance(reason, ServiceStaleReason):
+            plan.stale_reason = reason.message
+            plan.stale_reason_code = reason.code
+            plan.stale_reason_params = dict(reason.params)
+            return
+        plan.stale_reason = reason
+        plan.stale_reason_code = None
+        plan.stale_reason_params = None
 
     # ── Internal helpers ─────────────────────────────────────────────────────
 

@@ -61,6 +61,10 @@ from reparto_service.enums import (
 from reparto_service.services.calculations import PlanningCalculationService
 from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 from reparto_service.services.group_subject_sync import GroupSubjectSyncService
+from reparto_service.services.stale_reasons import (
+    MAIN_GENERATED_ACTIVITY_OUT_OF_SYNC,
+    MAIN_GENERATED_ACTIVITY_VALUES_CHANGED,
+)
 from reparto_service.schemas.non_exception_prose import (
     CODE_GROUP_SUBJECT_INVERTED_GRADE_RANGE,
     CODE_GROUP_SUBJECT_NO_ROW_TO_UPDATE,
@@ -635,7 +639,7 @@ class GroupSubjectController(DomainController):
         ).first()
         if plan is None:
             return
-        reason = "A MAIN_GENERATED activity is out of sync with its source."
+        reason = MAIN_GENERATED_ACTIVITY_OUT_OF_SYNC
         if plan.status == TeachingPlanStatus.BALANCED:
             TeachingPlanController.apply_status_transition(
                 plan, TeachingPlanStatus.UNBALANCED
@@ -656,7 +660,7 @@ class GroupSubjectController(DomainController):
                 stale_reason=reason if target == TeachingPlanStatus.STALE else None,
             )
             if target == TeachingPlanStatus.RECONCILIATION_REQUIRED:
-                plan.stale_reason = reason
+                TeachingPlanController.set_stale_reason(plan, reason)
         session.add(plan)
 
     @staticmethod
@@ -681,7 +685,7 @@ class GroupSubjectController(DomainController):
             if plan.status != target:
                 TeachingPlanController.apply_status_transition(plan, target)
             return
-        reason = "MAIN_GENERATED activity values changed during source sync."
+        reason = MAIN_GENERATED_ACTIVITY_VALUES_CHANGED
         if plan.status == TeachingPlanStatus.LOCKED:
             TeachingPlanController.apply_status_transition(
                 plan, TeachingPlanStatus.STALE, stale_reason=reason
@@ -698,7 +702,7 @@ class GroupSubjectController(DomainController):
                 stale_reason=reason if target == TeachingPlanStatus.STALE else None,
             )
             if target == TeachingPlanStatus.RECONCILIATION_REQUIRED:
-                plan.stale_reason = reason
+                TeachingPlanController.set_stale_reason(plan, reason)
         session.add(plan)
 
     @staticmethod

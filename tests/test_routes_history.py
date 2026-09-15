@@ -49,6 +49,10 @@ from reparto_service.services.document_rendering import (
     DocumentIdentityContext,
     DocumentRenderingService,
 )
+from reparto_service.services.document_catalog import load_document_catalog
+from reparto_service.services.stale_reasons import (
+    MAIN_GENERATED_ACTIVITY_VALUES_CHANGED,
+)
 from tests import factories
 
 
@@ -250,6 +254,36 @@ def test_backup_snapshot_without_plan(client: TestClient, session: Session) -> N
     assert snapshot["teaching_plan"] is None
     assert snapshot["teaching_activities"] == []
     assert snapshot["requirements"] == []
+
+
+def test_backup_excludes_internal_stale_reason_catalog_metadata(
+    client: TestClient, session: Session
+) -> None:
+    process, *_ = _full_source(session)
+    plan = _plan(session, process.id)
+    assert plan is not None
+    plan.status = TeachingPlanStatus.STALE
+    plan.stale_reason = MAIN_GENERATED_ACTIVITY_VALUES_CHANGED.message
+    plan.stale_reason_code = MAIN_GENERATED_ACTIVITY_VALUES_CHANGED.code
+    plan.stale_reason_params = {}
+    session.add(plan)
+    session.commit()
+
+    stored_plan = json.loads(_backup_content(client, process.id))["teaching_plan"]
+
+    assert stored_plan["stale_reason"] == MAIN_GENERATED_ACTIVITY_VALUES_CHANGED.message
+    assert "stale_reason_code" not in stored_plan
+    assert "stale_reason_params" not in stored_plan
+
+    rendered = client.post(
+        f"/reparto/assignment-processes/{process.id}/exports",
+        json={"export_type": "internal_draft", "format": "pdf", "locale": "es"},
+    )
+    assert rendered.status_code == 201, rendered.text
+    assert (
+        "Los valores de una actividad PRINCIPAL_GENERADA cambiaron durante la "
+        "sincronización con su origen."
+    ) in rendered.json()["content"]
 
 
 def test_document_identity_keeps_backup_bytes_and_restore_contract_unchanged(
@@ -480,10 +514,10 @@ def test_rows_written_before_the_locale_column_read_back_as_english(
     assert listed["data"][0]["content"] == content
 
 
-def test_renderer_refuses_a_locale_that_is_not_the_closed_enum(
+def test_renderer_refuses_an_unmodelled_catalog(
     client: TestClient, session: Session
 ) -> None:
-    """A bare string is a programming error, not a language."""
+    """A bare string is a programming error, not an injected catalog."""
     process, *_ = _full_source(session)
     snapshot = _document_snapshot(client, process.id)
 
@@ -496,7 +530,7 @@ def test_renderer_refuses_a_locale_that_is_not_the_closed_enum(
             "es",  # type: ignore[arg-type]
         )
     except TypeError as error:
-        assert "ExportArtifactLocale" in str(error)
+        assert "DocumentCatalog" in str(error)
     else:  # pragma: no cover - the assertion above is the test
         raise AssertionError("a str locale must be refused")
 
@@ -1155,7 +1189,7 @@ def test_renderer_skips_a_link_whose_group_subject_is_missing(
         snapshot,
         [],
         _document_identity(snapshot),
-        ExportArtifactLocale.EN,
+        load_document_catalog(ExportArtifactLocale.EN),
     )
 
     # The document is still produced, and the activity is simply named without
@@ -1178,7 +1212,7 @@ def test_renderer_skips_a_link_whose_teaching_group_is_missing(
         snapshot,
         [],
         _document_identity(snapshot),
-        ExportArtifactLocale.EN,
+        load_document_catalog(ExportArtifactLocale.EN),
     )
 
     assert content
@@ -1217,7 +1251,7 @@ def test_renderer_lists_a_repeated_group_code_once(
         snapshot,
         [],
         _document_identity(snapshot),
-        ExportArtifactLocale.EN,
+        load_document_catalog(ExportArtifactLocale.EN),
     )
 
     group = next(
@@ -1255,7 +1289,7 @@ def test_renderer_uses_placeholders_for_missing_activity_and_process_teacher(
         snapshot,
         [],
         _document_identity(snapshot),
-        ExportArtifactLocale.EN,
+        load_document_catalog(ExportArtifactLocale.EN),
     )
 
     assert "(teaching activity unavailable)" in content
@@ -1280,7 +1314,7 @@ def test_renderer_uses_a_placeholder_when_a_teacher_profile_is_missing(
         snapshot,
         [],
         _document_identity(snapshot, missing_profile_id=missing_profile_id),
-        ExportArtifactLocale.EN,
+        load_document_catalog(ExportArtifactLocale.EN),
     )
 
     assert "(teacher profile unavailable)" in content
@@ -1302,7 +1336,7 @@ def test_renderer_uses_a_placeholder_when_an_activity_subject_is_missing(
         snapshot,
         [],
         _document_identity(snapshot),
-        ExportArtifactLocale.EN,
+        load_document_catalog(ExportArtifactLocale.EN),
     )
 
     assert "(subject unavailable)" in content
@@ -1329,7 +1363,11 @@ def test_document_uuid_lines_are_limited_to_the_trace_allowlist(
         ExportArtifactType.FINAL,
     ):
         content = DocumentRenderingService.render(
-            export_type, snapshot, [], identity, ExportArtifactLocale.EN
+            export_type,
+            snapshot,
+            [],
+            identity,
+            load_document_catalog(ExportArtifactLocale.EN),
         )
         uuid_lines = [
             line for line in content.splitlines() if uuid_pattern.search(line)
@@ -1354,7 +1392,7 @@ def test_renderer_warns_that_a_stale_plan_is_stale(
         snapshot,
         [],
         _document_identity(snapshot),
-        ExportArtifactLocale.EN,
+        load_document_catalog(ExportArtifactLocale.EN),
     )
 
     assert "Plan is stale: allocation changed after locking" in content
@@ -1383,7 +1421,7 @@ def test_renderer_warns_that_an_unvalidated_plan_is_not_validated(
         snapshot,
         [],
         _document_identity(snapshot),
-        ExportArtifactLocale.EN,
+        load_document_catalog(ExportArtifactLocale.EN),
     )
 
     assert "Feasibility is INFEASIBLE" in content

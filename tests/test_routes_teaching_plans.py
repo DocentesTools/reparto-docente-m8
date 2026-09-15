@@ -439,6 +439,10 @@ def test_mark_stale_from_locked_resets_feasibility(
     )
     assert result.status == TeachingPlanStatus.STALE
     assert result.stale_reason == "Allocation revised"
+    stored = TeachingPlanController._plan_row(session, process.id)
+    assert stored is not None
+    assert stored.stale_reason_code is None
+    assert stored.stale_reason_params is None
     # Any relevant change resets feasibility to NOT_EVALUATED (plan §20.14).
     assert result.feasibility_status == FeasibilityStatus.NOT_EVALUATED
 
@@ -494,3 +498,5 @@ def test_apply_transition_out_of_stale_clears_reason(
     )
     assert plan.status == TeachingPlanStatus.REQUIREMENTS_GENERATED
     assert plan.stale_reason is None
+    assert plan.stale_reason_code is None
+    assert plan.stale_reason_params is None

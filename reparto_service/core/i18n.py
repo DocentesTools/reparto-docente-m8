@@ -6,6 +6,7 @@ import gettext
 import re
 from collections.abc import Mapping
 from contextvars import ContextVar, Token
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from string import Formatter
@@ -163,6 +164,64 @@ def _formatted_or_default(
         return default
 
 
+@dataclass(frozen=True)
+class TranslationCatalog:
+    """An explicit gettext translator and the revision its caller models.
+
+    Request-bound messages may continue to use :func:`current_locale`, but a
+    pure renderer receives this object as an input.  Formatting remains
+    fail-safe: missing messages or a parameter-shape mismatch preserve the
+    caller's supplied English compatibility fallback.
+    """
+
+    locale: str
+    revision: str
+    _translations: gettext.NullTranslations
+
+    def gettext(
+        self,
+        code: str,
+        default: str,
+        params: Mapping[str, JsonValue],
+    ) -> str:
+        """Translate and format one message, or return ``default``."""
+        template = self._translations.gettext(code)
+        if template == code:
+            return _formatted_or_default(default, default, params)
+        return _formatted_or_default(template, default, params)
+
+    def ngettext(
+        self,
+        code: str,
+        plural_code: str,
+        default: str,
+        plural_default: str,
+        count: int,
+        params: Mapping[str, JsonValue],
+    ) -> str:
+        """Translate one plural using the loaded locale's plural rule."""
+        template = self._translations.ngettext(code, plural_code, count)
+        selected_default = default if count == 1 else plural_default
+        if template in {code, plural_code}:
+            return _formatted_or_default(selected_default, selected_default, params)
+        return _formatted_or_default(template, selected_default, params)
+
+
+def load_translation_catalog(
+    locale: str,
+    *,
+    revision: str,
+    localedir: Path | None = None,
+) -> TranslationCatalog:
+    """Load an explicit, revision-labelled translator for a pure consumer."""
+    selected_locale = locale if locale in SUPPORTED_LOCALES else DEFAULT_LOCALE
+    return TranslationCatalog(
+        locale=selected_locale,
+        revision=revision,
+        _translations=_catalog(selected_locale, localedir),
+    )
+
+
 def translate_service_message(
     code: str,
     default: str,
@@ -287,9 +346,11 @@ __all__ = [
     "PLURAL_COUNT_PARAMS",
     "SUPPORTED_LOCALES",
     "LocaleMiddleware",
+    "TranslationCatalog",
     "current_locale",
     "domain_http_exception_handler",
     "localized_response_headers",
+    "load_translation_catalog",
     "negotiate_locale",
     "reset_current_locale",
     "set_current_locale",

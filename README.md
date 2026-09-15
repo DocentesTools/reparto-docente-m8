@@ -349,10 +349,17 @@ CSV or a `pdf` document) and persists the language it was requested under: an
 optional body `locale` (`en` / `es` / `fr`) wins, else the locale negotiated
 from `Accept-Language`, else English; every row answers with its `locale`, and
 rows written before the column existed read back as `en`, the language they
-were rendered in. Only the `pdf` document renderer reads it — the locale is an
-explicit renderer input, never the request context — while JSON and CSV bytes
-are language-neutral and identical whatever language the row records. The
-`checksum` stays `sha256(content)` and is never salted with the locale. A
+were rendered in. Only the `pdf` document renderer reads it: its explicit,
+revision-labelled gettext catalog is loaded outside the pure renderer and
+injected as an input, never read from request context. The four human-readable
+document types translate service-owned vocabulary, plural sentences, and
+document-only enum labels in English, Spanish, or French. Generated plan-stale
+reasons carry an internal stable code and language-neutral parameters so they
+can be rendered in the artifact locale; historical and user-authored reasons
+stay verbatim. That internal metadata is excluded from public and backup
+schemas. JSON and CSV bytes remain language-neutral and identical whatever
+language the row records, and `checksum` stays `sha256(content)` without locale
+or catalog metadata. A
 `backup` artifact carries the complete restorable three-stage domain —
 process settings, allocation revisions, teaching plan, subjects, groups,
 group-subject matrix, teaching activities and their links, the generated
