@@ -2,15 +2,15 @@
 REPARTO — COPIA PARA EL EQUIPO DIRECTIVO
 ========================================================================
 Referencia del proceso: 00000000-0000-4000-8000-000000000001
-Estado: LISTO PARA LA REUNIÓN
-Estado a fecha de: 2026-09-14T08:30:00+00:00 (UTC)
-Centro: IES Test
-Departamento: Science
-Curso académico: 2026/2027
-Versión: v4 (PROPUESTA DEL DEPARTAMENTO)
-Estado del plan: DESACTUALIZADO
-Viabilidad: INVIABLE
-Generación: 3
+Estado:             LISTO PARA LA REUNIÓN
+Estado a fecha de:  2026-09-14T08:30:00+00:00 (UTC)
+Centro:             IES Test
+Departamento:       Science
+Curso académico:    2026/2027
+Versión:            v4 (PROPUESTA DEL DEPARTAMENTO)
+Estado del plan:    DESACTUALIZADO
+Viabilidad:         INVIABLE
+Generación:         3
 
 ------------------------------------------------------------------------
 REPARTO POR DOCENTE
@@ -42,7 +42,7 @@ EXCEPCIONES Y JUSTIFICACIONES
 ------------------------------------------------------------------------
 ADVERTENCIAS E INCIDENCIAS
 ------------------------------------------------------------------------
-  El plan está desactualizado: Los valores de una actividad PRINCIPAL_GENERADA cambiaron durante la sincronización con su origen.
+  El plan está desactualizado: Los valores de una actividad principal generada automáticamente cambiaron durante la sincronización con su origen.
   La viabilidad es INVIABLE — este documento no describe un plan validado.
   Queda 1 requisito sin cubrir.
   Las horas requeridas y asignadas difieren en 1.50 h.

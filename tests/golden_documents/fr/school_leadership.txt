@@ -2,15 +2,15 @@
 RÉPARTITION — COPIE POUR LA DIRECTION
 ========================================================================
 Référence du processus : 00000000-0000-4000-8000-000000000001
-État : PRÊT POUR LA RÉUNION
-État au : 2026-09-14T08:30:00+00:00 (UTC)
-Établissement : IES Test
-Département : Science
-Année scolaire : 2026/2027
-Version : v4 (PROPOSITION DU DÉPARTEMENT)
-État du plan : OBSOLÈTE
-Faisabilité : IRRÉALISABLE
-Génération : 3
+État :            PRÊT POUR LA RÉUNION
+État au :         2026-09-14T08:30:00+00:00 (UTC)
+Établissement :   IES Test
+Département :     Science
+Année scolaire :  2026/2027
+Version :         v4 (PROPOSITION DU DÉPARTEMENT)
+État du plan :    OBSOLÈTE
+Faisabilité :     IRRÉALISABLE
+Génération :      3
 
 ------------------------------------------------------------------------
 RÉPARTITION PAR ENSEIGNANT
@@ -42,7 +42,7 @@ EXCEPTIONS ET JUSTIFICATIONS
 ------------------------------------------------------------------------
 AVERTISSEMENTS ET INCIDENTS
 ------------------------------------------------------------------------
-  Le plan est obsolète : Les valeurs d'une activité PRINCIPALE_GÉNÉRÉE ont changé pendant la synchronisation avec sa source.
+  Le plan est obsolète : Les valeurs d'une activité principale générée automatiquement ont changé pendant la synchronisation avec sa source.
   La faisabilité est IRRÉALISABLE — ce document ne décrit pas un plan validé.
   1 exigence reste non couverte.
   Les heures requises et attribuées diffèrent de 1.50 h.

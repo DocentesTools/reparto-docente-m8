@@ -22,6 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is deliberately excluded from public and backup schemas; JSON/CSV exports,
   restore payloads, wire enum values, historical artifact bytes, and the
   content-only checksum contract remain unchanged.
+  _Review pass:_ the Spanish and French header fields now pad their labels to
+  one value column per locale, as the English messages already did, and the
+  generated stale reasons describe a `MAIN_GENERATED` activity in prose
+  ("actividad principal generada automáticamente" / "activité principale
+  générée automatiquement") instead of a transliterated pseudo-token. Two
+  catalog gates pin both: every header field of a locale shares one value
+  column, and no document translation carries an upper-case `_` wire token.
+  The eight Spanish and French golden artifacts were regenerated; the English
+  four are byte-identical.
 
 - **A stored export records the language it was requested under (C13).**
   `POST /exports` accepts an optional closed `locale` (`en` / `es` / `fr`),

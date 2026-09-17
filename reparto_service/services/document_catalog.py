@@ -22,7 +22,7 @@ from reparto_service.services.stale_reasons import SERVICE_STALE_REASONS
 
 # Historical artifacts store bytes and are never re-rendered. Determinism for a
 # new render is therefore scoped to this deployed renderer/catalog revision.
-DOCUMENT_CATALOG_REVISION = "2026-09-14.c14.v1"
+DOCUMENT_CATALOG_REVISION = "2026-09-17.c14.v2"
 
 DOCUMENT_MESSAGE_DEFAULTS: Mapping[str, str] = MappingProxyType(
     {

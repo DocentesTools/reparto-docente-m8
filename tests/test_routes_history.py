@@ -281,8 +281,8 @@ def test_backup_excludes_internal_stale_reason_catalog_metadata(
     )
     assert rendered.status_code == 201, rendered.text
     assert (
-        "Los valores de una actividad PRINCIPAL_GENERADA cambiaron durante la "
-        "sincronización con su origen."
+        "Los valores de una actividad principal generada automáticamente "
+        "cambiaron durante la sincronización con su origen."
     ) in rendered.json()["content"]
 
 

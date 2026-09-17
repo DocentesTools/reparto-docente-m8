@@ -2,16 +2,16 @@
 RÉPARTITION — DOCUMENT FINAL
 ========================================================================
 Référence du processus : 00000000-0000-4000-8000-000000000001
-État : PRÊT POUR LA RÉUNION
-État au : 2026-09-14T08:30:00+00:00 (UTC)
-Établissement : IES Test
-Département : Science
-Année scolaire : 2026/2027
-Version : v4 (PROPOSITION DU DÉPARTEMENT)
-Clôturé le : 2026-09-14T09:45:00+00:00
-État du plan : OBSOLÈTE
-Faisabilité : IRRÉALISABLE
-Génération : 3
+État :            PRÊT POUR LA RÉUNION
+État au :         2026-09-14T08:30:00+00:00 (UTC)
+Établissement :   IES Test
+Département :     Science
+Année scolaire :  2026/2027
+Version :         v4 (PROPOSITION DU DÉPARTEMENT)
+Clôturé le :      2026-09-14T09:45:00+00:00
+État du plan :    OBSOLÈTE
+Faisabilité :     IRRÉALISABLE
+Génération :      3
 
 ------------------------------------------------------------------------
 LISTE FINALE DES AFFECTATIONS

@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import re
+import string
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from babel.messages import pofile
 
 from reparto_service.controllers.history import HistoryController
-from reparto_service.core.i18n import reset_current_locale, set_current_locale
+from reparto_service.core.i18n import (
+    GETTEXT_DOMAIN,
+    LOCALE_DIR,
+    reset_current_locale,
+    set_current_locale,
+)
 from reparto_service.enums import (
     ExportArtifactFormat,
     ExportArtifactLocale,
@@ -16,6 +24,8 @@ from reparto_service.enums import (
 )
 from reparto_service.services.document_catalog import (
     DOCUMENT_CATALOG_REVISION,
+    DOCUMENT_ENUM_VALUES,
+    DOCUMENT_MESSAGE_DEFAULTS,
     load_document_catalog,
 )
 from reparto_service.services.document_rendering import (
@@ -226,6 +236,68 @@ def test_document_catalog_uses_ngettext_for_zero_one_and_many(
         )
         == expected
     )
+
+
+# Every header field except the labelled trace reference pads its label to one
+# value column, so the header block stays aligned in every locale (the padding
+# lives in the message text, which is why each translation must carry it too).
+_ALIGNED_FIELD_CODES = sorted(
+    code
+    for code in DOCUMENT_MESSAGE_DEFAULTS
+    if code.startswith("document.field.") and code != "document.field.process_reference"
+)
+_LABEL_AND_PADDING = re.compile(r"^(?P<label>[^:]+:)(?P<padding> +)\S")
+# An upper-case identifier with underscores is a wire token, never document
+# prose; a translation may label it, not transliterate it.
+_WIRE_TOKEN = re.compile(r"\b[A-ZÀ-Ý]+(?:_[A-ZÀ-Ý]+)+\b")
+
+
+@pytest.mark.parametrize("locale", list(ExportArtifactLocale))
+def test_document_header_fields_share_one_value_column_per_locale(
+    locale: ExportArtifactLocale,
+) -> None:
+    catalog = load_document_catalog(locale)
+    columns: set[int] = set()
+    for code in _ALIGNED_FIELD_CODES:
+        # Exactly the declared placeholders: a parameter-shape mismatch would
+        # fall back to the English default and hide the translation.
+        params = {
+            name: "x"
+            for _, name, _, _ in string.Formatter().parse(
+                DOCUMENT_MESSAGE_DEFAULTS[code]
+            )
+            if name
+        }
+        rendered = catalog.text(code, params)
+        match = _LABEL_AND_PADDING.match(rendered)
+        assert match is not None, (locale, code, rendered)
+        columns.add(len(match["label"]) + len(match["padding"]))
+    assert len(columns) == 1, (locale, columns)
+
+
+@pytest.mark.parametrize("locale", [ExportArtifactLocale.ES, ExportArtifactLocale.FR])
+def test_document_translations_never_transliterate_wire_tokens(
+    locale: ExportArtifactLocale,
+) -> None:
+    po_path = LOCALE_DIR / locale.value / "LC_MESSAGES" / f"{GETTEXT_DOMAIN}.po"
+    with po_path.open("r", encoding="utf-8") as source:
+        messages = pofile.read_po(source, locale=locale.value)
+    for message in messages:
+        code = message.id[0] if isinstance(message.id, tuple) else message.id
+        assert isinstance(code, str)
+        if not code.startswith("document.") or code.startswith("document.enum."):
+            continue
+        strings = (
+            tuple(message.string)
+            if isinstance(message.string, (list, tuple))
+            else (message.string,)
+        )
+        for translated in strings:
+            assert isinstance(translated, str)
+            assert not _WIRE_TOKEN.search(translated), (locale, code, translated)
+    catalog = load_document_catalog(locale)
+    for value in DOCUMENT_ENUM_VALUES:
+        assert "_" not in catalog.enum_label(value), (locale, value)
 
 
 def test_document_catalog_is_injected_not_read_from_request_context() -> None:

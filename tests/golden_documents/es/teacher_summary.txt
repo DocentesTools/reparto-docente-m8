@@ -2,9 +2,9 @@
 REPARTO — RESUMEN POR DOCENTE
 ========================================================================
 Referencia del proceso: 00000000-0000-4000-8000-000000000001
-Estado: LISTO PARA LA REUNIÓN
-Estado a fecha de: 2026-09-14T08:30:00+00:00 (UTC)
-Versión: v4 (PROPUESTA DEL DEPARTAMENTO)
+Estado:             LISTO PARA LA REUNIÓN
+Estado a fecha de:  2026-09-14T08:30:00+00:00 (UTC)
+Versión:            v4 (PROPUESTA DEL DEPARTAMENTO)
 
 ------------------------------------------------------------------------
 REPARTO POR DOCENTE

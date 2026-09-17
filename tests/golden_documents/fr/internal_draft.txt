@@ -4,11 +4,11 @@ RÉPARTITION — BROUILLON INTERNE
 BROUILLON — document de travail interne, non destiné à la diffusion.
 
 Référence du processus : 00000000-0000-4000-8000-000000000001
-État : PRÊT POUR LA RÉUNION
-État au : 2026-09-14T08:30:00+00:00 (UTC)
-État du plan : OBSOLÈTE
-Faisabilité : IRRÉALISABLE
-Génération : 3
+État :            PRÊT POUR LA RÉUNION
+État au :         2026-09-14T08:30:00+00:00 (UTC)
+État du plan :    OBSOLÈTE
+Faisabilité :     IRRÉALISABLE
+Génération :      3
 
 ------------------------------------------------------------------------
 ÉQUILIBRE GLOBAL
@@ -34,7 +34,7 @@ EXIGENCES NON COUVERTES
 ------------------------------------------------------------------------
 AVERTISSEMENTS ET INCIDENTS
 ------------------------------------------------------------------------
-  Le plan est obsolète : Les valeurs d'une activité PRINCIPALE_GÉNÉRÉE ont changé pendant la synchronisation avec sa source.
+  Le plan est obsolète : Les valeurs d'une activité principale générée automatiquement ont changé pendant la synchronisation avec sa source.
   La faisabilité est IRRÉALISABLE — ce document ne décrit pas un plan validé.
   1 exigence reste non couverte.
   Les heures requises et attribuées diffèrent de 1.50 h.

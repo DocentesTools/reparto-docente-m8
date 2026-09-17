@@ -2,16 +2,16 @@
 REPARTO — DOCUMENTO FINAL
 ========================================================================
 Referencia del proceso: 00000000-0000-4000-8000-000000000001
-Estado: LISTO PARA LA REUNIÓN
-Estado a fecha de: 2026-09-14T08:30:00+00:00 (UTC)
-Centro: IES Test
-Departamento: Science
-Curso académico: 2026/2027
-Versión: v4 (PROPUESTA DEL DEPARTAMENTO)
-Cerrado el: 2026-09-14T09:45:00+00:00
-Estado del plan: DESACTUALIZADO
-Viabilidad: INVIABLE
-Generación: 3
+Estado:             LISTO PARA LA REUNIÓN
+Estado a fecha de:  2026-09-14T08:30:00+00:00 (UTC)
+Centro:             IES Test
+Departamento:       Science
+Curso académico:    2026/2027
+Versión:            v4 (PROPUESTA DEL DEPARTAMENTO)
+Cerrado el:         2026-09-14T09:45:00+00:00
+Estado del plan:    DESACTUALIZADO
+Viabilidad:         INVIABLE
+Generación:         3
 
 ------------------------------------------------------------------------
 LISTA FINAL DEL REPARTO

@@ -598,43 +598,43 @@ msgid "document.exception.summary"
 msgstr "  {teacher} — base {base_hours} h + adicionales {extra_hours} h"
 
 msgid "document.field.academic_year"
-msgstr "Curso académico: {value}"
+msgstr "Curso académico:    {value}"
 
 msgid "document.field.closed_at"
-msgstr "Cerrado el: {value}"
+msgstr "Cerrado el:         {value}"
 
 msgid "document.field.department"
-msgstr "Departamento: {value}"
+msgstr "Departamento:       {value}"
 
 msgid "document.field.feasibility"
-msgstr "Viabilidad: {value}"
+msgstr "Viabilidad:         {value}"
 
 msgid "document.field.generation"
-msgstr "Generación: {value}"
+msgstr "Generación:         {value}"
 
 msgid "document.field.plan_missing"
-msgstr "Plan: ninguno — la planificación no ha comenzado"
+msgstr "Plan:               ninguno — la planificación no ha comenzado"
 
 msgid "document.field.plan_status"
-msgstr "Estado del plan: {value}"
+msgstr "Estado del plan:    {value}"
 
 msgid "document.field.process_reference"
 msgstr "Referencia del proceso: {value}"
 
 msgid "document.field.process_status"
-msgstr "Estado: {value}"
+msgstr "Estado:             {value}"
 
 msgid "document.field.school"
-msgstr "Centro: {value}"
+msgstr "Centro:             {value}"
 
 msgid "document.field.state_as_of"
-msgstr "Estado a fecha de: {value} (UTC)"
+msgstr "Estado a fecha de:  {value} (UTC)"
 
 msgid "document.field.version"
-msgstr "Versión: v{number} ({status})"
+msgstr "Versión:            v{number} ({status})"
 
 msgid "document.field.version_missing"
-msgstr "Versión: no capturada"
+msgstr "Versión:            no capturada"
 
 msgid "document.group.assignment"
 msgstr "      {activity}  {hours} h  →  {teacher}"
@@ -721,10 +721,10 @@ msgid "document.section.warnings_and_incidents"
 msgstr "ADVERTENCIAS E INCIDENCIAS"
 
 msgid "document.stale_reason.main_generated_activity_out_of_sync"
-msgstr "Una actividad PRINCIPAL_GENERADA no está sincronizada con su origen."
+msgstr "Una actividad principal generada automáticamente no está sincronizada con su origen."
 
 msgid "document.stale_reason.main_generated_activity_values_changed"
-msgstr "Los valores de una actividad PRINCIPAL_GENERADA cambiaron durante la sincronización con su origen."
+msgstr "Los valores de una actividad principal generada automáticamente cambiaron durante la sincronización con su origen."
 
 msgid "document.stale_reason.teaching_activity_retired"
 msgstr "Se retiró una actividad docente."
