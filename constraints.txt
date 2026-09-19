@@ -150,5 +150,5 @@ typing-inspection==0.4.2
     #   pydantic-settings
 tzdata==2026.4
     # via psycopg
-uvicorn==0.52.1
+uvicorn==0.53.0
     # via -r reparto_service/requirements_base.txt
