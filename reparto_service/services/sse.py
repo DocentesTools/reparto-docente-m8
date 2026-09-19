@@ -53,6 +53,7 @@ from fastapi import HTTPException, status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.core.decimals import quantize_hours
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.teacher_profiles import TeacherProfile
@@ -182,12 +183,11 @@ def resolve_audience(
     if requested is None:
         return granted
     if _AUDIENCE_RANK[requested] < _AUDIENCE_RANK[granted]:
-        raise HTTPException(
+        raise DomainHTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                f"Cannot subscribe as {requested.value}: this role grants at most "
-                f"{granted.value}."
-            ),
+            code="sse.cannot_subscribe_as_role_grants_at_most",
+            message=f"Cannot subscribe as {requested.value}: this role grants at most {granted.value}.",
+            params={"requested": requested.value, "granted": granted.value},
         )
     return requested
 

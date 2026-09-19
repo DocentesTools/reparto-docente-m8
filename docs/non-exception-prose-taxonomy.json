@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "compatibility": "Codes are additive-only. Message is a localized compatibility fallback; params remain language-neutral.",
+  "codes": [
+    {
+      "code": "group_subject.inverted_grade_range",
+      "message_template": "minimum_grade must be less than or equal to maximum_grade.",
+      "param_names": [],
+      "field": "GroupSubjectBulkValidationError.message",
+      "location": "reparto_service/controllers/group_subjects.py:_matched_groups"
+    },
+    {
+      "code": "group_subject.no_row_to_update",
+      "message_template": "No existing group-subject row to update.",
+      "param_names": [],
+      "field": "GroupSubjectBulkConflict.reason",
+      "location": "reparto_service/controllers/group_subjects.py:_plan_bulk"
+    }
+  ]
+}

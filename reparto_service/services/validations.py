@@ -32,6 +32,7 @@ from reparto_service.db_models.group_subjects import GroupSubject
 from reparto_service.db_models.hour_requirements import HourRequirement
 from reparto_service.db_models.process_teachers import ProcessTeacher
 from reparto_service.db_models.subjects import Subject
+from reparto_service.db_models.teacher_profiles import TeacherProfile
 from reparto_service.db_models.teaching_activities import (
     TeachingActivity,
     TeachingActivityGroup,
@@ -52,50 +53,30 @@ from reparto_service.schemas.planning import (
     PlanValidationMessage,
     PlanValidationReport,
 )
+from reparto_service.db_models.teaching_groups import TeachingGroup
+from reparto_service.schemas.validation_findings import (
+    CODE_ACTIVITY_LINKED_SUBJECT_MISMATCH,
+    CODE_ACTIVITY_MISSING_GROUPS,
+    CODE_ACTIVITY_MULTIPLE_GROUPS_NOT_ALLOWED,
+    CODE_ACTIVITY_OUT_OF_SYNC,
+    CODE_FEASIBILITY_NOT_CONFIRMED,
+    CODE_GROUP_HOURS_IMBALANCED,
+    CODE_MAIN_SUBJECT_NOT_MATERIALIZED,
+    CODE_MISSING_ALLOCATION,
+    CODE_PARTICIPANT_BELOW_TARGET,
+    CODE_PARTICIPANT_OVERLOADED,
+    CODE_PARTICIPANT_OVER_TARGET,
+    CODE_PLAN_STALE,
+    CODE_REQUIREMENTS_NOT_GENERATED,
+    CODE_REQUIREMENTS_STALE,
+    CODE_REQUIREMENTS_UNASSIGNED,
+    CODE_SECONDARY_ACTIVITIES_AVAILABLE,
+    CODE_TEACHER_LOAD_IMBALANCED,
+)
 from reparto_service.services.calculations import (
     AssignmentCalculationService,
     PlanningCalculationService,
 )
-
-# ── Stable finding codes (single source of truth) ─────────────────────────────
-
-#: No current (non-superseded) allocation revision exists (plan §6.3).
-CODE_MISSING_ALLOCATION = "plan.missing_allocation"
-#: Group-hour total differs from the current allocation (plan §6.3).
-CODE_GROUP_HOURS_IMBALANCED = "plan.group_hours_imbalanced"
-#: Teacher load differs from the participant target total (plan §6.3).
-CODE_TEACHER_LOAD_IMBALANCED = "plan.teacher_load_imbalanced"
-#: An active main group-subject cell has no live MAIN_GENERATED activity (plan §6.3).
-CODE_MAIN_SUBJECT_NOT_MATERIALIZED = "plan.main_subject_not_materialized"
-#: A live activity links no group yet its type does not permit zero groups (plan §6.3).
-CODE_ACTIVITY_MISSING_GROUPS = "activity.missing_groups"
-#: A live activity links several groups but its subject forbids it (plan §6.3).
-CODE_ACTIVITY_MULTIPLE_GROUPS_NOT_ALLOWED = "activity.multiple_groups_not_allowed"
-#: A live activity links a cell of a different subject (plan §5.7, §6.3).
-CODE_ACTIVITY_LINKED_SUBJECT_MISMATCH = "activity.linked_subject_mismatch"
-#: A main activity differs from its source cell and needs explicit sync (plan §20.10).
-CODE_ACTIVITY_OUT_OF_SYNC = "activity.out_of_sync"
-#: The plan has no live requirement slots yet (plan §6.3).
-CODE_REQUIREMENTS_NOT_GENERATED = "plan.requirements_not_generated"
-#: A live requirement slot is STALE / RECONCILIATION_REQUIRED (plan §6.3).
-CODE_REQUIREMENTS_STALE = "requirement.stale"
-#: The plan itself is STALE / RECONCILIATION_REQUIRED (plan §6.3, §3.11).
-CODE_PLAN_STALE = "plan.stale"
-#: Stored feasibility is not FEASIBLE (plan §20.19; read only, never solved here).
-CODE_FEASIBILITY_NOT_CONFIRMED = "plan.feasibility_not_confirmed"
-#: An active participant has authorized extra hours (plan §6.4 warning).
-CODE_PARTICIPANT_OVERLOADED = "teacher.overloaded_authorized"
-#: Active secondary cells remain unmaterialized (plan §6.4 warning).
-CODE_SECONDARY_ACTIVITIES_AVAILABLE = "plan.secondary_activities_available"
-
-# ── Assignment-stage finding codes (plan §6.3, §6.4) ──────────────────────────
-
-#: One or more live requirement slots have no active assignment (plan §6.3).
-CODE_REQUIREMENTS_UNASSIGNED = "requirement.unassigned"
-#: A participant is assigned above their exact target (plan §3.8, §6.3).
-CODE_PARTICIPANT_OVER_TARGET = "participant.over_target"
-#: An active participant is still below their exact target (plan §3.8, §6.3).
-CODE_PARTICIPANT_BELOW_TARGET = "participant.below_target"
 
 _ZERO = Decimal("0.00")
 
@@ -156,17 +137,20 @@ class PlanValidationService:
         out: list[PlanValidationMessage],
     ) -> None:
         balance = PlanningCalculationService.compute_plan_balance(session, plan)
-        if balance.group.allocated_group_weekly_hours is None:
+        allocation_hours = balance.group.allocated_group_weekly_hours
+        if allocation_hours is None:
             out.append(
                 _plan_msg(
                     plan,
                     ValidationSeverity.BLOCKING,
                     CODE_MISSING_ALLOCATION,
                     "No current school-leadership allocation revision exists.",
+                    {},
                 )
             )
         elif not balance.group.is_balanced:
             difference = balance.group.allocation_difference
+            assert difference is not None
             out.append(
                 _plan_msg(
                     plan,
@@ -179,6 +163,11 @@ class PlanValidationService:
                         f"({balance.group.allocated_group_weekly_hours}); "
                         f"difference {difference}."
                     ),
+                    {
+                        "group_hours": _hours_text(balance.group.total_group_load),
+                        "allocation_hours": _hours_text(allocation_hours),
+                        "difference_hours": _signed_hours_text(difference),
+                    },
                 )
             )
         if not balance.teacher.is_balanced:
@@ -194,6 +183,17 @@ class PlanValidationService:
                         f"({balance.teacher.participant_target_total}); "
                         f"difference {balance.teacher.teacher_load_difference}."
                     ),
+                    {
+                        "teacher_hours": _hours_text(
+                            balance.teacher.total_teacher_load
+                        ),
+                        "target_hours": _hours_text(
+                            balance.teacher.participant_target_total
+                        ),
+                        "difference_hours": _signed_hours_text(
+                            balance.teacher.teacher_load_difference
+                        ),
+                    },
                 )
             )
 
@@ -212,14 +212,24 @@ class PlanValidationService:
             session, plan.assignment_process_id, SubjectAllocationCategory.MAIN
         ):
             if cell.id not in materialized:
+                group = session.get(TeachingGroup, cell.teaching_group_id)
+                subject = session.get(Subject, cell.subject_id)
+                group_label = group.label if group is not None else "Unnamed group"
+                subject_label = (
+                    subject.name if subject is not None else "Unnamed subject"
+                )
                 out.append(
                     PlanValidationMessage(
                         severity=ValidationSeverity.BLOCKING,
                         code=CODE_MAIN_SUBJECT_NOT_MATERIALIZED,
                         message=(
-                            "Main group-subject cell "
-                            f"{cell.id} has no materialized teaching activity."
+                            f"Group {group_label} · {subject_label} has no "
+                            "materialized teaching activity."
                         ),
+                        params={
+                            "group_label": group_label,
+                            "subject_label": subject_label,
+                        },
                         entity_type="group_subject",
                         entity_id=cell.id,
                     )
@@ -240,6 +250,7 @@ class PlanValidationService:
         for activity in activities:
             cells = links.get(activity.id, [])
             subject = session.get(Subject, activity.subject_id)
+            activity_label = subject.name if subject is not None else "Unnamed activity"
             allows_zero = subject is not None and subject.allows_zero_groups
             allows_multiple = subject is not None and subject.allows_multiple_groups
 
@@ -252,6 +263,7 @@ class PlanValidationService:
                             "Main activity differs from its source GroupSubject; "
                             "run sync-preview and explicitly apply the change."
                         ),
+                        {"activity_label": activity_label},
                     )
                 )
 
@@ -261,6 +273,7 @@ class PlanValidationService:
                         activity,
                         CODE_ACTIVITY_MISSING_GROUPS,
                         "Activity links no group but its subject forbids zero groups.",
+                        {"activity_label": activity_label},
                     )
                 )
             if len(cells) > 1 and not allows_multiple:
@@ -272,6 +285,10 @@ class PlanValidationService:
                             f"Activity links {len(cells)} groups but its subject "
                             "forbids multiple groups."
                         ),
+                        {
+                            "activity_label": activity_label,
+                            "group_count": len(cells),
+                        },
                     )
                 )
             if any(cell.subject_id != activity.subject_id for cell in cells):
@@ -280,6 +297,7 @@ class PlanValidationService:
                         activity,
                         CODE_ACTIVITY_LINKED_SUBJECT_MISMATCH,
                         "Activity links a group-subject cell of a different subject.",
+                        {"activity_label": activity_label},
                     )
                 )
 
@@ -296,6 +314,7 @@ class PlanValidationService:
             .where(HourRequirement.assignment_process_id == plan.assignment_process_id)
             .where(col(HourRequirement.retired_generation).is_(None))
         ).all()
+        stale_count = 0
         if not live_states:
             out.append(
                 _plan_msg(
@@ -303,15 +322,21 @@ class PlanValidationService:
                     ValidationSeverity.BLOCKING,
                     CODE_REQUIREMENTS_NOT_GENERATED,
                     "No teacher-requirement slots have been generated for the plan.",
+                    {},
                 )
             )
-        elif any(state in _STALE_REQUIREMENT_STATES for state in live_states):
+        else:
+            stale_count = sum(
+                state in _STALE_REQUIREMENT_STATES for state in live_states
+            )
+        if live_states and stale_count > 0:
             out.append(
                 _plan_msg(
                     plan,
                     ValidationSeverity.BLOCKING,
                     CODE_REQUIREMENTS_STALE,
-                    "One or more generated requirement slots are stale.",
+                    f"{stale_count} generated requirement slot(s) are stale.",
+                    {"count": stale_count},
                 )
             )
         if plan.status in _STALE_PLAN_STATES:
@@ -321,6 +346,7 @@ class PlanValidationService:
                     ValidationSeverity.BLOCKING,
                     CODE_PLAN_STALE,
                     f"The plan is {plan.status.value} and must be reconciled.",
+                    {"status": plan.status.value},
                 )
             )
 
@@ -342,6 +368,7 @@ class PlanValidationService:
                         f"{plan.feasibility_status.value}; a FEASIBLE evaluation is "
                         "required before assignment."
                     ),
+                    {"status": plan.feasibility_status.value},
                 )
             )
 
@@ -354,25 +381,30 @@ class PlanValidationService:
         out: list[PlanValidationMessage],
     ) -> None:
         teachers = session.exec(
-            select(ProcessTeacher)
+            select(ProcessTeacher, TeacherProfile)
             .where(ProcessTeacher.assignment_process_id == process_id)
             .where(ProcessTeacher.status == ProcessTeacherStatus.ACTIVE)
+            .where(ProcessTeacher.teacher_profile_id == TeacherProfile.id)
         ).all()
         overloaded = [
-            teacher
-            for teacher in teachers
+            (teacher, profile)
+            for teacher, profile in teachers
             if quantize_hours(teacher.extra_weekly_hours) > _ZERO
         ]
-        for teacher in sorted(overloaded, key=lambda t: str(t.id)):
+        for teacher, profile in sorted(overloaded, key=lambda row: str(row[0].id)):
+            extra_hours = quantize_hours(teacher.extra_weekly_hours)
             out.append(
                 PlanValidationMessage(
                     severity=ValidationSeverity.WARNING,
                     code=CODE_PARTICIPANT_OVERLOADED,
                     message=(
-                        "Participant "
-                        f"{teacher.id} has authorized extra hours "
-                        f"({quantize_hours(teacher.extra_weekly_hours)})."
+                        f"Participant {profile.display_name} has authorized extra "
+                        f"hours ({extra_hours})."
                     ),
+                    params={
+                        "teacher_label": profile.display_name,
+                        "extra_hours": _hours_text(extra_hours),
+                    },
                     entity_type="teacher",
                     entity_id=teacher.id,
                 )
@@ -402,6 +434,7 @@ class PlanValidationService:
                         f"{len(unmaterialized)} optional secondary group-subject "
                         "cell(s) are not yet part of any activity."
                     ),
+                    {"count": len(unmaterialized)},
                 )
             )
 
@@ -545,6 +578,16 @@ class AssignmentValidationService:
                             f"target of {participant.target_weekly_hours}; increase "
                             "authorized extra hours to allow the overload."
                         ),
+                        {
+                            "teacher_label": participant.display_name,
+                            "assigned_hours": _hours_text(
+                                participant.assigned_weekly_hours
+                            ),
+                            "target_hours": _hours_text(
+                                participant.target_weekly_hours
+                            ),
+                            "difference_hours": _signed_hours_text(-remaining),
+                        },
                     )
                 )
             elif remaining > _ZERO and teacher.participates_in_selection:
@@ -558,6 +601,16 @@ class AssignmentValidationService:
                             f"hours below the target of "
                             f"{participant.target_weekly_hours}."
                         ),
+                        {
+                            "teacher_label": participant.display_name,
+                            "assigned_hours": _hours_text(
+                                participant.assigned_weekly_hours
+                            ),
+                            "target_hours": _hours_text(
+                                participant.target_weekly_hours
+                            ),
+                            "difference_hours": _signed_hours_text(-remaining),
+                        },
                     )
                 )
             if participant.is_overloaded:
@@ -570,6 +623,10 @@ class AssignmentValidationService:
                             f"Participant {participant.display_name} has authorized "
                             f"extra hours ({participant.extra_weekly_hours})."
                         ),
+                        {
+                            "teacher_label": participant.display_name,
+                            "extra_hours": _hours_text(participant.extra_weekly_hours),
+                        },
                     )
                 )
 
@@ -583,6 +640,7 @@ class AssignmentValidationService:
                         f"{summary.available_slots} live requirement slot(s) have no "
                         "active assignment; every slot must be assigned in full."
                     ),
+                    params={"count": summary.available_slots},
                     entity_type="assignment_process",
                     entity_id=process.id,
                 )
@@ -606,12 +664,14 @@ def _plan_msg(
     severity: ValidationSeverity,
     code: str,
     message: str,
+    params: dict[str, str | int],
 ) -> PlanValidationMessage:
     """Build a plan-wide finding pointing at the plan itself."""
     return PlanValidationMessage(
         severity=severity,
         code=code,
         message=message,
+        params=params,
         entity_type="plan",
         entity_id=plan.id,
     )
@@ -621,12 +681,14 @@ def _activity_msg(
     activity: TeachingActivity,
     code: str,
     message: str,
+    params: dict[str, str | int],
 ) -> PlanValidationMessage:
     """Build a blocking finding pointing at a teaching activity."""
     return PlanValidationMessage(
         severity=ValidationSeverity.BLOCKING,
         code=code,
         message=message,
+        params=params,
         entity_type="teaching_activity",
         entity_id=activity.id,
     )
@@ -637,15 +699,28 @@ def _teacher_msg(
     severity: ValidationSeverity,
     code: str,
     message: str,
+    params: dict[str, str | int],
 ) -> PlanValidationMessage:
     """Build a finding pointing at one process teacher."""
     return PlanValidationMessage(
         severity=severity,
         code=code,
         message=message,
+        params=params,
         entity_type="teacher",
         entity_id=teacher_id,
     )
+
+
+def _hours_text(value: Decimal) -> str:
+    """Return canonical two-place decimal hours without an explicit plus sign."""
+    return str(quantize_hours(value))
+
+
+def _signed_hours_text(value: Decimal) -> str:
+    """Return canonical signed two-place decimal hours for a difference."""
+    canonical = quantize_hours(value)
+    return f"+{canonical}" if canonical > _ZERO else str(canonical)
 
 
 __all__ = [

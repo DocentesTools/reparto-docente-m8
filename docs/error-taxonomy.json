@@ -1,0 +1,1609 @@
+{
+  "schema_version": 1,
+  "contract": "reparto-domain-error-taxonomy-v1",
+  "compatibility": "additive-only",
+  "wire_shape": {
+    "detail": {
+      "code": "string",
+      "message": "string",
+      "params": "object"
+    }
+  },
+  "codes": [
+    {
+      "code": "academic_years.end_date_must_be_strictly_after_start_date",
+      "message_template": "end_date must be strictly after start_date.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/academic_years.py:create_year",
+        "reparto_service/controllers/academic_years.py:update_year"
+      ]
+    },
+    {
+      "code": "assignment_processes.copy_is_only_allowed_into_process_status_draft",
+      "message_template": "Copy is only allowed into a process in status 'draft'.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignment_processes.py:copy_from_process"
+      ]
+    },
+    {
+      "code": "assignment_processes.only_processes_status_final_can_be_reopened",
+      "message_template": "Only processes in status 'final' can be reopened.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignment_processes.py:reopen_process"
+      ]
+    },
+    {
+      "code": "assignment_processes.process_status_is_owned_by_transition_endpoint_post",
+      "message_template": "Process status is owned by the transition endpoint. POST /assignment-processes/{id}/transition instead.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignment_processes.py:update_process"
+      ]
+    },
+    {
+      "code": "assignment_processes.reopen_must_go_through_post_assignment_processes_id",
+      "message_template": "Reopen must go through POST /assignment-processes/{id}/reopen with a reason.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignment_processes.py:transition_process"
+      ]
+    },
+    {
+      "code": "assignment_processes.source_and_target_process_must_differ",
+      "message_template": "Source and target process must differ.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignment_processes.py:copy_from_process"
+      ]
+    },
+    {
+      "code": "assignment_processes.source_and_target_processes_must_belong_same_school",
+      "message_template": "Source and target processes must belong to the same school.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignment_processes.py:copy_from_process"
+      ]
+    },
+    {
+      "code": "assignment_processes.target_process_already_has_group_subject_cells",
+      "message_template": "Target process already has group-subject cells.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignment_processes.py:_ensure_target_empty"
+      ]
+    },
+    {
+      "code": "assignment_processes.target_process_already_has_subjects",
+      "message_template": "Target process already has subjects.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignment_processes.py:_ensure_target_empty"
+      ]
+    },
+    {
+      "code": "assignment_processes.target_process_already_has_teachers",
+      "message_template": "Target process already has teachers.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignment_processes.py:_ensure_target_empty"
+      ]
+    },
+    {
+      "code": "assignment_processes.target_process_already_has_teaching_groups",
+      "message_template": "Target process already has teaching groups.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignment_processes.py:_ensure_target_empty"
+      ]
+    },
+    {
+      "code": "assignment_processes.target_process_already_has_teaching_plan",
+      "message_template": "Target process already has a teaching plan.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignment_processes.py:_ensure_target_empty"
+      ]
+    },
+    {
+      "code": "assignment_processes.transition_rejected",
+      "message_template": "str(exc)",
+      "param_names": [
+        "reason"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignment_processes.py:transition_process"
+      ]
+    },
+    {
+      "code": "assignments.assignment_not_found_process",
+      "message_template": "Assignment {} not found in process {}.",
+      "param_names": [
+        "assignment_id",
+        "process_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/assignments.py:_get_or_404"
+      ]
+    },
+    {
+      "code": "assignments.direct_teacher_selection_is_disabled_session",
+      "message_template": "Direct teacher selection is disabled for this session.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignments.py:_get_direct_selection_session"
+      ]
+    },
+    {
+      "code": "assignments.hourrequirement_not_found_process",
+      "message_template": "HourRequirement {} not found in process {}.",
+      "param_names": [
+        "process_id",
+        "requirement_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/assignments.py:_get_requirement_or_404"
+      ]
+    },
+    {
+      "code": "assignments.meeting_session_must_be_open_direct_selection",
+      "message_template": "Meeting session must be open for direct selection.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignments.py:_get_direct_selection_session"
+      ]
+    },
+    {
+      "code": "assignments.meetingsession_not_found",
+      "message_template": "MeetingSession {} not found.",
+      "param_names": [
+        "meeting_session_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/assignments.py:_get_direct_selection_session"
+      ]
+    },
+    {
+      "code": "assignments.only_active_assignment_can_be_undone_or_reassigned",
+      "message_template": "Only an active assignment can be undone or reassigned.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/assignments.py:_ensure_active_for_action"
+      ]
+    },
+    {
+      "code": "assignments.only_active_process_teacher_is_eligible_assignment",
+      "message_template": "Only an active process teacher is eligible for assignment.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignments.py:_ensure_eligible_process_teacher"
+      ]
+    },
+    {
+      "code": "assignments.processteacher_not_found_process",
+      "message_template": "ProcessTeacher {} not found in process {}.",
+      "param_names": [
+        "process_id",
+        "process_teacher_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/assignments.py:_get_process_teacher_or_404"
+      ]
+    },
+    {
+      "code": "assignments.reassignment_requires_different_process_teacher",
+      "message_template": "Reassignment requires a different process teacher.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignments.py:reassign_assignment"
+      ]
+    },
+    {
+      "code": "assignments.reassignment_would_strand_remaining_assignment_state_administrative",
+      "message_template": "Reassignment would strand the remaining assignment state ({}); administrative feasibility evaluation is required.",
+      "param_names": [
+        "repaired_code"
+      ],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/assignments.py:reassign_assignment"
+      ]
+    },
+    {
+      "code": "assignments.requirement_is_already_assigned_slot_cannot_be_shared",
+      "message_template": "Requirement {} is already assigned; a slot cannot be shared or split.",
+      "param_names": [
+        "requirement_id"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignments.py:_ensure_slot_unassigned"
+      ]
+    },
+    {
+      "code": "assignments.requirement_is_not_available_assignment_status",
+      "message_template": "Requirement {} is not available for assignment (status {}).",
+      "param_names": [
+        "requirement_id",
+        "requirement_status"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignments.py:_occupy_slot"
+      ]
+    },
+    {
+      "code": "assignments.requirement_needs_hours_but_participant_has_only_remaining",
+      "message_template": "Requirement {} needs {} hours but the participant has only {} remaining before the target of {}; a slot cannot be split, so authorize extra hours first.",
+      "param_names": [
+        "remaining",
+        "requirement_id",
+        "slot_hours",
+        "target"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignments.py:_ensure_fits_target"
+      ]
+    },
+    {
+      "code": "assignments.selection_is_blocked_because_deterministic_witness_could_not",
+      "message_template": "Selection is blocked because the deterministic witness could not be repaired ({}); administrative feasibility evaluation is required. Go to the Planning page, run the feasibility evaluation again, and return to the board — nothing is broken and nothing is lost.",
+      "param_names": [
+        "repair_code"
+      ],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/assignments.py:_ensure_fast_feasibility"
+      ]
+    },
+    {
+      "code": "assignments.selection_would_strand_remaining_assignment_state_administrative_fea",
+      "message_template": "Selection would strand the remaining assignment state: {}{}. Administrative feasibility evaluation is required.",
+      "param_names": [
+        "finding_code",
+        "related"
+      ],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/assignments.py:_raise_fast_guard"
+      ]
+    },
+    {
+      "code": "assignments.teacher_already_occupies_position_activity_distinct_teachers_are",
+      "message_template": "Teacher already occupies a position of activity {}; distinct teachers are required.",
+      "param_names": [
+        "teaching_activity_id"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignments.py:_ensure_distinct_teacher"
+      ]
+    },
+    {
+      "code": "assignments.teacher_cannot_choose_outside_active_strict_turn",
+      "message_template": "Teacher cannot choose outside the active strict turn.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/assignments.py:_enforce_direct_turn"
+      ]
+    },
+    {
+      "code": "base.assignmentprocess_not_found",
+      "message_template": "AssignmentProcess {} not found.",
+      "param_names": [
+        "process_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/base.py:get_process_or_404"
+      ]
+    },
+    {
+      "code": "base.cannot_mutate_process_status_reopen_it_first",
+      "message_template": "Cannot mutate a process in status {}; reopen it first.",
+      "param_names": [
+        "process_status"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/base.py:ensure_process_mutable"
+      ]
+    },
+    {
+      "code": "base.no_teacher_profile_is_linked_auth_user",
+      "message_template": "No teacher profile is linked to this auth user.",
+      "param_names": [],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/base.py:linked_process_teacher"
+      ]
+    },
+    {
+      "code": "base.not_found",
+      "message_template": "{} {} not found.",
+      "param_names": [
+        "item_id",
+        "model___name__"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/base.py:get_or_404"
+      ]
+    },
+    {
+      "code": "base.role_required",
+      "message_template": "detail",
+      "param_names": [
+        "minimum_role"
+      ],
+      "status": "status.HTTP_403_FORBIDDEN",
+      "locations": [
+        "reparto_service/controllers/base.py:_require_role"
+      ]
+    },
+    {
+      "code": "base.you_may_only_act_on_your_own_participation",
+      "message_template": "You may only act on your own participation in this process.",
+      "param_names": [],
+      "status": "status.HTTP_403_FORBIDDEN",
+      "locations": [
+        "reparto_service/controllers/base.py:require_own_process_teacher"
+      ]
+    },
+    {
+      "code": "base.you_may_only_update_your_own_teacher_profile",
+      "message_template": "You may only update your own teacher profile.",
+      "param_names": [],
+      "status": "status.HTTP_403_FORBIDDEN",
+      "locations": [
+        "reparto_service/controllers/base.py:require_own_teacher_profile"
+      ]
+    },
+    {
+      "code": "classroom_conflict",
+      "message_template": "A classroom with this label already exists.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/teaching_groups.py:_commit"
+      ]
+    },
+    {
+      "code": "classroom_stage_exists",
+      "message_template": "A classroom stage with this name already exists.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/classroom_stages.py:_commit_unique"
+      ]
+    },
+    {
+      "code": "classroom_stage_in_use",
+      "message_template": "The classroom stage is referenced by classrooms.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/classroom_stages.py:delete_stage"
+      ]
+    },
+    {
+      "code": "classroom_stages.min_grade_must_be_less_than_or_equal",
+      "message_template": "min_grade must be less than or equal to max_grade",
+      "param_names": [],
+      "status": "status.HTTP_422_UNPROCESSABLE_ENTITY",
+      "locations": [
+        "reparto_service/controllers/classroom_stages.py:update_stage"
+      ]
+    },
+    {
+      "code": "dashboard.no_teacher_profile_is_linked_auth_user",
+      "message_template": "No teacher profile is linked to this auth user.",
+      "param_names": [],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/dashboard.py:_linked_participant_or_404"
+      ]
+    },
+    {
+      "code": "department_hour_allocation_revisions.could_not_create_allocation_revision_please",
+      "message_template": "Could not create allocation revision; please retry.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/department_hour_allocation_revisions.py:create_revision"
+      ]
+    },
+    {
+      "code": "department_hour_allocation_revisions.no_current_allocation_revision_process",
+      "message_template": "No current allocation revision for process {}.",
+      "param_names": [
+        "process_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/department_hour_allocation_revisions.py:get_current_revision"
+      ]
+    },
+    {
+      "code": "departments.could_not_confirm_department_head_s_role_with",
+      "message_template": "Could not confirm the department head's role with the identity service ({}); the head was not changed.",
+      "param_names": [
+        "ex_reason"
+      ],
+      "status": "status.HTTP_503_SERVICE_UNAVAILABLE",
+      "locations": [
+        "reparto_service/controllers/departments.py:validate_department_head"
+      ]
+    },
+    {
+      "code": "departments.could_not_create_department_check_slug_is_unique",
+      "message_template": "Could not create department: check that the slug is unique within the school.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/departments.py:create_department"
+      ]
+    },
+    {
+      "code": "departments.could_not_update_department_check_slug_is_unique",
+      "message_template": "Could not update department: check that the slug is unique within the school.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/departments.py:update_department"
+      ]
+    },
+    {
+      "code": "departments.department_head_must_hold_at_least_admin_role",
+      "message_template": "A department head must hold at least the admin role; this account holds {}.",
+      "param_names": [
+        "role"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/departments.py:validate_department_head"
+      ]
+    },
+    {
+      "code": "departments.department_not_found",
+      "message_template": "Department {} not found.",
+      "param_names": [
+        "department_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/departments.py:get_department"
+      ]
+    },
+    {
+      "code": "departments.identity_service_does_not_know_user",
+      "message_template": "The identity service does not know this user.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/departments.py:validate_department_head"
+      ]
+    },
+    {
+      "code": "feasibility_controls.solve_in_progress",
+      "message_template": "A feasibility evaluation is already running for this process; retry after it completes.",
+      "param_names": [],
+      "status": "status.HTTP_429_TOO_MANY_REQUESTS",
+      "locations": [
+        "reparto_service/services/feasibility_controls.py:_solve_in_progress"
+      ]
+    },
+    {
+      "code": "feasibility_witnesses.cannot_assignment_feasibility_is_current_feasible_result_i",
+      "message_template": "Cannot {}: assignment feasibility is {}; a current FEASIBLE result is required.",
+      "param_names": [
+        "evaluation_status",
+        "operation"
+      ],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/services/feasibility_witnesses.py:require_intended_feasible"
+      ]
+    },
+    {
+      "code": "feasibility_witnesses.current_deterministic_witness_is_unavailable_administrativ",
+      "message_template": "A current deterministic witness is unavailable; an administrative feasibility evaluation is required.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/services/feasibility_witnesses.py:get_witness"
+      ]
+    },
+    {
+      "code": "feasibility_witnesses.current_feasibility_diagnostics_are_unavailable_administra",
+      "message_template": "Current feasibility diagnostics are unavailable; an administrative feasibility evaluation is required.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/services/feasibility_witnesses.py:get_diagnostics"
+      ]
+    },
+    {
+      "code": "feasibility_witnesses.no_teaching_plan_process",
+      "message_template": "No teaching plan for process {}.",
+      "param_names": [
+        "process_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/services/feasibility_witnesses.py:_plan_or_404"
+      ]
+    },
+    {
+      "code": "feasibility_witnesses.reassignment_is_blocked_because_deterministic_witness_is_m",
+      "message_template": "Reassignment is blocked because the deterministic witness is missing or stale; administrative feasibility evaluation is required.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/services/feasibility_witnesses.py:repair_for_reassignment"
+      ]
+    },
+    {
+      "code": "feasibility_witnesses.repaired_deterministic_witness_is_inconsistent",
+      "message_template": "The repaired deterministic witness is inconsistent.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/services/feasibility_witnesses.py:persist_repair"
+      ]
+    },
+    {
+      "code": "feasibility_witnesses.selection_is_blocked_because_deterministic_witness_is_miss",
+      "message_template": "Selection is blocked because the deterministic witness is missing or stale; administrative feasibility evaluation is required.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/services/feasibility_witnesses.py:repair_for_selection"
+      ]
+    },
+    {
+      "code": "group_subjects.assignment_process_id_payload_does_not_match_url",
+      "message_template": "assignment_process_id in the payload does not match the URL process_id.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/group_subjects.py:create_group_subject"
+      ]
+    },
+    {
+      "code": "group_subjects.bulk_selection_changed_since_preview_now_affected_confirmed",
+      "message_template": "Bulk selection changed since preview (now {} affected, confirmed {}); re-preview.",
+      "param_names": [
+        "preview_expected_affected_count",
+        "request_expected_affected_count"
+      ],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/group_subjects.py:bulk_apply"
+      ]
+    },
+    {
+      "code": "group_subjects.bulk_validation_failed",
+      "message_template": "'; '.join(validation_messages)",
+      "param_names": [
+        "validation_errors"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/group_subjects.py:bulk_apply"
+      ]
+    },
+    {
+      "code": "group_subjects.could_not_create_group_subject_group_subject_pair",
+      "message_template": "Could not create group-subject: this group/subject pair is already configured in the process.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/group_subjects.py:create_group_subject"
+      ]
+    },
+    {
+      "code": "group_subjects.groupsubject_has_no_live_main_generated_activity_sync",
+      "message_template": "This GroupSubject has no live MAIN_GENERATED activity to sync.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/group_subjects.py:sync_preview",
+        "reparto_service/controllers/group_subjects.py:sync_apply"
+      ]
+    },
+    {
+      "code": "group_subjects.groupsubject_is_already_retired",
+      "message_template": "The GroupSubject is already retired.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/group_subjects.py:retire_group_subject"
+      ]
+    },
+    {
+      "code": "group_subjects.groupsubject_not_found_process",
+      "message_template": "GroupSubject {} not found in process {}.",
+      "param_names": [
+        "group_subject_id",
+        "process_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/group_subjects.py:_get_or_404"
+      ]
+    },
+    {
+      "code": "group_subjects.groupsubject_retirement_is_allowed_only_draft_process",
+      "message_template": "GroupSubject retirement is allowed only in a draft process.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/group_subjects.py:retire_group_subject"
+      ]
+    },
+    {
+      "code": "group_subjects.materialized_activity_has_no_owning_teaching_plan",
+      "message_template": "The materialized activity has no owning teaching plan.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/group_subjects.py:_plan_for_activity"
+      ]
+    },
+    {
+      "code": "group_subjects.retire_downstream_teaching_activity_through_its_guarded_retiremen",
+      "message_template": "Retire the downstream teaching activity through its guarded retirement and regeneration/reconciliation flow first.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/group_subjects.py:retire_group_subject"
+      ]
+    },
+    {
+      "code": "group_subjects.source_groupsubject_is_inactive_use_explicit_guarded_activity",
+      "message_template": "The source GroupSubject is inactive; use the explicit guarded activity-retirement flow instead of sync-apply.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/group_subjects.py:sync_apply"
+      ]
+    },
+    {
+      "code": "group_subjects.subject_not_found_process",
+      "message_template": "Subject {} not found in process {}.",
+      "param_names": [
+        "process_id",
+        "subject_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/group_subjects.py:_get_subject_or_404"
+      ]
+    },
+    {
+      "code": "group_subjects.sync_inputs_changed_since_preview_re_run_sync",
+      "message_template": "The sync inputs changed since preview; re-run sync-preview.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/group_subjects.py:sync_apply"
+      ]
+    },
+    {
+      "code": "group_subjects.teachinggroup_not_found_process",
+      "message_template": "TeachingGroup {} not found in process {}.",
+      "param_names": [
+        "group_id",
+        "process_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/group_subjects.py:_get_group_or_404"
+      ]
+    },
+    {
+      "code": "group_subjects.use_explicit_guarded_retirement_action_deactivate_groupsubject",
+      "message_template": "Use the explicit guarded retirement action to deactivate a GroupSubject.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/group_subjects.py:update_group_subject"
+      ]
+    },
+    {
+      "code": "history.assignment_activity_does_not_match_its_requirement_slot",
+      "message_template": "Assignment {} activity does not match its requirement slot.",
+      "param_names": [
+        "row_id"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:_validate_consistency"
+      ]
+    },
+    {
+      "code": "history.assignment_references_requirement_missing_from_backup",
+      "message_template": "Assignment {} references a requirement missing from the backup.",
+      "param_names": [
+        "row_id"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:_validate_consistency"
+      ]
+    },
+    {
+      "code": "history.assignment_references_teacher_missing_from_backup",
+      "message_template": "Assignment {} references a teacher missing from the backup.",
+      "param_names": [
+        "row_id"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:_validate_consistency"
+      ]
+    },
+    {
+      "code": "history.backup_carries_requirements_or_assignments_but_no_teaching",
+      "message_template": "Backup carries requirements or assignments but no teaching plan.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:_validate_consistency"
+      ]
+    },
+    {
+      "code": "history.backup_content_must_be_process_snapshot_object",
+      "message_template": "Backup content must be a process snapshot object.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:_parse_backup"
+      ]
+    },
+    {
+      "code": "history.backup_content_must_be_valid_json",
+      "message_template": "Backup content must be valid JSON.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:_parse_backup"
+      ]
+    },
+    {
+      "code": "history.backup_must_be_exported_as_json_so_it",
+      "message_template": "A backup must be exported as json so it can be restored; pdf renders a document, not a snapshot.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:_render_artifact"
+      ]
+    },
+    {
+      "code": "history.backup_restore_is_only_allowed_into_draft_process",
+      "message_template": "Backup restore is only allowed into a draft process.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:restore_backup_to_draft"
+      ]
+    },
+    {
+      "code": "history.backup_snapshot_is_missing",
+      "message_template": "Backup snapshot is missing {}.",
+      "param_names": [
+        "key"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:_list_section"
+      ]
+    },
+    {
+      "code": "history.backup_snapshot_is_missing_process",
+      "message_template": "Backup snapshot is missing process.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:_process_section"
+      ]
+    },
+    {
+      "code": "history.final_export_is_blocked_by_blocking_validations",
+      "message_template": "Final export is blocked by blocking validations.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:_ensure_no_blocking_validations"
+      ]
+    },
+    {
+      "code": "history.processversion_not_found",
+      "message_template": "ProcessVersion {} not found.",
+      "param_names": [
+        "version_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/history.py:_get_version_or_404"
+      ]
+    },
+    {
+      "code": "history.requirement_has_inconsistent_retirement_generation",
+      "message_template": "Requirement {} has an inconsistent retirement generation.",
+      "param_names": [
+        "requirement_id"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:_validate_consistency"
+      ]
+    },
+    {
+      "code": "history.requirement_has_more_than_one_active_assignment",
+      "message_template": "Requirement {} has more than one active assignment.",
+      "param_names": [
+        "requirement_id"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:_validate_consistency"
+      ]
+    },
+    {
+      "code": "history.requirement_is_superseded_by_slot_missing_from_backup",
+      "message_template": "Requirement {} is superseded by a slot missing from the backup.",
+      "param_names": [
+        "row_id"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:_validate_consistency"
+      ]
+    },
+    {
+      "code": "history.requirement_references_generation_beyond_plan_s_current_generation",
+      "message_template": "Requirement {} references a generation beyond the plan's current generation.",
+      "param_names": [
+        "requirement_id"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:_validate_consistency"
+      ]
+    },
+    {
+      "code": "history.teacher_is_actively_assigned_twice_on_one_activity",
+      "message_template": "Teacher {} is actively assigned twice on one activity.",
+      "param_names": [
+        "teacher_id"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/history.py:_validate_consistency"
+      ]
+    },
+    {
+      "code": "hour_requirements.assigned_requirement_slot_s_would_change_resolve_them",
+      "message_template": "{} assigned requirement slot(s) would change; resolve them through reconciliation before regenerating (plan §7.5, §9).",
+      "param_names": [
+        "generation_conflicts_count"
+      ],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/hour_requirements.py:generate"
+      ]
+    },
+    {
+      "code": "hour_requirements.expected_conflict_s_reconcile_but_plan_now_has",
+      "message_template": "Expected {} conflict(s) to reconcile but the plan now has {}; re-run reconciliation-preview and confirm the current count.",
+      "param_names": [
+        "generation_conflicts_count",
+        "request_expected_conflict_count"
+      ],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/hour_requirements.py:reconcile"
+      ]
+    },
+    {
+      "code": "hour_requirements.hourrequirement_not_found_process",
+      "message_template": "HourRequirement {} not found in process {}.",
+      "param_names": [
+        "process_id",
+        "requirement_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/hour_requirements.py:_get_or_404"
+      ]
+    },
+    {
+      "code": "hour_requirements.process_has_no_teaching_plan_create_and_lock",
+      "message_template": "Process {} has no teaching plan; create and lock one before generating requirements.",
+      "param_names": [
+        "process_id"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/hour_requirements.py:_require_generatable_plan"
+      ]
+    },
+    {
+      "code": "hour_requirements.process_has_no_teaching_plan_reconcile",
+      "message_template": "Process {} has no teaching plan to reconcile.",
+      "param_names": [
+        "process_id"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/hour_requirements.py:_require_reconcilable_plan"
+      ]
+    },
+    {
+      "code": "hour_requirements.reconciliation_changed_during_feasibility_evaluation_re_run_re",
+      "message_template": "The reconciliation changed during feasibility evaluation; re-run reconciliation-preview and confirm the current count.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/hour_requirements.py:reconcile"
+      ]
+    },
+    {
+      "code": "hour_requirements.teaching_plan_is_lock_plan_or_regenerate_stale",
+      "message_template": "Teaching plan is {}; lock the plan (or regenerate a stale plan) before generating requirements (plan §7.5, §20.8).",
+      "param_names": [
+        "plan_status"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/hour_requirements.py:_require_generatable_plan"
+      ]
+    },
+    {
+      "code": "hour_requirements.teaching_plan_is_reconciliation_runs_only_on_stale",
+      "message_template": "Teaching plan is {}; reconciliation runs only on a stale or reconciliation-required plan (plan §7.5, §9).",
+      "param_names": [
+        "plan_status"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/hour_requirements.py:_require_reconcilable_plan"
+      ]
+    },
+    {
+      "code": "lifecycle_gates.plan_readiness_conflict",
+      "message_template": "Cannot {}: {}.",
+      "param_names": [
+        "operation",
+        "reason"
+      ],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/services/lifecycle_gates.py:_conflict"
+      ]
+    },
+    {
+      "code": "meeting_sessions.active_meeting_session_already_exists_process",
+      "message_template": "An active meeting session already exists for this process.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/meeting_sessions.py:_ensure_no_active_session"
+      ]
+    },
+    {
+      "code": "meeting_sessions.assignment_process_id_payload_does_not_match_url",
+      "message_template": "assignment_process_id in the payload does not match the URL process_id.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/meeting_sessions.py:create_session"
+      ]
+    },
+    {
+      "code": "meeting_sessions.direct_teacher_selection_requires_lan_access",
+      "message_template": "Direct teacher selection requires LAN access.",
+      "param_names": [],
+      "status": "status.HTTP_422_UNPROCESSABLE_CONTENT",
+      "locations": [
+        "reparto_service/controllers/meeting_sessions.py:update_session"
+      ]
+    },
+    {
+      "code": "meeting_sessions.meetingsession_not_found_process",
+      "message_template": "MeetingSession {} not found in process {}.",
+      "param_names": [
+        "meeting_session_id",
+        "process_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/meeting_sessions.py:_get_or_404"
+      ]
+    },
+    {
+      "code": "planning_exchange.final_planning_export_is_blocked_by_blocking_validation",
+      "message_template": "Final planning export is blocked by {} blocking validation(s); resolve them or export as draft/provisional (plan §7.8).",
+      "param_names": [
+        "validations_blocking_count"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/planning_exchange.py:export_planning"
+      ]
+    },
+    {
+      "code": "planning_exchange.no_teaching_plan_process",
+      "message_template": "No teaching plan for process {}.",
+      "param_names": [
+        "process_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/planning_exchange.py:_plan_or_404"
+      ]
+    },
+    {
+      "code": "process_teachers.assignment_process_id_payload_does_not_match_url",
+      "message_template": "assignment_process_id in the payload does not match the URL process_id.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/process_teachers.py:create_process_teacher"
+      ]
+    },
+    {
+      "code": "process_teachers.cannot_reduce_extra_hours_below_hours_already_assigned",
+      "message_template": "Cannot reduce extra hours below the hours already assigned: new target {} h < assigned {} h.",
+      "param_names": [
+        "assigned",
+        "new_target"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/process_teachers.py:update_extra_hours"
+      ]
+    },
+    {
+      "code": "process_teachers.could_not_create_process_teacher_binding_teacher_profile",
+      "message_template": "Could not create process teacher: a binding for this teacher profile already exists in the process.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/process_teachers.py:create_process_teacher"
+      ]
+    },
+    {
+      "code": "process_teachers.processteacher_not_found_process",
+      "message_template": "ProcessTeacher {} not found in process {}.",
+      "param_names": [
+        "process_id",
+        "process_teacher_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/process_teachers.py:_get_or_404"
+      ]
+    },
+    {
+      "code": "process_versions.process_has_no_previous_year_source_process",
+      "message_template": "Process has no previous-year source process.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/process_versions.py:compare_previous_year"
+      ]
+    },
+    {
+      "code": "process_versions.processversion_not_found",
+      "message_template": "ProcessVersion {} not found.",
+      "param_names": [
+        "version_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/process_versions.py:_get_version_or_404"
+      ]
+    },
+    {
+      "code": "read_scope.assignmentprocess_not_found",
+      "message_template": "AssignmentProcess {} not found.",
+      "param_names": [
+        "process_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/services/read_scope.py:ensure_process_visible"
+      ]
+    },
+    {
+      "code": "schools.school_not_found",
+      "message_template": "School {} not found.",
+      "param_names": [
+        "school_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/schools.py:get_school"
+      ]
+    },
+    {
+      "code": "selection_turns.duplicate_selection_positions_are_not_allowed",
+      "message_template": "Duplicate selection positions are not allowed.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/selection_turns.py:_ordered_teachers"
+      ]
+    },
+    {
+      "code": "selection_turns.every_participating_teacher_needs_selection_position",
+      "message_template": "Every participating teacher needs a selection_position.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/selection_turns.py:_ordered_teachers"
+      ]
+    },
+    {
+      "code": "selection_turns.meeting_session_must_be_open_before_turns_can",
+      "message_template": "Meeting session must be open before turns can run.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/selection_turns.py:_ensure_session_can_select"
+      ]
+    },
+    {
+      "code": "selection_turns.only_active_turn_can_be_completed",
+      "message_template": "Only the active turn can be completed.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/selection_turns.py:_ensure_active_turn"
+      ]
+    },
+    {
+      "code": "selection_turns.only_pending_or_active_turns_can_be_skipped",
+      "message_template": "Only pending or active turns can be skipped.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/selection_turns.py:skip_turn"
+      ]
+    },
+    {
+      "code": "selection_turns.only_pending_turns_can_be_started",
+      "message_template": "Only pending turns can be started.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/selection_turns.py:start_turn"
+      ]
+    },
+    {
+      "code": "selection_turns.selection_turn_is_already_active",
+      "message_template": "A selection turn is already active.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/selection_turns.py:_ensure_no_active_turn"
+      ]
+    },
+    {
+      "code": "selection_turns.selection_turns_already_exist_meeting_session",
+      "message_template": "Selection turns already exist for this meeting session.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/selection_turns.py:initialize_turns"
+      ]
+    },
+    {
+      "code": "selection_turns.selectionturn_not_found",
+      "message_template": "SelectionTurn {} not found.",
+      "param_names": [
+        "turn_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/selection_turns.py:_get_or_404"
+      ]
+    },
+    {
+      "code": "selection_turns.turn_assignment_must_target_active_turn_teacher",
+      "message_template": "Turn assignment must target the active turn teacher.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/selection_turns.py:_record_turn_assignment"
+      ]
+    },
+    {
+      "code": "snapshots.assignmentprocess_not_found",
+      "message_template": "AssignmentProcess {} not found.",
+      "param_names": [
+        "process_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/services/snapshots.py:_process_or_404"
+      ]
+    },
+    {
+      "code": "sse.cannot_subscribe_as_role_grants_at_most",
+      "message_template": "Cannot subscribe as {}: this role grants at most {}.",
+      "param_names": [
+        "granted",
+        "requested"
+      ],
+      "status": "status.HTTP_403_FORBIDDEN",
+      "locations": [
+        "reparto_service/services/sse.py:resolve_audience"
+      ]
+    },
+    {
+      "code": "subjects.assignment_process_id_payload_does_not_match_url",
+      "message_template": "assignment_process_id in the payload does not match the URL process_id.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/subjects.py:create_subject"
+      ]
+    },
+    {
+      "code": "subjects.could_not_create_subject_subject_with_name_already",
+      "message_template": "Could not create subject: a subject with this name already exists in the process.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/subjects.py:create_subject"
+      ]
+    },
+    {
+      "code": "subjects.could_not_update_subject_subject_with_name_already",
+      "message_template": "Could not update subject: a subject with this name already exists in the process.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/subjects.py:update_subject"
+      ]
+    },
+    {
+      "code": "subjects.subject_not_found_process",
+      "message_template": "Subject {} not found in process {}.",
+      "param_names": [
+        "process_id",
+        "subject_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/subjects.py:_get_or_404"
+      ]
+    },
+    {
+      "code": "teacher_profiles.auth_user_is_already_linked_another_teacher_profile",
+      "message_template": "Auth user is already linked to another teacher profile.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/teacher_profiles.py:link_user"
+      ]
+    },
+    {
+      "code": "teacher_profiles.claim_code_is_not_valid_or_has_expired",
+      "message_template": "Claim code is not valid, or has expired or been used.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/teacher_profiles.py:claim_profile"
+      ]
+    },
+    {
+      "code": "teacher_profiles.only_department_head_may_change_on_teacher_profile",
+      "message_template": "Only a department head may change {} on a teacher profile.",
+      "param_names": [
+        "forbidden"
+      ],
+      "status": "status.HTTP_403_FORBIDDEN",
+      "locations": [
+        "reparto_service/controllers/teacher_profiles.py:update_profile"
+      ]
+    },
+    {
+      "code": "teacher_profiles.teacher_profile_is_already_linked_auth_user_unlink",
+      "message_template": "Teacher profile is already linked to an auth user; unlink it before issuing a claim code.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/teacher_profiles.py:issue_claim_code"
+      ]
+    },
+    {
+      "code": "teacher_profiles.teacherprofile_not_found",
+      "message_template": "TeacherProfile {} not found.",
+      "param_names": [
+        "profile_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/teacher_profiles.py:get_profile"
+      ]
+    },
+    {
+      "code": "teaching_activities.activity_has_no_owning_teaching_plan",
+      "message_template": "The activity has no owning teaching plan.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/teaching_activities.py:retire_teaching_activity"
+      ]
+    },
+    {
+      "code": "teaching_activities.activity_without_generated_requirements_can_be_retired_only",
+      "message_template": "An activity without generated requirements can be retired only while its teaching plan is unlocked.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/teaching_activities.py:retire_teaching_activity"
+      ]
+    },
+    {
+      "code": "teaching_activities.duplicate_linked_group_subject",
+      "message_template": "Duplicate linked group-subject {}.",
+      "param_names": [
+        "cell_id"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/teaching_activities.py:_validate_links"
+      ]
+    },
+    {
+      "code": "teaching_activities.groupsubject_not_found_process",
+      "message_template": "GroupSubject {} not found in process {}.",
+      "param_names": [
+        "cell_id",
+        "process_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/teaching_activities.py:_validate_links"
+      ]
+    },
+    {
+      "code": "teaching_activities.linked_group_subject_teaches_different_subject_than_activity",
+      "message_template": "Linked group-subject {} teaches a different subject than the activity (plan §5.7).",
+      "param_names": [
+        "cell_id"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/teaching_activities.py:_validate_links"
+      ]
+    },
+    {
+      "code": "teaching_activities.multi_group_activity_requires_subject_allows_multiple_groups",
+      "message_template": "A multi-group activity requires a subject that allows multiple groups (plan §5.6, §20.10).",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/teaching_activities.py:_validate_links"
+      ]
+    },
+    {
+      "code": "teaching_activities.only_secondary_manual_activities_can_be_created_here",
+      "message_template": "Only SECONDARY_MANUAL activities can be created here; MAIN_GENERATED activities are materialised from group subjects (plan §20.10).",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/teaching_activities.py:create_teaching_activity"
+      ]
+    },
+    {
+      "code": "teaching_activities.process_has_no_teaching_plan_create_one_before",
+      "message_template": "Process {} has no teaching plan; create one before adding activities.",
+      "param_names": [
+        "process_id"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/teaching_activities.py:_require_mutable_plan"
+      ]
+    },
+    {
+      "code": "teaching_activities.subject_not_found_process",
+      "message_template": "Subject {} not found in process {}.",
+      "param_names": [
+        "process_id",
+        "subject_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/teaching_activities.py:_get_subject_or_404"
+      ]
+    },
+    {
+      "code": "teaching_activities.teaching_activity_is_already_retired",
+      "message_template": "The teaching activity is already retired.",
+      "param_names": [],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/teaching_activities.py:retire_teaching_activity"
+      ]
+    },
+    {
+      "code": "teaching_activities.teaching_plan_is_unlock_it_before_mutating_activities",
+      "message_template": "Teaching plan is {}; unlock it before mutating activities (plan §5.6, §20.14).",
+      "param_names": [
+        "plan_status"
+      ],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/teaching_activities.py:_require_mutable_plan"
+      ]
+    },
+    {
+      "code": "teaching_activities.teachingactivity_not_found_process",
+      "message_template": "TeachingActivity {} not found in process {}.",
+      "param_names": [
+        "activity_id",
+        "process_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/teaching_activities.py:_get_or_404"
+      ]
+    },
+    {
+      "code": "teaching_activities.zero_group_activity_requires_subject_allows_zero_groups",
+      "message_template": "A zero-group activity requires a subject that allows zero groups (plan §5.6).",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/teaching_activities.py:_validate_links"
+      ]
+    },
+    {
+      "code": "teaching_groups.classroomstage_not_found",
+      "message_template": "ClassroomStage {} not found.",
+      "param_names": [
+        "stage_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/teaching_groups.py:_stage_for_grade"
+      ]
+    },
+    {
+      "code": "teaching_groups.grade_must_be_between_and_classroom_stage",
+      "message_template": "grade must be between {} and {} for this classroom stage",
+      "param_names": [
+        "stage_max_grade",
+        "stage_min_grade"
+      ],
+      "status": "status.HTTP_422_UNPROCESSABLE_ENTITY",
+      "locations": [
+        "reparto_service/controllers/teaching_groups.py:_stage_for_grade"
+      ]
+    },
+    {
+      "code": "teaching_groups.group_start_and_group_end_must_define_ascending",
+      "message_template": "group_start and group_end must define an ascending A-Z range",
+      "param_names": [],
+      "status": "status.HTTP_422_UNPROCESSABLE_ENTITY",
+      "locations": [
+        "reparto_service/controllers/teaching_groups.py:generate_group_code_range"
+      ]
+    },
+    {
+      "code": "teaching_groups.payload_assignment_process_id_does_not_match_url",
+      "message_template": "Payload assignment_process_id does not match the URL.",
+      "param_names": [],
+      "status": "status.HTTP_400_BAD_REQUEST",
+      "locations": [
+        "reparto_service/controllers/teaching_groups.py:create_group"
+      ]
+    },
+    {
+      "code": "teaching_groups.teachinggroup_not_found_process",
+      "message_template": "TeachingGroup {} not found in process {}.",
+      "param_names": [
+        "group_id",
+        "process_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/teaching_groups.py:_get_or_404"
+      ]
+    },
+    {
+      "code": "teaching_plans.cannot_lock_teaching_plan_while_it_is_both",
+      "message_template": "Cannot lock the teaching plan while it is {}; both planning balances must be exact first.",
+      "param_names": [
+        "plan_status"
+      ],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/teaching_plans.py:lock_plan"
+      ]
+    },
+    {
+      "code": "teaching_plans.cannot_unlock_teaching_plan_while_it_is_only",
+      "message_template": "Cannot unlock the teaching plan while it is {}; only a locked pre-generation plan can be unlocked.",
+      "param_names": [
+        "plan_status"
+      ],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/teaching_plans.py:unlock_plan"
+      ]
+    },
+    {
+      "code": "teaching_plans.no_teaching_plan_process",
+      "message_template": "No teaching plan for process {}.",
+      "param_names": [
+        "process_id"
+      ],
+      "status": "status.HTTP_404_NOT_FOUND",
+      "locations": [
+        "reparto_service/controllers/teaching_plans.py:get_plan",
+        "reparto_service/controllers/teaching_plans.py:get_summary",
+        "reparto_service/controllers/teaching_plans.py:get_validations",
+        "reparto_service/controllers/teaching_plans.py:lock_plan",
+        "reparto_service/controllers/teaching_plans.py:unlock_plan",
+        "reparto_service/controllers/teaching_plans.py:mark_stale"
+      ]
+    },
+    {
+      "code": "teaching_plans.process_already_has_teaching_plan",
+      "message_template": "Process {} already has a teaching plan.",
+      "param_names": [
+        "process_id"
+      ],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/teaching_plans.py:create_plan"
+      ]
+    },
+    {
+      "code": "teaching_plans.status_transition_rejected",
+      "message_template": "str(exc)",
+      "param_names": [
+        "reason"
+      ],
+      "status": "status.HTTP_409_CONFLICT",
+      "locations": [
+        "reparto_service/controllers/teaching_plans.py:apply_status_transition"
+      ]
+    }
+  ]
+}

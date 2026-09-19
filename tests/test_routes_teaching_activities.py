@@ -17,6 +17,7 @@ from reparto_service.enums import (
     TeachingActivitySource,
     TeachingPlanStatus,
 )
+from reparto_service.services.stale_reasons import TEACHING_ACTIVITY_RETIRED
 from tests import factories
 
 
@@ -584,6 +585,8 @@ def test_retirement_plan_helper_covers_non_route_operational_states(
         session, locked, has_requirements=True, has_assignments=False
     )
     assert locked.status == TeachingPlanStatus.STALE
+    assert locked.stale_reason_code == TEACHING_ACTIVITY_RETIRED.code
+    assert locked.stale_reason_params == {}
 
     _process2, stale, _subject2, _group2, _cell2 = _setup(
         session, plan_status=TeachingPlanStatus.STALE
@@ -592,10 +595,14 @@ def test_retirement_plan_helper_covers_non_route_operational_states(
         session, stale, has_requirements=True, has_assignments=False
     )
     assert stale.stale_reason == "A teaching activity was retired."
+    assert stale.stale_reason_code == TEACHING_ACTIVITY_RETIRED.code
+    assert stale.stale_reason_params == {}
     TeachingActivityController._advance_plan_after_retirement(
         session, stale, has_requirements=False, has_assignments=False
     )
     assert stale.stale_reason == "A teaching activity was retired."
+    assert stale.stale_reason_code == TEACHING_ACTIVITY_RETIRED.code
+    assert stale.stale_reason_params == {}
 
     _process3, unbalanced, _subject3, _group3, _cell3 = _setup(
         session, plan_status=TeachingPlanStatus.UNBALANCED

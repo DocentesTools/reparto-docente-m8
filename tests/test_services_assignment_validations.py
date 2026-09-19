@@ -141,6 +141,7 @@ def test_unassigned_slot_blocks_final_close(session: Session) -> None:
     msg = report.messages[0]
     assert msg.entity_type == "assignment_process"
     assert msg.entity_id == process.id
+    assert msg.params == {"count": 1}
 
 
 def test_no_unassigned_finding_when_every_slot_occupied(session: Session) -> None:
@@ -189,6 +190,12 @@ def test_over_target_blocks(session: Session) -> None:
     assert over.severity == ValidationSeverity.BLOCKING
     assert "Over Target Teacher" in over.message
     assert str(teacher.id) not in over.message
+    assert over.params == {
+        "teacher_label": "Over Target Teacher",
+        "assigned_hours": "4.00",
+        "target_hours": "2.00",
+        "difference_hours": "+2.00",
+    }
 
 
 def test_over_target_ignored_for_inactive_teacher(session: Session) -> None:
@@ -220,6 +227,12 @@ def test_below_target_blocks_for_active_participant(session: Session) -> None:
     below = report.messages[0]
     assert "Below Target Teacher" in below.message
     assert str(below.entity_id) not in below.message
+    assert below.params == {
+        "teacher_label": "Below Target Teacher",
+        "assigned_hours": "0.00",
+        "target_hours": "6.00",
+        "difference_hours": "-6.00",
+    }
 
 
 def test_below_target_skipped_for_non_participating(session: Session) -> None:
@@ -265,6 +278,10 @@ def test_authorized_overload_is_warning_only(session: Session) -> None:
     assert warn.code == CODE_PARTICIPANT_OVERLOADED
     assert warn.severity == ValidationSeverity.WARNING
     assert warn.entity_id == teacher.id
+    assert warn.params == {
+        "teacher_label": "Overloaded Teacher",
+        "extra_hours": "2.00",
+    }
 
 
 # ── Ordering and aggregation ──────────────────────────────────────────────────

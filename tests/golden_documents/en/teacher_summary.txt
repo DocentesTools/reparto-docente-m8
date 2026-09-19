@@ -1,0 +1,14 @@
+========================================================================
+REPARTO — TEACHER SUMMARY
+========================================================================
+Process reference: 00000000-0000-4000-8000-000000000001
+Status:         READY FOR MEETING
+State as of:    2026-09-14T08:30:00+00:00 (UTC)
+Version:        v4 (DEPARTMENT PROPOSAL)
+
+------------------------------------------------------------------------
+ASSIGNMENT BY TEACHER
+------------------------------------------------------------------------
+  Alice Martin — 1 assignment, 2.00 h
+      Mathematics (2A)  2.00 h  [DEPARTMENT HEAD]
+  Bruno García — 0 assignments, 0.00 h

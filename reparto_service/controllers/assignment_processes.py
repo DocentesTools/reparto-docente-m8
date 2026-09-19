@@ -25,10 +25,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, col, func, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.academic_years import AcademicYear
 from reparto_service.db_models.assignment_processes import (
@@ -146,12 +147,11 @@ class AssignmentProcessController(DomainController):
         before = AssignmentProcess.model_validate(process.model_dump())
         update_dict = process_in.model_dump(exclude_unset=True)
         if "status" in update_dict:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Process status is owned by the transition endpoint. "
-                    "POST /assignment-processes/{id}/transition instead."
-                ),
+                code="assignment_processes.process_status_is_owned_by_transition_endpoint_post",
+                message="Process status is owned by the transition endpoint. POST /assignment-processes/{id}/transition instead.",
+                params={},
             )
         process.sqlmodel_update(update_dict)
         session.add(process)
@@ -190,19 +190,20 @@ class AssignmentProcessController(DomainController):
         current = process.status
         target = request.target_status
         if is_reopen_edge(current, target):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Reopen must go through POST "
-                    "/assignment-processes/{id}/reopen with a reason."
-                ),
+                code="assignment_processes.reopen_must_go_through_post_assignment_processes_id",
+                message="Reopen must go through POST /assignment-processes/{id}/reopen with a reason.",
+                params={},
             )
         try:
             assert_allowed_transition(current, target)
         except IllegalTransitionError as exc:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(exc),
+                code="assignment_processes.transition_rejected",
+                message=str(exc),
+                params={"reason": str(exc)},
             ) from exc
         if is_closing_transition(current, target):
             PlanReadinessGate.ensure_current_feasible(
@@ -250,9 +251,11 @@ class AssignmentProcessController(DomainController):
         current = process.status
         target = AssignmentProcessStatus.REOPENED
         if not is_reopen_edge(current, target):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=("Only processes in status 'final' can be reopened."),
+                code="assignment_processes.only_processes_status_final_can_be_reopened",
+                message="Only processes in status 'final' can be reopened.",
+                params={},
             )
         process.status = target
         process.closed_at = None
@@ -307,19 +310,25 @@ class AssignmentProcessController(DomainController):
         source = DomainController.get_process_or_404(session, source_process_id)
         before = AssignmentProcess.model_validate(target.model_dump())
         if target.id == source.id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Source and target process must differ.",
+                code="assignment_processes.source_and_target_process_must_differ",
+                message="Source and target process must differ.",
+                params={},
             )
         if target.school_id != source.school_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=("Source and target processes must belong to the same school."),
+                code="assignment_processes.source_and_target_processes_must_belong_same_school",
+                message="Source and target processes must belong to the same school.",
+                params={},
             )
         if target.status != AssignmentProcessStatus.DRAFT:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=("Copy is only allowed into a process in status 'draft'."),
+                code="assignment_processes.copy_is_only_allowed_into_process_status_draft",
+                message="Copy is only allowed into a process in status 'draft'.",
+                params={},
             )
         AssignmentProcessController._ensure_target_empty(session, target.id)
         subject_map, cell_map = AssignmentProcessController._copy_structure(
@@ -359,9 +368,11 @@ class AssignmentProcessController(DomainController):
             ).one()
             > 0
         ):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Target process already has teachers.",
+                code="assignment_processes.target_process_already_has_teachers",
+                message="Target process already has teachers.",
+                params={},
             )
         if (
             session.exec(
@@ -371,9 +382,11 @@ class AssignmentProcessController(DomainController):
             ).one()
             > 0
         ):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Target process already has subjects.",
+                code="assignment_processes.target_process_already_has_subjects",
+                message="Target process already has subjects.",
+                params={},
             )
         if (
             session.exec(
@@ -383,9 +396,11 @@ class AssignmentProcessController(DomainController):
             ).one()
             > 0
         ):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Target process already has teaching groups.",
+                code="assignment_processes.target_process_already_has_teaching_groups",
+                message="Target process already has teaching groups.",
+                params={},
             )
         if (
             session.exec(
@@ -395,9 +410,11 @@ class AssignmentProcessController(DomainController):
             ).one()
             > 0
         ):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Target process already has group-subject cells.",
+                code="assignment_processes.target_process_already_has_group_subject_cells",
+                message="Target process already has group-subject cells.",
+                params={},
             )
         if (
             session.exec(
@@ -407,9 +424,11 @@ class AssignmentProcessController(DomainController):
             ).one()
             > 0
         ):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Target process already has a teaching plan.",
+                code="assignment_processes.target_process_already_has_teaching_plan",
+                message="Target process already has a teaching plan.",
+                params={},
             )
 
     @staticmethod

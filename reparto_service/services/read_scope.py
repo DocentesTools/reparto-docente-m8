@@ -36,10 +36,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import RoleType, UserModel, has_minimum_role
 from sqlmodel import Session, col, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.departments import Department
 from reparto_service.db_models.process_teachers import ProcessTeacher
@@ -119,9 +120,11 @@ def ensure_process_visible(
     if process is None or (
         departments is not UNRESTRICTED and process.department_id not in departments
     ):
-        raise HTTPException(
+        raise DomainHTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"AssignmentProcess {process_id} not found.",
+            code="read_scope.assignmentprocess_not_found",
+            message=f"AssignmentProcess {process_id} not found.",
+            params={"process_id": process_id},
         )
     return process
 

@@ -1,0 +1,35 @@
+========================================================================
+RÉPARTITION — DOCUMENT FINAL
+========================================================================
+Référence du processus : 00000000-0000-4000-8000-000000000001
+État :            PRÊT POUR LA RÉUNION
+État au :         2026-09-14T08:30:00+00:00 (UTC)
+Établissement :   IES Test
+Département :     Science
+Année scolaire :  2026/2027
+Version :         v4 (PROPOSITION DU DÉPARTEMENT)
+Clôturé le :      2026-09-14T09:45:00+00:00
+État du plan :    OBSOLÈTE
+Faisabilité :     IRRÉALISABLE
+Génération :      3
+
+------------------------------------------------------------------------
+LISTE FINALE DES AFFECTATIONS
+------------------------------------------------------------------------
+  Alice Martin — 1 affectation, 2.00 h
+      Mathematics (2A)  2.00 h  [RESPONSABLE DU DÉPARTEMENT]
+  Bruno García — 0 affectation, 0.00 h
+
+------------------------------------------------------------------------
+RÉCAPITULATIF FINAL
+------------------------------------------------------------------------
+  Heures allouées aux groupes         4.00
+  Heures requises                     3.50
+  Heures attribuées                   2.00
+  Heures non couvertes                1.50
+
+------------------------------------------------------------------------
+EXCEPTIONS ET JUSTIFICATIONS
+------------------------------------------------------------------------
+  Bruno García — base 1.00 h + supplément 0.50 h
+      justification : Approved for the bilingual programme.

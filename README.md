@@ -344,8 +344,23 @@ and `GET /compare-previous-year` diff two snapshots along the plan §10.3
 dimensions: whether the allocation, group hours, teacher load, subject category,
 activities, group links, teacher-position count, participant targets or
 requirement generation changed, plus signed hour and count deltas (hours as
-canonical decimal strings). `POST /exports` generates an export artifact (JSON or
-CSV); a `backup` artifact carries the complete restorable three-stage domain —
+canonical decimal strings). `POST /exports` generates an export artifact (JSON,
+CSV or a `pdf` document) and persists the language it was requested under: an
+optional body `locale` (`en` / `es` / `fr`) wins, else the locale negotiated
+from `Accept-Language`, else English; every row answers with its `locale`, and
+rows written before the column existed read back as `en`, the language they
+were rendered in. Only the `pdf` document renderer reads it: its explicit,
+revision-labelled gettext catalog is loaded outside the pure renderer and
+injected as an input, never read from request context. The four human-readable
+document types translate service-owned vocabulary, plural sentences, and
+document-only enum labels in English, Spanish, or French. Generated plan-stale
+reasons carry an internal stable code and language-neutral parameters so they
+can be rendered in the artifact locale; historical and user-authored reasons
+stay verbatim. That internal metadata is excluded from public and backup
+schemas. JSON and CSV bytes remain language-neutral and identical whatever
+language the row records, and `checksum` stays `sha256(content)` without locale
+or catalog metadata. A
+`backup` artifact carries the complete restorable three-stage domain —
 process settings, allocation revisions, teaching plan, subjects, groups,
 group-subject matrix, teaching activities and their links, the generated
 indivisible requirement slots and the assignments — plus the version list, while a
@@ -410,6 +425,44 @@ with the guarded `retire` action. A document that only exists on a running
 instance cannot gate a consumer's pull request — a tracked one can. Refreshing
 it is deliberate and leaves a reviewable diff, which is what makes it worth
 trusting.
+
+### Published error taxonomy
+
+[`docs/error-taxonomy.md`](docs/error-taxonomy.md) defines ownership for domain,
+framework/auth, request-validation, routing, and unexpected failures. Every
+Reparto-owned failure uses `{"detail":{"code","message","params"}}`; the
+additive-only code catalog in
+[`docs/error-taxonomy.json`](docs/error-taxonomy.json) is checked against all
+controller and service call sites by `tests/test_error_taxonomy.py`.
+
+### Domain-error translations
+
+Every Reparto request negotiates `en`, `es`, or `fr` from `Accept-Language`;
+regional tags such as `es-ES` select their base locale. Reparto-owned domain
+errors are translated at the HTTP boundary and include `Content-Language` plus
+`Vary: Accept-Language`. The stable code and language-neutral parameters do not
+change. Missing or incompatible translations fall back to the existing English
+message.
+
+The two bulk-preview prose fields outside the exception envelope use the same
+boundary and catalog. Their additive stable-code contract is tracked in
+[`docs/non-exception-prose-taxonomy.json`](docs/non-exception-prose-taxonomy.json):
+codes and parameters stay language-neutral, while `reason`/`message` vary with
+the negotiated request locale.
+
+Spanish and French gettext sources live under
+`reparto_service/locales/<locale>/LC_MESSAGES/reparto.po`. After editing them,
+install the development requirements and refresh the committed runtime
+catalogs:
+
+```bash
+python -m babel.messages.frontend compile \
+  --directory reparto_service/locales --domain reparto
+```
+
+Babel is a build/development dependency only. Production loads the compiled
+catalogs with Python's standard-library `gettext`; the Docker build fails if a
+shipped catalog is missing or unreadable.
 
 ## Quality gates
 

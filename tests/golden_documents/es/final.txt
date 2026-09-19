@@ -1,0 +1,35 @@
+========================================================================
+REPARTO — DOCUMENTO FINAL
+========================================================================
+Referencia del proceso: 00000000-0000-4000-8000-000000000001
+Estado:             LISTO PARA LA REUNIÓN
+Estado a fecha de:  2026-09-14T08:30:00+00:00 (UTC)
+Centro:             IES Test
+Departamento:       Science
+Curso académico:    2026/2027
+Versión:            v4 (PROPUESTA DEL DEPARTAMENTO)
+Cerrado el:         2026-09-14T09:45:00+00:00
+Estado del plan:    DESACTUALIZADO
+Viabilidad:         INVIABLE
+Generación:         3
+
+------------------------------------------------------------------------
+LISTA FINAL DEL REPARTO
+------------------------------------------------------------------------
+  Alice Martin — 1 asignación, 2.00 h
+      Mathematics (2A)  2.00 h  [RESPONSABLE DEL DEPARTAMENTO]
+  Bruno García — 0 asignaciones, 0.00 h
+
+------------------------------------------------------------------------
+RESUMEN FINAL
+------------------------------------------------------------------------
+  Horas asignadas a grupos         4.00
+  Horas requeridas                 3.50
+  Horas asignadas                  2.00
+  Horas sin cubrir                 1.50
+
+------------------------------------------------------------------------
+EXCEPCIONES Y JUSTIFICACIONES
+------------------------------------------------------------------------
+  Bruno García — base 1.00 h + adicionales 0.50 h
+      justificación: Approved for the bilingual programme.

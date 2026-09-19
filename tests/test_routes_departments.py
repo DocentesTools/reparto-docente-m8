@@ -126,7 +126,7 @@ def test_an_account_below_admin_cannot_be_recorded_as_head(
         json={"department_head_user_id": str(uuid.uuid4())},
     )
     assert resp.status_code == 400
-    assert role.value in resp.json()["detail"]
+    assert role.value in resp.json()["detail"]["message"]
     session.refresh(dept)
     assert dept.department_head_user_id is None
 
@@ -143,7 +143,7 @@ def test_an_unknown_account_cannot_be_recorded_as_head(
         json={"department_head_user_id": str(uuid.uuid4())},
     )
     assert resp.status_code == 400
-    assert "does not know this user" in resp.json()["detail"]
+    assert "does not know this user" in resp.json()["detail"]["message"]
 
 
 def test_an_unreachable_issuer_leaves_the_head_unchanged(
@@ -159,7 +159,7 @@ def test_an_unreachable_issuer_leaves_the_head_unchanged(
         json={"department_head_user_id": str(uuid.uuid4())},
     )
     assert resp.status_code == 503
-    assert "user_directory_transport" in resp.json()["detail"]
+    assert "user_directory_transport" in resp.json()["detail"]["message"]
     session.refresh(dept)
     assert dept.department_head_user_id is None
 

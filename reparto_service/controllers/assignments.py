@@ -36,10 +36,11 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, col, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.core.decimals import quantize_hours
 from reparto_service.db_models.assignment_processes import AssignmentProcess
@@ -356,9 +357,11 @@ class AssignmentController(DomainController):
             session, process_id, action.process_teacher_id
         )
         if replacement.id == assignment.process_teacher_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Reassignment requires a different process teacher.",
+                code="assignments.reassignment_requires_different_process_teacher",
+                message="Reassignment requires a different process teacher.",
+                params={},
             )
         AssignmentController._lock_reassignment_state(
             session, assignment, requirement, replacement
@@ -379,13 +382,11 @@ class AssignmentController(DomainController):
         if repaired is not None and (
             repaired.code != WitnessRepairCode.REPAIRED or repaired.witness is None
         ):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "Reassignment would strand the remaining assignment state "
-                    f"({repaired.code.value}); administrative feasibility "
-                    "evaluation is required."
-                ),
+                code="assignments.reassignment_would_strand_remaining_assignment_state_administrative",
+                message=f"Reassignment would strand the remaining assignment state ({repaired.code.value}); administrative feasibility evaluation is required.",
+                params={"repaired_code": repaired.code.value},
             )
         before = Assignment.model_validate(assignment.model_dump())
         AssignmentController._release_assignment(session, assignment)
@@ -457,12 +458,14 @@ class AssignmentController(DomainController):
             session, requirement=requirement, process_teacher=process_teacher
         )
         if requirement.status != HourRequirementStatus.AVAILABLE:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Requirement {requirement.id} is not available for "
-                    f"assignment (status {requirement.status.value})."
-                ),
+                code="assignments.requirement_is_not_available_assignment_status",
+                message=f"Requirement {requirement.id} is not available for assignment (status {requirement.status.value}).",
+                params={
+                    "requirement_id": requirement.id,
+                    "requirement_status": requirement.status.value,
+                },
             )
         AssignmentController._ensure_slot_unassigned(session, requirement.id)
         AssignmentController._ensure_eligible_process_teacher(process_teacher)
@@ -543,9 +546,11 @@ class AssignmentController(DomainController):
         """Reject repeated undo/reassignment attempts against historical rows."""
 
         if assignment.status != AssignmentStatus.ACTIVE:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Only an active assignment can be undone or reassigned.",
+                code="assignments.only_active_assignment_can_be_undone_or_reassigned",
+                message="Only an active assignment can be undone or reassigned.",
+                params={},
             )
 
     @staticmethod
@@ -564,9 +569,11 @@ class AssignmentController(DomainController):
         """Require an active participant for every new slot occupancy."""
 
         if process_teacher.status != ProcessTeacherStatus.ACTIVE:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only an active process teacher is eligible for assignment.",
+                code="assignments.only_active_process_teacher_is_eligible_assignment",
+                message="Only an active process teacher is eligible for assignment.",
+                params={},
             )
 
     @staticmethod
@@ -774,14 +781,16 @@ class AssignmentController(DomainController):
         target = process_teacher.target_weekly_hours
         if quantize_hours(assigned + slot_hours) > target:
             remaining = quantize_hours(target - assigned)
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Requirement {requirement.id} needs {slot_hours} hours but the "
-                    f"participant has only {remaining} remaining before the target "
-                    f"of {target}; a slot cannot be split, so authorize extra hours "
-                    "first."
-                ),
+                code="assignments.requirement_needs_hours_but_participant_has_only_remaining",
+                message=f"Requirement {requirement.id} needs {slot_hours} hours but the participant has only {remaining} remaining before the target of {target}; a slot cannot be split, so authorize extra hours first.",
+                params={
+                    "requirement_id": requirement.id,
+                    "slot_hours": slot_hours,
+                    "remaining": remaining,
+                    "target": target,
+                },
             )
 
     @staticmethod
@@ -792,12 +801,11 @@ class AssignmentController(DomainController):
             Assignment.status == AssignmentStatus.ACTIVE,
         )
         if session.exec(statement).first() is not None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Requirement {requirement_id} is already assigned; a slot "
-                    "cannot be shared or split."
-                ),
+                code="assignments.requirement_is_already_assigned_slot_cannot_be_shared",
+                message=f"Requirement {requirement_id} is already assigned; a slot cannot be shared or split.",
+                params={"requirement_id": requirement_id},
             )
 
     @staticmethod
@@ -813,12 +821,11 @@ class AssignmentController(DomainController):
             Assignment.status == AssignmentStatus.ACTIVE,
         )
         if session.exec(statement).first() is not None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Teacher already occupies a position of activity "
-                    f"{teaching_activity_id}; distinct teachers are required."
-                ),
+                code="assignments.teacher_already_occupies_position_activity_distinct_teachers_are",
+                message=f"Teacher already occupies a position of activity {teaching_activity_id}; distinct teachers are required.",
+                params={"teaching_activity_id": teaching_activity_id},
             )
 
     @staticmethod
@@ -857,15 +864,11 @@ class AssignmentController(DomainController):
             proposed_participant_id=process_teacher.id,
         )
         if repair.code != WitnessRepairCode.REPAIRED or repair.witness is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "Selection is blocked because the deterministic witness "
-                    f"could not be repaired ({repair.code.value}); administrative "
-                    "feasibility evaluation is required. Go to the Planning page, "
-                    "run the feasibility evaluation again, and return to the "
-                    "board — nothing is broken and nothing is lost."
-                ),
+                code="assignments.selection_is_blocked_because_deterministic_witness_could_not",
+                message=f"Selection is blocked because the deterministic witness could not be repaired ({repair.code.value}); administrative feasibility evaluation is required. Go to the Planning page, run the feasibility evaluation again, and return to the board — nothing is broken and nothing is lost.",
+                params={"repair_code": repair.code.value},
             )
         return repair.witness
 
@@ -873,13 +876,11 @@ class AssignmentController(DomainController):
     def _raise_fast_guard(finding: FastGuardFinding) -> None:
         """Raise a stable conflict without exposing a full provisional reparto."""
         related = f" ({', '.join(finding.related_ids)})" if finding.related_ids else ""
-        raise HTTPException(
+        raise DomainHTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Selection would strand the remaining assignment state: "
-                f"{finding.code.value}{related}. Administrative feasibility "
-                "evaluation is required."
-            ),
+            code="assignments.selection_would_strand_remaining_assignment_state_administrative_fea",
+            message=f"Selection would strand the remaining assignment state: {finding.code.value}{related}. Administrative feasibility evaluation is required.",
+            params={"finding_code": finding.code.value, "related": related},
         )
 
     # ── Internal lookups ──────────────────────────────────────────────────────
@@ -892,11 +893,11 @@ class AssignmentController(DomainController):
         statement = select(Assignment).where(Assignment.id == assignment_id)
         assignment = session.exec(statement).first()
         if assignment is None or assignment.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(
-                    f"Assignment {assignment_id} not found in process {process_id}."
-                ),
+                code="assignments.assignment_not_found_process",
+                message=f"Assignment {assignment_id} not found in process {process_id}.",
+                params={"assignment_id": assignment_id, "process_id": process_id},
             )
         return assignment
 
@@ -909,12 +910,11 @@ class AssignmentController(DomainController):
         statement = select(HourRequirement).where(HourRequirement.id == requirement_id)
         requirement = session.exec(statement).first()
         if requirement is None or requirement.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(
-                    f"HourRequirement {requirement_id} not found in process "
-                    f"{process_id}."
-                ),
+                code="assignments.hourrequirement_not_found_process",
+                message=f"HourRequirement {requirement_id} not found in process {process_id}.",
+                params={"requirement_id": requirement_id, "process_id": process_id},
             )
         return requirement
 
@@ -930,12 +930,14 @@ class AssignmentController(DomainController):
             process_teacher is None
             or process_teacher.assignment_process_id != process_id
         ):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(
-                    f"ProcessTeacher {process_teacher_id} not found in "
-                    f"process {process_id}."
-                ),
+                code="assignments.processteacher_not_found_process",
+                message=f"ProcessTeacher {process_teacher_id} not found in process {process_id}.",
+                params={
+                    "process_teacher_id": process_teacher_id,
+                    "process_id": process_id,
+                },
             )
         return process_teacher
 
@@ -953,26 +955,32 @@ class AssignmentController(DomainController):
     ) -> MeetingSession:
         meeting = session.get(MeetingSession, meeting_session_id)
         if meeting is None or meeting.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"MeetingSession {meeting_session_id} not found.",
+                code="assignments.meetingsession_not_found",
+                message=f"MeetingSession {meeting_session_id} not found.",
+                params={"meeting_session_id": meeting_session_id},
             )
         if meeting.status not in {
             MeetingSessionStatus.OPEN,
             MeetingSessionStatus.SELECTING,
             MeetingSessionStatus.REOPENED,
         }:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Meeting session must be open for direct selection.",
+                code="assignments.meeting_session_must_be_open_direct_selection",
+                message="Meeting session must be open for direct selection.",
+                params={},
             )
         if (
             not meeting.lan_access_enabled
             or not meeting.direct_teacher_selection_enabled
         ):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Direct teacher selection is disabled for this session.",
+                code="assignments.direct_teacher_selection_is_disabled_session",
+                message="Direct teacher selection is disabled for this session.",
+                params={},
             )
         return meeting
 
@@ -994,9 +1002,11 @@ class AssignmentController(DomainController):
         if meeting.selection_mode != SelectionOrderMode.STRICT:
             return
         if active is None or active.process_teacher_id != process_teacher_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Teacher cannot choose outside the active strict turn.",
+                code="assignments.teacher_cannot_choose_outside_active_strict_turn",
+                message="Teacher cannot choose outside the active strict turn.",
+                params={},
             )
 
     @staticmethod

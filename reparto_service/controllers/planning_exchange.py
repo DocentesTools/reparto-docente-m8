@@ -32,10 +32,11 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, col, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.controllers.teaching_activities import TeachingActivityController
 from reparto_service.db_models.teaching_activities import (
@@ -82,13 +83,11 @@ class PlanningExchangeController(DomainController):
         is_final_exportable = validations.blocking_count == 0
 
         if mode == PlanningExportMode.FINAL and not is_final_exportable:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Final planning export is blocked by "
-                    f"{validations.blocking_count} blocking validation(s); "
-                    "resolve them or export as draft/provisional (plan §7.8)."
-                ),
+                code="planning_exchange.final_planning_export_is_blocked_by_blocking_validation",
+                message=f"Final planning export is blocked by {validations.blocking_count} blocking validation(s); resolve them or export as draft/provisional (plan §7.8).",
+                params={"validations_blocking_count": validations.blocking_count},
             )
         if mode == PlanningExportMode.FINAL:
             PlanReadinessGate.ensure_current_feasible(
@@ -182,9 +181,11 @@ class PlanningExchangeController(DomainController):
             select(TeachingPlan).where(TeachingPlan.assignment_process_id == process_id)
         ).first()
         if plan is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No teaching plan for process {process_id}.",
+                code="planning_exchange.no_teaching_plan_process",
+                message=f"No teaching plan for process {process_id}.",
+                params={"process_id": process_id},
             )
         return plan
 

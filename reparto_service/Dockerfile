@@ -29,7 +29,7 @@ ENV PYTHONPATH=/opt:/opt/reparto_service
 
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends curl=8.14.1-2+deb13u4 \
+    && apt-get install -y --no-install-recommends curl=8.14.1-2+deb13u5 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 1000 appuser && \
@@ -51,6 +51,11 @@ RUN python -m pip uninstall -y setuptools wheel && \
     python -c "import alembic, asyncpg, bcrypt, email_validator, fastapi, fastapi_m8, google.auth, gunicorn, itsdangerous, jinja2, multipart, prometheus_client, psycopg, pydantic, pydantic_settings, redis, slugify, sqlalchemy, sqlmodel, tenacity, uvicorn"
 
 COPY --chown=appuser:appuser ./reparto_service ./reparto_service
+
+# Catalogs are compiled and committed by the build/dev toolchain. The runtime
+# deliberately uses only stdlib gettext; fail the image build if either shipped
+# locale is absent or unreadable.
+RUN python -c "import gettext; from pathlib import Path; root=Path('/opt/reparto_service/locales'); [gettext.translation('reparto', localedir=root, languages=[locale]) for locale in ('es', 'fr')]"
 
 RUN find /opt/reparto_service/scripts -name "*.sh" -exec sed -i 's/\r$//' {} + && \
     chmod +x /opt/reparto_service/scripts/*.sh

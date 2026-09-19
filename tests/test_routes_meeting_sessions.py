@@ -95,7 +95,7 @@ def test_create_open_session_fails_closed_without_current_feasibility(
     )
 
     assert resp.status_code == 409
-    assert "feasibility" in resp.json()["detail"]
+    assert "feasibility" in resp.json()["detail"]["message"]
 
 
 def test_create_session_rejects_payload_process_mismatch(
@@ -108,7 +108,7 @@ def test_create_session_rejects_payload_process_mismatch(
         json=_session_payload(other),
     )
     assert resp.status_code == 400
-    assert "does not match" in resp.json()["detail"]
+    assert "does not match" in resp.json()["detail"]["message"]
 
 
 def test_create_session_rejects_second_active_session(
@@ -121,7 +121,7 @@ def test_create_session_rejects_second_active_session(
         json=_session_payload(process),
     )
     assert resp.status_code == 400
-    assert "active meeting session" in resp.json()["detail"]
+    assert "active meeting session" in resp.json()["detail"]["message"]
 
 
 def test_create_session_allows_new_session_after_closed_one(
@@ -319,7 +319,7 @@ def test_cannot_create_session_on_final_process(
         json=_session_payload(process),
     )
     assert resp.status_code == 400
-    assert "final" in resp.json()["detail"].lower()
+    assert "final" in resp.json()["detail"]["message"].lower()
 
 
 # ── Plan-readiness gate on opening a meeting (plan §3.10) ─────────────────────
@@ -334,7 +334,7 @@ def test_cannot_open_session_without_teaching_plan(
         json=_session_payload(process, status="open"),
     )
     assert resp.status_code == 409
-    assert "no teaching plan" in resp.json()["detail"]
+    assert "no teaching plan" in resp.json()["detail"]["message"]
 
 
 def test_cannot_open_session_when_plan_unbalanced(
@@ -347,7 +347,7 @@ def test_cannot_open_session_when_plan_unbalanced(
         json=_session_payload(process, status="open"),
     )
     assert resp.status_code == 409
-    assert "unbalanced" in resp.json()["detail"]
+    assert "unbalanced" in resp.json()["detail"]["message"]
 
 
 def test_cannot_open_session_when_plan_stale(
@@ -360,7 +360,7 @@ def test_cannot_open_session_when_plan_stale(
         json=_session_payload(process, status="open"),
     )
     assert resp.status_code == 409
-    assert "stale" in resp.json()["detail"]
+    assert "stale" in resp.json()["detail"]["message"]
 
 
 def test_cannot_open_prepared_session_via_update_without_ready_plan(
@@ -375,7 +375,7 @@ def test_cannot_open_prepared_session_via_update_without_ready_plan(
         json={"status": "open"},
     )
     assert resp.status_code == 409
-    assert "locked" in resp.json()["detail"]
+    assert "locked" in resp.json()["detail"]["message"]
 
 
 def test_prepared_session_is_not_gated_on_plan(

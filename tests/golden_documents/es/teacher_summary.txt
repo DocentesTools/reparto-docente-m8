@@ -1,0 +1,14 @@
+========================================================================
+REPARTO — RESUMEN POR DOCENTE
+========================================================================
+Referencia del proceso: 00000000-0000-4000-8000-000000000001
+Estado:             LISTO PARA LA REUNIÓN
+Estado a fecha de:  2026-09-14T08:30:00+00:00 (UTC)
+Versión:            v4 (PROPUESTA DEL DEPARTAMENTO)
+
+------------------------------------------------------------------------
+REPARTO POR DOCENTE
+------------------------------------------------------------------------
+  Alice Martin — 1 asignación, 2.00 h
+      Mathematics (2A)  2.00 h  [RESPONSABLE DEL DEPARTAMENTO]
+  Bruno García — 0 asignaciones, 0.00 h

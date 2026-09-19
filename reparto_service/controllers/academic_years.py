@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, func, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.academic_years import (
     AcademicYear,
@@ -48,9 +49,11 @@ class AcademicYearController(DomainController):
         year_in: AcademicYearCreate,
     ) -> AcademicYearPublic:
         if year_in.end_date <= year_in.start_date:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="end_date must be strictly after start_date.",
+                code="academic_years.end_date_must_be_strictly_after_start_date",
+                message="end_date must be strictly after start_date.",
+                params={},
             )
         year = AcademicYear.model_validate(
             year_in.model_dump(),
@@ -73,9 +76,11 @@ class AcademicYearController(DomainController):
             new_start = update_dict.get("start_date", year.start_date)
             new_end = update_dict.get("end_date", year.end_date)
             if new_end <= new_start:  # pragma: no branch
-                raise HTTPException(
+                raise DomainHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="end_date must be strictly after start_date.",
+                    code="academic_years.end_date_must_be_strictly_after_start_date",
+                    message="end_date must be strictly after start_date.",
+                    params={},
                 )
         year.sqlmodel_update(update_dict)
         session.add(year)

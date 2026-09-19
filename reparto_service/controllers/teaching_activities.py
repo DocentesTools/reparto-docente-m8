@@ -29,10 +29,11 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, col, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.controllers.teaching_plans import TeachingPlanController
 from reparto_service.db_models.assignments import Assignment
@@ -59,6 +60,7 @@ from reparto_service.enums import (
 )
 from reparto_service.services.calculations import PlanningCalculationService
 from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
+from reparto_service.services.stale_reasons import TEACHING_ACTIVITY_RETIRED
 
 # Plan statuses in which normal activity mutation is allowed (plan §5.6, §20.14):
 # still-planning states. LOCKED / REQUIREMENTS_GENERATED / STALE /
@@ -138,13 +140,11 @@ class TeachingActivityController(DomainController):
         plan = TeachingActivityController._require_mutable_plan(session, process_id)
 
         if activity_in.source is not TeachingActivitySource.SECONDARY_MANUAL:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Only SECONDARY_MANUAL activities can be created here; "
-                    "MAIN_GENERATED activities are materialised from group "
-                    "subjects (plan §20.10)."
-                ),
+                code="teaching_activities.only_secondary_manual_activities_can_be_created_here",
+                message="Only SECONDARY_MANUAL activities can be created here; MAIN_GENERATED activities are materialised from group subjects (plan §20.10).",
+                params={},
             )
         subject = TeachingActivityController._get_subject_or_404(
             session, process_id, activity_in.subject_id
@@ -266,14 +266,18 @@ class TeachingActivityController(DomainController):
         )
         plan = TeachingActivityController._plan_row(session, process_id, lock=True)
         if plan is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="The activity has no owning teaching plan.",
+                code="teaching_activities.activity_has_no_owning_teaching_plan",
+                message="The activity has no owning teaching plan.",
+                params={},
             )
         if activity.retired_at is not None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="The teaching activity is already retired.",
+                code="teaching_activities.teaching_activity_is_already_retired",
+                message="The teaching activity is already retired.",
+                params={},
             )
 
         before = TeachingActivity.model_validate(activity.model_dump())
@@ -281,12 +285,11 @@ class TeachingActivityController(DomainController):
             session, activity.id
         )
         if not requirements and plan.status not in _MUTABLE_PLAN_STATUSES:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "An activity without generated requirements can be retired "
-                    "only while its teaching plan is unlocked."
-                ),
+                code="teaching_activities.activity_without_generated_requirements_can_be_retired_only",
+                message="An activity without generated requirements can be retired only while its teaching plan is unlocked.",
+                params={},
             )
         assigned_ids = TeachingActivityController._assigned_requirement_ids(
             session, process_id, requirements
@@ -431,20 +434,18 @@ class TeachingActivityController(DomainController):
         """Return the process's plan, or 400 when it is missing or locked."""
         plan = TeachingActivityController._plan_row(session, process_id)
         if plan is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Process {process_id} has no teaching plan; create one "
-                    "before adding activities."
-                ),
+                code="teaching_activities.process_has_no_teaching_plan_create_one_before",
+                message=f"Process {process_id} has no teaching plan; create one before adding activities.",
+                params={"process_id": process_id},
             )
         if plan.status not in _MUTABLE_PLAN_STATUSES:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Teaching plan is {plan.status.value}; unlock it before "
-                    "mutating activities (plan §5.6, §20.14)."
-                ),
+                code="teaching_activities.teaching_plan_is_unlock_it_before_mutating_activities",
+                message=f"Teaching plan is {plan.status.value}; unlock it before mutating activities (plan §5.6, §20.14).",
+                params={"plan_status": plan.status.value},
             )
         return plan
 
@@ -463,11 +464,11 @@ class TeachingActivityController(DomainController):
             statement = statement.with_for_update()
         activity = session.exec(statement).first()
         if activity is None or plan is None or activity.teaching_plan_id != plan.id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(
-                    f"TeachingActivity {activity_id} not found in process {process_id}."
-                ),
+                code="teaching_activities.teachingactivity_not_found_process",
+                message=f"TeachingActivity {activity_id} not found in process {process_id}.",
+                params={"activity_id": activity_id, "process_id": process_id},
             )
         return activity
 
@@ -528,7 +529,7 @@ class TeachingActivityController(DomainController):
         has_requirements: bool,
         has_assignments: bool,
     ) -> None:
-        reason = "A teaching activity was retired."
+        reason = TEACHING_ACTIVITY_RETIRED
         if plan.status in _MUTABLE_PLAN_STATUSES:
             TeachingActivityController._recompute_unlocked_plan_balance(session, plan)
         elif plan.status == TeachingPlanStatus.LOCKED:
@@ -547,9 +548,9 @@ class TeachingActivityController(DomainController):
                 stale_reason=reason if target == TeachingPlanStatus.STALE else None,
             )
             if target == TeachingPlanStatus.RECONCILIATION_REQUIRED:
-                plan.stale_reason = reason
+                TeachingPlanController.set_stale_reason(plan, reason)
         elif has_requirements and plan.stale_reason is None:
-            plan.stale_reason = reason
+            TeachingPlanController.set_stale_reason(plan, reason)
         session.add(plan)
 
     @staticmethod
@@ -592,9 +593,11 @@ class TeachingActivityController(DomainController):
     ) -> Subject:
         subject = session.get(Subject, subject_id)
         if subject is None or subject.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Subject {subject_id} not found in process {process_id}.",
+                code="teaching_activities.subject_not_found_process",
+                message=f"Subject {subject_id} not found in process {process_id}.",
+                params={"subject_id": subject_id, "process_id": process_id},
             )
         return subject
 
@@ -613,46 +616,45 @@ class TeachingActivityController(DomainController):
         seen: list[uuid.UUID] = []
         for cell_id in group_subject_ids:
             if cell_id in seen:
-                raise HTTPException(
+                raise DomainHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Duplicate linked group-subject {cell_id}.",
+                    code="teaching_activities.duplicate_linked_group_subject",
+                    message=f"Duplicate linked group-subject {cell_id}.",
+                    params={"cell_id": cell_id},
                 )
             seen.append(cell_id)
 
         cell_count = len(seen)
         if cell_count == 0 and not subject.allows_zero_groups:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "A zero-group activity requires a subject that allows zero "
-                    "groups (plan §5.6)."
-                ),
+                code="teaching_activities.zero_group_activity_requires_subject_allows_zero_groups",
+                message="A zero-group activity requires a subject that allows zero groups (plan §5.6).",
+                params={},
             )
         if cell_count > 1 and not subject.allows_multiple_groups:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "A multi-group activity requires a subject that allows "
-                    "multiple groups (plan §5.6, §20.10)."
-                ),
+                code="teaching_activities.multi_group_activity_requires_subject_allows_multiple_groups",
+                message="A multi-group activity requires a subject that allows multiple groups (plan §5.6, §20.10).",
+                params={},
             )
 
         for cell_id in seen:
             cell = session.get(GroupSubject, cell_id)
             if cell is None or cell.assignment_process_id != process_id:
-                raise HTTPException(
+                raise DomainHTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=(
-                        f"GroupSubject {cell_id} not found in process {process_id}."
-                    ),
+                    code="teaching_activities.groupsubject_not_found_process",
+                    message=f"GroupSubject {cell_id} not found in process {process_id}.",
+                    params={"cell_id": cell_id, "process_id": process_id},
                 )
             if cell.subject_id != subject.id:
-                raise HTTPException(
+                raise DomainHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Linked group-subject {cell_id} teaches a different "
-                        "subject than the activity (plan §5.7)."
-                    ),
+                    code="teaching_activities.linked_group_subject_teaches_different_subject_than_activity",
+                    message=f"Linked group-subject {cell_id} teaches a different subject than the activity (plan §5.7).",
+                    params={"cell_id": cell_id},
                 )
         return seen
 

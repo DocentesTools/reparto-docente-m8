@@ -6,10 +6,11 @@ import logging
 import uuid
 from typing import Any
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import BaseController, RoleType, UserModel, has_minimum_role
 from sqlmodel import Session, SQLModel, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.audit_events import AuditEvent
 from reparto_service.db_models.process_teachers import ProcessTeacher
@@ -65,9 +66,11 @@ class DomainController(BaseController):
     @staticmethod
     def _require_role(current_user: UserModel, required: RoleType, detail: str) -> None:
         if not has_minimum_role(current_user.role, required):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=detail,
+                code="base.role_required",
+                message=detail,
+                params={"minimum_role": required.value},
             )
 
     @staticmethod
@@ -108,9 +111,11 @@ class DomainController(BaseController):
         """Return the row with ``item_id`` or raise a 404."""
         item = session.get(model, item_id)
         if item is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"{model.__name__} {item_id} not found.",
+                code="base.not_found",
+                message=f"{model.__name__} {item_id} not found.",
+                params={"model___name__": model.__name__, "item_id": item_id},
             )
         return item
 
@@ -135,9 +140,11 @@ class DomainController(BaseController):
         )
         row = session.exec(statement).first()
         if row is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No teacher profile is linked to this auth user.",
+                code="base.no_teacher_profile_is_linked_auth_user",
+                message="No teacher profile is linked to this auth user.",
+                params={},
             )
         process_teacher, _ = row
         return process_teacher
@@ -159,9 +166,11 @@ class DomainController(BaseController):
         DomainController.require_writer(current_user)
         own = DomainController.linked_process_teacher(session, process_id, current_user)
         if own.id != process_teacher_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You may only act on your own participation in this process.",
+                code="base.you_may_only_act_on_your_own_participation",
+                message="You may only act on your own participation in this process.",
+                params={},
             )
 
     @staticmethod
@@ -181,9 +190,11 @@ class DomainController(BaseController):
         DomainController.require_writer(current_user)
         profile = DomainController.get_or_404(session, TeacherProfile, profile_id)
         if profile.user_id != uuid.UUID(str(current_user.id)):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You may only update your own teacher profile.",
+                code="base.you_may_only_update_your_own_teacher_profile",
+                message="You may only update your own teacher profile.",
+                params={},
             )
 
     @staticmethod
@@ -194,9 +205,11 @@ class DomainController(BaseController):
         statement = select(AssignmentProcess).where(AssignmentProcess.id == process_id)
         process = session.exec(statement).first()
         if process is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"AssignmentProcess {process_id} not found.",
+                code="base.assignmentprocess_not_found",
+                message=f"AssignmentProcess {process_id} not found.",
+                params={"process_id": process_id},
             )
         return process
 
@@ -208,12 +221,11 @@ class DomainController(BaseController):
         enforces plan §8.4's immutability rule with one rule of thumb.
         """
         if process.status in _IMMUTABLE_PROCESS_STATUSES:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Cannot mutate a process in status {process.status.value}; "
-                    "reopen it first."
-                ),
+                code="base.cannot_mutate_process_status_reopen_it_first",
+                message=f"Cannot mutate a process in status {process.status.value}; reopen it first.",
+                params={"process_status": process.status.value},
             )
         return process
 

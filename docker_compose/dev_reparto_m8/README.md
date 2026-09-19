@@ -48,6 +48,14 @@ docker compose up -d   # builds the images and starts the stack
 Fill `.env` **before** the first `docker compose up`: `init-db.sh` runs once, at
 volume creation, so a later edit does not reprovision the users.
 
+Re-running `bash init.sh` on a stack that already has a keypair does not
+regenerate it, but it does re-derive `kid` from the mounted `keys/public.pem`
+and check it against `auth.env`'s `ACCESS_KEY_ID`: a match is confirmed, an
+unset value is written, and a stale value is re-bound with a `NOTE:` naming
+the correction — it never silently skips over an unbound `kid`. Use
+`--rotate-keys` to actually generate a new keypair with the JWKS overlap
+window.
+
 The init script will:
 
 1. Copy any missing `*.env.example` to `*.env`.

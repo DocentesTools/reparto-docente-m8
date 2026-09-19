@@ -128,7 +128,7 @@ def test_create_assignment_immutable_process(
         },
     )
     assert resp.status_code == 400
-    assert "reopen" in resp.json()["detail"]
+    assert "reopen" in resp.json()["detail"]["message"]
 
 
 def test_create_assignment_unknown_requirement(
@@ -144,7 +144,7 @@ def test_create_assignment_unknown_requirement(
         },
     )
     assert resp.status_code == 404
-    assert "HourRequirement" in resp.json()["detail"]
+    assert "HourRequirement" in resp.json()["detail"]["message"]
 
 
 def test_create_assignment_requirement_other_process(
@@ -175,7 +175,7 @@ def test_create_assignment_unknown_teacher(
         },
     )
     assert resp.status_code == 404
-    assert "ProcessTeacher" in resp.json()["detail"]
+    assert "ProcessTeacher" in resp.json()["detail"]["message"]
 
 
 def test_create_assignment_teacher_other_process(
@@ -210,7 +210,7 @@ def test_create_assignment_requirement_not_available(
         },
     )
     assert resp.status_code == 400
-    assert "not available" in resp.json()["detail"]
+    assert "not available" in resp.json()["detail"]["message"]
 
 
 def test_create_assignment_slot_already_assigned(
@@ -232,7 +232,7 @@ def test_create_assignment_slot_already_assigned(
     )
     # Requirement is no longer AVAILABLE, so the status guard trips first.
     assert resp.status_code == 400
-    assert "not available" in resp.json()["detail"]
+    assert "not available" in resp.json()["detail"]["message"]
 
 
 def test_create_assignment_slot_already_assigned_available_status(
@@ -253,7 +253,7 @@ def test_create_assignment_slot_already_assigned_available_status(
         },
     )
     assert resp.status_code == 400
-    assert "already assigned" in resp.json()["detail"]
+    assert "already assigned" in resp.json()["detail"]["message"]
 
 
 def test_create_assignment_distinct_teacher_rule(
@@ -270,7 +270,7 @@ def test_create_assignment_distinct_teacher_rule(
         },
     )
     assert resp.status_code == 400
-    assert "distinct teachers" in resp.json()["detail"]
+    assert "distinct teachers" in resp.json()["detail"]["message"]
 
 
 def test_create_assignment_distinct_teachers_both_positions(
@@ -412,7 +412,7 @@ def test_undo_assignment_already_cancelled_is_rejected(
         _undo_path(process.id, assignment.id), json={"reason": "Duplicate undo"}
     )
     assert resp.status_code == 409
-    assert "active assignment" in resp.json()["detail"]
+    assert "active assignment" in resp.json()["detail"]["message"]
 
 
 def test_undo_assignment_missing_requirement(
@@ -727,9 +727,9 @@ def test_reassign_rejects_same_or_inactive_teacher(
     )
 
     assert same.status_code == 400
-    assert "different" in same.json()["detail"]
+    assert "different" in same.json()["detail"]["message"]
     assert inactive_resp.status_code == 400
-    assert "active process teacher" in inactive_resp.json()["detail"]
+    assert "active process teacher" in inactive_resp.json()["detail"]["message"]
     session.refresh(assignment)
     assert assignment.status == AssignmentStatus.ACTIVE
 
@@ -760,9 +760,9 @@ def test_reassign_rechecks_capacity_and_distinct_teacher_before_release(
     )
 
     assert capacity.status_code == 400
-    assert "authorize extra hours" in capacity.json()["detail"]
+    assert "authorize extra hours" in capacity.json()["detail"]["message"]
     assert distinct.status_code == 400
-    assert "distinct teachers" in distinct.json()["detail"]
+    assert "distinct teachers" in distinct.json()["detail"]["message"]
     session.refresh(assignment)
     assert assignment.status == AssignmentStatus.ACTIVE
 
@@ -790,7 +790,7 @@ def test_reassign_rejects_non_active_assignment_and_stale_plan(
 
     assert cancelled_resp.status_code == 409
     assert stale_resp.status_code == 409
-    assert "stale" in stale_resp.json()["detail"]
+    assert "stale" in stale_resp.json()["detail"]["message"]
 
 
 def test_reassign_repairs_and_persists_current_feasible_witness(
@@ -861,7 +861,7 @@ def test_reassign_fails_closed_on_missing_current_witness(
     )
 
     assert resp.status_code == 409
-    assert "missing or stale" in resp.json()["detail"]
+    assert "missing or stale" in resp.json()["detail"]["message"]
     original = session.get(Assignment, uuid.UUID(created.json()["id"]))
     assert original is not None
     assert original.status == AssignmentStatus.ACTIVE
@@ -904,7 +904,7 @@ def test_reassign_rejects_witness_unsafe_insert_without_mutating_old_row(
     )
 
     assert resp.status_code == 409
-    assert "strand" in resp.json()["detail"]
+    assert "strand" in resp.json()["detail"]["message"]
     original = session.get(Assignment, uuid.UUID(created.json()["id"]))
     assert original is not None
     assert original.status == AssignmentStatus.ACTIVE
@@ -962,7 +962,7 @@ def test_direct_choice_requires_enabled_session(
     session.commit()
     resp = client.post(path, json=payload)
     assert resp.status_code == 400
-    assert "disabled" in resp.json()["detail"]
+    assert "disabled" in resp.json()["detail"]["message"]
 
 
 def test_direct_choice_requires_open_session(
@@ -976,7 +976,7 @@ def test_direct_choice_requires_open_session(
     session.commit()
     resp = client.post(path, json=payload)
     assert resp.status_code == 400
-    assert "must be open" in resp.json()["detail"]
+    assert "must be open" in resp.json()["detail"]["message"]
 
 
 def test_direct_choice_missing_session(
@@ -988,7 +988,7 @@ def test_direct_choice_missing_session(
     payload["meeting_session_id"] = str(uuid.uuid4())
     resp = client.post(path, json=payload)
     assert resp.status_code == 404
-    assert "MeetingSession" in resp.json()["detail"]
+    assert "MeetingSession" in resp.json()["detail"]["message"]
 
 
 def test_direct_choice_requires_linked_teacher(
@@ -997,7 +997,7 @@ def test_direct_choice_requires_linked_teacher(
     _p, _m, _t, _s, path, payload = _direct_setup(session, uuid.uuid4())
     resp = client.post(path, json=payload)
     assert resp.status_code == 404
-    assert "linked" in resp.json()["detail"]
+    assert "linked" in resp.json()["detail"]["message"]
 
 
 def test_direct_choice_strict_rejects_out_of_turn(
@@ -1012,7 +1012,7 @@ def test_direct_choice_strict_rejects_out_of_turn(
     )
     resp = client.post(path, json=payload)
     assert resp.status_code == 400
-    assert "outside the active strict turn" in resp.json()["detail"]
+    assert "outside the active strict turn" in resp.json()["detail"]["message"]
 
 
 def test_direct_choice_strict_completes_active_turn(
@@ -1109,7 +1109,7 @@ def test_create_assignment_over_target_rejected(
         },
     )
     assert resp.status_code == 400
-    assert "authorize extra hours" in resp.json()["detail"]
+    assert "authorize extra hours" in resp.json()["detail"]["message"]
     # The slot stays available — nothing was occupied.
     session.refresh(slot0)
     assert slot0.status == HourRequirementStatus.AVAILABLE
@@ -1173,7 +1173,7 @@ def test_feasible_plan_rejects_residual_total_mismatch(
         },
     )
     assert resp.status_code == 409
-    assert "residual_totals_mismatch" in resp.json()["detail"]
+    assert "residual_totals_mismatch" in resp.json()["detail"]["message"]
 
 
 def test_feasible_plan_rejects_selection_that_strands_oversized_slot(
@@ -1203,8 +1203,8 @@ def test_feasible_plan_rejects_selection_that_strands_oversized_slot(
         },
     )
     assert resp.status_code == 409
-    assert "slot_exceeds_every_target" in resp.json()["detail"]
-    assert str(chosen.id) not in resp.json()["detail"]
+    assert "slot_exceeds_every_target" in resp.json()["detail"]["message"]
+    assert str(chosen.id) not in resp.json()["detail"]["message"]
 
 
 def test_create_assignment_accumulates_toward_target(
@@ -1343,7 +1343,7 @@ def test_direct_choice_rechecks_distinct_teacher_under_lock(
         },
     )
     assert resp.status_code == 400
-    assert "distinct teachers" in resp.json()["detail"]
+    assert "distinct teachers" in resp.json()["detail"]["message"]
     session.refresh(slot1)
     assert slot1.status == HourRequirementStatus.AVAILABLE
 
@@ -1363,7 +1363,7 @@ def test_direct_choice_rechecks_remaining_target_under_lock(
         },
     )
     assert resp.status_code == 400
-    assert "authorize extra hours" in resp.json()["detail"]
+    assert "authorize extra hours" in resp.json()["detail"]["message"]
     session.refresh(slot0)
     assert slot0.status == HourRequirementStatus.AVAILABLE
 
@@ -1411,7 +1411,7 @@ def test_manual_assignment_blocked_when_plan_stale(
         },
     )
     assert resp.status_code == 409
-    assert "stale" in resp.json()["detail"]
+    assert "stale" in resp.json()["detail"]["message"]
     session.refresh(slot0)
     assert slot0.status == HourRequirementStatus.AVAILABLE
 
@@ -1430,7 +1430,7 @@ def test_manual_assignment_blocked_when_reconciliation_required(
         },
     )
     assert resp.status_code == 409
-    assert "reconciliation" in resp.json()["detail"]
+    assert "reconciliation" in resp.json()["detail"]["message"]
 
 
 def test_manual_assignment_allowed_when_requirements_generated(
@@ -1458,6 +1458,6 @@ def test_direct_choice_blocked_when_plan_stale(
     _set_plan_status(session, _p.id, TeachingPlanStatus.STALE)
     resp = client.post(path, json=payload)
     assert resp.status_code == 409
-    assert "stale" in resp.json()["detail"]
+    assert "stale" in resp.json()["detail"]["message"]
     session.refresh(slot0)
     assert slot0.status == HourRequirementStatus.AVAILABLE

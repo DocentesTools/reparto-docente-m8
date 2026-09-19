@@ -1,0 +1,40 @@
+========================================================================
+REPARTO — INTERNAL DRAFT
+========================================================================
+DRAFT — internal working document, not for distribution.
+
+Process reference: 00000000-0000-4000-8000-000000000001
+Status:         READY FOR MEETING
+State as of:    2026-09-14T08:30:00+00:00 (UTC)
+Plan status:    STALE
+Feasibility:    INFEASIBLE
+Generation:     3
+
+------------------------------------------------------------------------
+GLOBAL BALANCE
+------------------------------------------------------------------------
+  Allocated group hours         4.00
+  Required slot hours           3.50
+  Assigned hours                2.00
+  Uncovered hours               1.50
+
+------------------------------------------------------------------------
+TEACHER BALANCES
+------------------------------------------------------------------------
+  Alice Martin
+      target 2.00  assigned 2.00  difference 0.00
+  Bruno García
+      target 1.50  assigned 0.00  difference -1.50 [OVERLOAD AUTHORIZED]
+
+------------------------------------------------------------------------
+UNCOVERED REQUIREMENTS
+------------------------------------------------------------------------
+  Physics (2A)  position 2  1.50 h  [RECONCILIATION REQUIRED]
+
+------------------------------------------------------------------------
+WARNINGS AND INCIDENTS
+------------------------------------------------------------------------
+  Plan is stale: MAIN_GENERATED activity values changed during source sync.
+  Feasibility is INFEASIBLE — this document does not describe a validated plan.
+  1 requirement slot is still uncovered.
+  Required and assigned hours differ by 1.50 h.

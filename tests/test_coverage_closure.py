@@ -17,6 +17,7 @@ from reparto_service.controllers.assignment_processes import (
 from reparto_service.core import events
 from reparto_service.db_models.departments import DepartmentCreate
 from tests import factories
+from tests.error_helpers import domain_error_message
 
 
 def test_update_year_rejects_inverted_dates(
@@ -28,7 +29,7 @@ def test_update_year_rejects_inverted_dates(
         json={"end_date": "2026-01-01"},
     )
     assert resp.status_code == 400
-    assert "end_date" in resp.json()["detail"]
+    assert "end_date" in resp.json()["detail"]["message"]
 
 
 def test_update_year_rejects_inverted_start_date(
@@ -314,7 +315,7 @@ def test_copy_target_empty_reports_each_non_empty_kind(
     with pytest.raises(HTTPException) as exc_info:
         AssignmentProcessController._ensure_target_empty(session, process.id)
 
-    assert expected_detail in str(exc_info.value.detail)
+    assert expected_detail in domain_error_message(exc_info.value)
 
 
 # The complete-slot assignment surface — create/get/update/cancel, the unknown

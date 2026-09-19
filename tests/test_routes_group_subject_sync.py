@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
@@ -259,7 +260,7 @@ def test_apply_rejects_stale_preview(client: TestClient, session: Session) -> No
         json={"expected_preview_fingerprint": preview["preview_fingerprint"]},
     )
     assert response.status_code == 409
-    assert "changed since preview" in response.json()["detail"]
+    assert "changed since preview" in response.json()["detail"]["message"]
 
 
 def test_inactive_source_requires_guarded_retirement(
@@ -310,7 +311,7 @@ def test_sync_apply_rejects_legacy_inactive_source(
         json={"expected_preview_fingerprint": preview["preview_fingerprint"]},
     )
     assert response.status_code == 409
-    assert "guarded activity-retirement" in response.json()["detail"]
+    assert "guarded activity-retirement" in response.json()["detail"]["message"]
 
 
 def test_noop_apply_is_idempotent_and_keeps_plan_state(
@@ -464,8 +465,8 @@ def test_sync_resolves_subject_defaults_and_zero_fallbacks(
     preview = client.post(_preview_url(process.id, cell.id)).json()
     assert preview["source_values"]["group_weekly_hours_per_group"] == "0.00"
     assert preview["source_values"]["teacher_weekly_hours_per_position"] == "0.00"
-    subject.default_group_weekly_hours = 2.0
-    subject.default_teacher_weekly_hours_per_position = 3.0
+    subject.default_group_weekly_hours = Decimal("2.0")
+    subject.default_teacher_weekly_hours_per_position = Decimal("3.0")
     session.add(subject)
     session.commit()
     preview = client.post(_preview_url(process.id, cell.id)).json()
@@ -486,7 +487,7 @@ def test_apply_detects_activity_removed_after_preview(
         json={"expected_preview_fingerprint": "0" * 64},
     )
     assert response.status_code == 409
-    assert "no live MAIN_GENERATED" in response.json()["detail"]
+    assert "no live MAIN_GENERATED" in response.json()["detail"]["message"]
 
 
 def test_out_of_sync_invalidation_covers_balanced_locked_and_missing_plans(

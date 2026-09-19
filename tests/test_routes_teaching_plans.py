@@ -153,7 +153,7 @@ def test_lock_plan_fails_closed_on_infeasible(
     response = client.post(f"{_BASE}/{process.id}/teaching-plan/lock")
 
     assert response.status_code == 409
-    assert "infeasible" in response.json()["detail"]
+    assert "infeasible" in response.json()["detail"]["message"]
     session.refresh(plan)
     assert plan.status == TeachingPlanStatus.BALANCED
     assert plan.feasibility_status == FeasibilityStatus.INFEASIBLE
@@ -180,7 +180,7 @@ def test_lock_plan_fails_closed_on_unknown(
     response = client.post(f"{_BASE}/{process.id}/teaching-plan/lock")
 
     assert response.status_code == 409
-    assert "unknown" in response.json()["detail"]
+    assert "unknown" in response.json()["detail"]["message"]
     session.refresh(plan)
     assert plan.status == TeachingPlanStatus.BALANCED
     assert plan.feasibility_status == FeasibilityStatus.UNKNOWN
@@ -195,7 +195,7 @@ def test_lock_plan_rejects_missing_or_non_balanced_plan(
     factories.make_teaching_plan(session, process, status=TeachingPlanStatus.UNBALANCED)
     response = client.post(f"{_BASE}/{process.id}/teaching-plan/lock")
     assert response.status_code == 409
-    assert "unbalanced" in response.json()["detail"]
+    assert "unbalanced" in response.json()["detail"]["message"]
 
 
 def test_lock_plan_respects_mutability_and_writer_gate(
@@ -439,6 +439,10 @@ def test_mark_stale_from_locked_resets_feasibility(
     )
     assert result.status == TeachingPlanStatus.STALE
     assert result.stale_reason == "Allocation revised"
+    stored = TeachingPlanController._plan_row(session, process.id)
+    assert stored is not None
+    assert stored.stale_reason_code is None
+    assert stored.stale_reason_params is None
     # Any relevant change resets feasibility to NOT_EVALUATED (plan §20.14).
     assert result.feasibility_status == FeasibilityStatus.NOT_EVALUATED
 
@@ -494,3 +498,5 @@ def test_apply_transition_out_of_stale_clears_reason(
     )
     assert plan.status == TeachingPlanStatus.REQUIREMENTS_GENERATED
     assert plan.stale_reason is None
+    assert plan.stale_reason_code is None
+    assert plan.stale_reason_params is None

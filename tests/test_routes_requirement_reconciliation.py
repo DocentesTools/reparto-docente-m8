@@ -128,7 +128,7 @@ def _stage_value_conflict(
     client: TestClient,
     session: Session,
     *,
-    new_hours: float = 5.0,
+    new_hours: Decimal = Decimal("5.0"),
     plan_status: TeachingPlanStatus = TeachingPlanStatus.STALE,
 ):
     """Generate one slot, assign it, then change the activity hours (a conflict)."""
@@ -346,7 +346,7 @@ def test_reconcile_fails_closed_when_intended_state_is_infeasible(
     resp = client.post(_reconcile_url(process.id), json=_body(1))
 
     assert resp.status_code == 409
-    assert "infeasible" in resp.json()["detail"]
+    assert "infeasible" in resp.json()["detail"]["message"]
     session.refresh(plan)
     session.refresh(slot)
     session.refresh(assignment)
@@ -375,7 +375,7 @@ def test_reconcile_rechecks_conflicts_after_feasibility_evaluation(
     resp = client.post(_reconcile_url(process.id), json=_body(1))
 
     assert resp.status_code == 409
-    assert "changed during feasibility evaluation" in resp.json()["detail"]
+    assert "changed during feasibility evaluation" in resp.json()["detail"]["message"]
     session.refresh(slot)
     session.refresh(assignment)
     assert slot.retired_generation is None
@@ -386,7 +386,7 @@ def test_reconcile_value_change_supersedes_and_releases(
     client: TestClient, session: Session
 ) -> None:
     process, plan, _activity, slot, assignment = _stage_value_conflict(
-        client, session, new_hours=5.0
+        client, session, new_hours=Decimal("5.0")
     )
     old_id = slot.id
     body = client.post(_reconcile_url(process.id), json=_body(1)).json()
@@ -508,7 +508,7 @@ def test_reconcile_mixed_conflict_retire_and_create(
         select(ProcessTeacher).where(ProcessTeacher.assignment_process_id == process.id)
     ).all()
     for participant in participants:
-        participant.base_weekly_hours = 3.0
+        participant.base_weekly_hours = Decimal("3.0")
         session.add(participant)
     profile = factories.make_teacher_profile(session)
     factories.make_process_teacher(session, process, profile, base_weekly_hours=4.0)
@@ -522,12 +522,12 @@ def test_reconcile_mixed_conflict_retire_and_create(
     assert body["released_assignment_ids"] == [str(assignment.id)]
 
     live = _live_requirements(session, process)
-    by_activity: dict[str, list[float]] = {}
+    by_activity: dict[str, list[Decimal]] = {}
     for r in live:
         by_activity.setdefault(str(r.teaching_activity_id), []).append(
             r.required_teacher_hours
         )
-    assert sorted(by_activity[str(activity_a.id)]) == [3.0, 3.0]
+    assert sorted(by_activity[str(activity_a.id)]) == [Decimal("3.0"), Decimal("3.0")]
     assert by_activity[str(activity_b.id)] == [4.0]
     session.refresh(assignment)
     assert assignment.status == AssignmentStatus.CANCELLED

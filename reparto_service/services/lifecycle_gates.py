@@ -36,6 +36,7 @@ import uuid
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import TeachingPlanStatus
 from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
@@ -140,9 +141,11 @@ class PlanReadinessGate:
 
     @staticmethod
     def _conflict(operation: str, reason: str) -> HTTPException:
-        return HTTPException(
+        return DomainHTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Cannot {operation}: {reason}.",
+            code="lifecycle_gates.plan_readiness_conflict",
+            message=f"Cannot {operation}: {reason}.",
+            params={"operation": operation, "reason": reason},
         )
 
     @staticmethod

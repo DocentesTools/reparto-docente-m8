@@ -1,0 +1,48 @@
+========================================================================
+REPARTO — SCHOOL LEADERSHIP COPY
+========================================================================
+Process reference: 00000000-0000-4000-8000-000000000001
+Status:         READY FOR MEETING
+State as of:    2026-09-14T08:30:00+00:00 (UTC)
+School:         IES Test
+Department:     Science
+Academic year:  2026/2027
+Version:        v4 (DEPARTMENT PROPOSAL)
+Plan status:    STALE
+Feasibility:    INFEASIBLE
+Generation:     3
+
+------------------------------------------------------------------------
+ASSIGNMENT BY TEACHER
+------------------------------------------------------------------------
+  Alice Martin — 1 assignment, 2.00 h
+      Mathematics (2A)  2.00 h  [DEPARTMENT HEAD]
+  Bruno García — 0 assignments, 0.00 h
+
+------------------------------------------------------------------------
+ASSIGNMENT BY GROUP
+------------------------------------------------------------------------
+  Group 2A
+      Mathematics (2A)  2.00 h  →  Alice Martin
+
+------------------------------------------------------------------------
+HOURS SUMMARY
+------------------------------------------------------------------------
+  Allocated group hours         4.00
+  Required slot hours           3.50
+  Assigned hours                2.00
+  Uncovered hours               1.50
+
+------------------------------------------------------------------------
+EXCEPTIONS AND JUSTIFICATIONS
+------------------------------------------------------------------------
+  Bruno García — base 1.00 h + extra 0.50 h
+      justification: Approved for the bilingual programme.
+
+------------------------------------------------------------------------
+WARNINGS AND INCIDENTS
+------------------------------------------------------------------------
+  Plan is stale: MAIN_GENERATED activity values changed during source sync.
+  Feasibility is INFEASIBLE — this document does not describe a validated plan.
+  1 requirement slot is still uncovered.
+  Required and assigned hours differ by 1.50 h.

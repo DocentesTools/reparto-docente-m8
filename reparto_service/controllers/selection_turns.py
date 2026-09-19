@@ -5,10 +5,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, col, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.assignments import AssignmentController
 from reparto_service.controllers.base import DomainController
 from reparto_service.controllers.meeting_sessions import MeetingSessionController
@@ -79,9 +80,11 @@ class SelectionTurnController(DomainController):
             session, process_id, meeting_session_id
         )
         if SelectionTurnController._load_turns(session, meeting_session_id):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Selection turns already exist for this meeting session.",
+                code="selection_turns.selection_turns_already_exist_meeting_session",
+                message="Selection turns already exist for this meeting session.",
+                params={},
             )
         teachers = SelectionTurnController._ordered_teachers(session, process_id)
         for teacher in teachers:
@@ -111,9 +114,11 @@ class SelectionTurnController(DomainController):
         turn = SelectionTurnController._get_or_404(session, meeting_session.id, turn_id)
         SelectionTurnController._ensure_no_active_turn(session, meeting_session.id)
         if turn.status != SelectionTurnStatus.PENDING:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only pending turns can be started.",
+                code="selection_turns.only_pending_turns_can_be_started",
+                message="Only pending turns can be started.",
+                params={},
             )
         before = SelectionTurnController._snapshot_turn(turn)
         turn.status = SelectionTurnStatus.ACTIVE
@@ -185,9 +190,11 @@ class SelectionTurnController(DomainController):
             SelectionTurnStatus.PENDING,
             SelectionTurnStatus.ACTIVE,
         }:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only pending or active turns can be skipped.",
+                code="selection_turns.only_pending_or_active_turns_can_be_skipped",
+                message="Only pending or active turns can be skipped.",
+                params={},
             )
         before = SelectionTurnController._snapshot_turn(turn)
         turn.status = SelectionTurnStatus.SKIPPED
@@ -263,9 +270,11 @@ class SelectionTurnController(DomainController):
         ``complete_turn`` owns the transaction.
         """
         if assignment_in.process_teacher_id != turn.process_teacher_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Turn assignment must target the active turn teacher.",
+                code="selection_turns.turn_assignment_must_target_active_turn_teacher",
+                message="Turn assignment must target the active turn teacher.",
+                params={},
             )
         AssignmentController.create_manual_assignment(
             session,
@@ -315,15 +324,19 @@ class SelectionTurnController(DomainController):
         teachers = list(session.exec(statement).all())
         positions = [teacher.selection_position for teacher in teachers]
         if not teachers or any(position is None for position in positions):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Every participating teacher needs a selection_position.",
+                code="selection_turns.every_participating_teacher_needs_selection_position",
+                message="Every participating teacher needs a selection_position.",
+                params={},
             )
         concrete = [int(position) for position in positions if position is not None]
         if len(set(concrete)) != len(concrete):
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Duplicate selection positions are not allowed.",
+                code="selection_turns.duplicate_selection_positions_are_not_allowed",
+                message="Duplicate selection positions are not allowed.",
+                params={},
             )
         return sorted(
             teachers, key=lambda teacher: int(teacher.selection_position or 0)
@@ -344,9 +357,11 @@ class SelectionTurnController(DomainController):
             MeetingSessionStatus.SELECTING,
             MeetingSessionStatus.REOPENED,
         }:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Meeting session must be open before turns can run.",
+                code="selection_turns.meeting_session_must_be_open_before_turns_can",
+                message="Meeting session must be open before turns can run.",
+                params={},
             )
         return meeting_session
 
@@ -365,9 +380,11 @@ class SelectionTurnController(DomainController):
         statement = select(SelectionTurn).where(SelectionTurn.id == turn_id)
         turn = session.exec(statement).first()
         if turn is None or turn.meeting_session_id != meeting_session_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"SelectionTurn {turn_id} not found.",
+                code="selection_turns.selectionturn_not_found",
+                message=f"SelectionTurn {turn_id} not found.",
+                params={"turn_id": turn_id},
             )
         return turn
 
@@ -389,17 +406,21 @@ class SelectionTurnController(DomainController):
             SelectionTurn.status == SelectionTurnStatus.ACTIVE,
         )
         if session.exec(statement).first() is not None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A selection turn is already active.",
+                code="selection_turns.selection_turn_is_already_active",
+                message="A selection turn is already active.",
+                params={},
             )
 
     @staticmethod
     def _ensure_active_turn(turn: SelectionTurn) -> None:
         if turn.status != SelectionTurnStatus.ACTIVE:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only the active turn can be completed.",
+                code="selection_turns.only_active_turn_can_be_completed",
+                message="Only the active turn can be completed.",
+                params={},
             )
 
 

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sqlalchemy import Float
+from sqlalchemy import Float, Numeric
 from sqlmodel import SQLModel
 
 from reparto_service.core.decimals import (
@@ -58,9 +58,13 @@ def test_every_hour_column_uses_the_canonical_numeric_type() -> None:
 def test_hour_columns_are_numeric_8_2() -> None:
     for table_name, column_name in sorted(EXPECTED_HOUR_COLUMNS):
         column = SQLModel.metadata.tables[table_name].columns[column_name]
-        assert column.type.impl.precision == HOURS_PRECISION, column_name
-        assert column.type.impl.scale == HOURS_DECIMAL_PLACES, column_name
-        assert column.type.impl.asdecimal is True, column_name
+        column_type = column.type
+        assert isinstance(column_type, HoursNumeric), column_name
+        impl = column_type.impl
+        assert isinstance(impl, Numeric), column_name
+        assert impl.precision == HOURS_PRECISION, column_name
+        assert impl.scale == HOURS_DECIMAL_PLACES, column_name
+        assert impl.asdecimal is True, column_name
 
 
 def test_no_hour_column_is_left_as_a_binary_float() -> None:

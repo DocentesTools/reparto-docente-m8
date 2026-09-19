@@ -17,10 +17,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from reparto_service.app.deps import CurrentAdmin, SessionDep, require_visible_process
 from reparto_service.controllers.history import HistoryController
+from reparto_service.core.i18n import localized_response_headers
 from reparto_service.controllers.process_versions import ProcessVersionController
 from reparto_service.db_models.assignment_processes import AssignmentProcessPublic
 from reparto_service.db_models.export_artifacts import (
@@ -115,8 +116,21 @@ def create_artifact(
     current_user: CurrentAdmin,
     process_id: uuid.UUID,
     payload: ExportArtifactCreate,
+    response: Response,
 ) -> ExportArtifactPublic:
-    return HistoryController.create_artifact(session, process_id, current_user, payload)
+    """Produce and store one artifact.
+
+    The stored row names the language it was produced under, and so does the
+    response: ``Content-Language`` is the persisted ``locale``, and
+    ``Vary: Accept-Language`` because a body without an explicit ``locale``
+    takes the negotiated request language. ``GET /exports`` declares neither —
+    it returns stored bytes that no header can change (plan §6 invariant 4).
+    """
+    artifact = HistoryController.create_artifact(
+        session, process_id, current_user, payload
+    )
+    response.headers.update(localized_response_headers(locale=artifact.locale.value))
+    return artifact
 
 
 @router.post("/restore-draft", response_model=AssignmentProcessPublic, status_code=201)

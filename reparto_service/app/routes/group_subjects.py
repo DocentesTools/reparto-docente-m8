@@ -8,10 +8,14 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from reparto_service.app.deps import CurrentAdmin, SessionDep, require_visible_process
 from reparto_service.controllers.group_subjects import GroupSubjectController
+from reparto_service.core.i18n import (
+    localized_response_headers,
+    translate_service_message,
+)
 from reparto_service.db_models.group_subjects import (
     GroupSubjectBulkApplyRequest,
     GroupSubjectBulkPreview,
@@ -36,6 +40,40 @@ router = APIRouter(
     # caller's departments.
     dependencies=[Depends(require_visible_process)],
 )
+
+
+def _localized_bulk_preview(
+    preview: GroupSubjectBulkPreview,
+) -> GroupSubjectBulkPreview:
+    """Translate coded bulk-preview prose at the HTTP transport boundary."""
+    return preview.model_copy(
+        update={
+            "conflicts": [
+                conflict.model_copy(
+                    update={
+                        "reason": translate_service_message(
+                            conflict.code,
+                            conflict.reason,
+                            conflict.params,
+                        )
+                    }
+                )
+                for conflict in preview.conflicts
+            ],
+            "validation_errors": [
+                error.model_copy(
+                    update={
+                        "message": translate_service_message(
+                            error.code,
+                            error.message,
+                            error.params,
+                        )
+                    }
+                )
+                for error in preview.validation_errors
+            ],
+        }
+    )
 
 
 @router.get("/", response_model=GroupSubjectsPublic)
@@ -63,8 +101,11 @@ def bulk_preview_group_subjects(
     current_user: CurrentAdmin,
     process_id: uuid.UUID,
     request: GroupSubjectBulkRequest,
+    response: Response,
 ) -> GroupSubjectBulkPreview:
-    return GroupSubjectController.bulk_preview(session, process_id, request)
+    preview = GroupSubjectController.bulk_preview(session, process_id, request)
+    response.headers.update(localized_response_headers())
+    return _localized_bulk_preview(preview)
 
 
 @router.post("/bulk-apply", response_model=GroupSubjectBulkResult)

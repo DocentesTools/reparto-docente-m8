@@ -76,7 +76,8 @@ def _enum_columns() -> list[tuple[str, str, sa.Enum]]:
 
 def test_the_metadata_declares_enum_columns() -> None:
     """Guard the guards: the checks below would pass vacuously on no columns."""
-    assert len(_enum_columns()) == 22
+    # 23 since C13 added the CHECK-validated ``export_artifact.locale`` column.
+    assert len(_enum_columns()) == 23
 
 
 def test_no_enum_column_uses_a_native_database_enum() -> None:

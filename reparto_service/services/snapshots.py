@@ -32,9 +32,10 @@ import uuid
 from decimal import Decimal
 from typing import Any, Optional
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlmodel import Session, col, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.core.decimals import quantize_hours
 from reparto_service.db_models.assignment_processes import AssignmentProcess
 from reparto_service.db_models.department_hour_allocation_revisions import (
@@ -128,9 +129,11 @@ class SnapshotService:
     def _process_or_404(session: Session, process_id: uuid.UUID) -> AssignmentProcess:
         process = session.get(AssignmentProcess, process_id)
         if process is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"AssignmentProcess {process_id} not found.",
+                code="snapshots.assignmentprocess_not_found",
+                message=f"AssignmentProcess {process_id} not found.",
+                params={"process_id": process_id},
             )
         return process
 

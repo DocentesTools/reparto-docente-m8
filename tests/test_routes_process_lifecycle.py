@@ -92,7 +92,7 @@ def test_transition_to_final_fails_closed_without_current_feasibility(
     )
 
     assert resp.status_code == 409
-    assert "feasibility" in resp.json()["detail"]
+    assert "feasibility" in resp.json()["detail"]["message"]
     session.refresh(process)
     assert process.status == AssignmentProcessStatus.INTERNAL_REVISION
     assert process.closed_at is None
@@ -109,7 +109,7 @@ def test_transition_draft_to_final_is_rejected(
         json={"target_status": "final"},
     )
     assert resp.status_code == 400
-    assert "Illegal transition" in resp.json()["detail"]
+    assert "Illegal transition" in resp.json()["detail"]["message"]
 
 
 def test_transition_final_to_reopen_must_use_reopen_endpoint(
@@ -123,7 +123,7 @@ def test_transition_final_to_reopen_must_use_reopen_endpoint(
         json={"target_status": "reopened"},
     )
     assert resp.status_code == 400
-    assert "reopen" in resp.json()["detail"].lower()
+    assert "reopen" in resp.json()["detail"]["message"].lower()
 
 
 def test_transition_self_loop_rejected(client: TestClient, session: Session) -> None:
@@ -169,7 +169,7 @@ def test_update_process_rejects_status_field(
         json={"status": "ready_for_meeting"},
     )
     assert resp.status_code == 400
-    assert "transition endpoint" in resp.json()["detail"]
+    assert "transition endpoint" in resp.json()["detail"]["message"]
 
 
 # ── Reopen (plan §8.4) ──────────────────────────────────────────────────────
@@ -207,7 +207,7 @@ def test_reopen_rejects_non_final_process(client: TestClient, session: Session) 
         json={"reason": "too early"},
     )
     assert resp.status_code == 400
-    assert "final" in resp.json()["detail"].lower()
+    assert "final" in resp.json()["detail"]["message"].lower()
 
 
 def test_reopen_requires_reason(client: TestClient, session: Session) -> None:
@@ -557,7 +557,7 @@ def test_copy_from_rejects_non_draft_target(
         json={"copy_activities": False},
     )
     assert resp.status_code == 400
-    assert "draft" in resp.json()["detail"]
+    assert "draft" in resp.json()["detail"]["message"]
 
 
 def test_copy_from_rejects_target_with_existing_subjects(
@@ -573,7 +573,7 @@ def test_copy_from_rejects_target_with_existing_subjects(
         json={"copy_activities": False},
     )
     assert resp.status_code == 400
-    assert "subjects" in resp.json()["detail"]
+    assert "subjects" in resp.json()["detail"]["message"]
 
 
 def test_copy_from_rejects_target_with_existing_teachers(
@@ -590,7 +590,7 @@ def test_copy_from_rejects_target_with_existing_teachers(
         json={"copy_activities": False},
     )
     assert resp.status_code == 400
-    assert "teachers" in resp.json()["detail"]
+    assert "teachers" in resp.json()["detail"]["message"]
 
 
 def test_copy_from_rejects_target_with_existing_groups(
@@ -606,7 +606,7 @@ def test_copy_from_rejects_target_with_existing_groups(
         json={"copy_activities": False},
     )
     assert resp.status_code == 400
-    assert "teaching groups" in resp.json()["detail"]
+    assert "teaching groups" in resp.json()["detail"]["message"]
 
 
 def test_copy_from_rejects_target_with_existing_group_subjects(
@@ -631,7 +631,7 @@ def test_copy_from_rejects_target_with_existing_group_subjects(
         json={"copy_activities": False},
     )
     assert resp.status_code == 400
-    assert "group-subject" in resp.json()["detail"]
+    assert "group-subject" in resp.json()["detail"]["message"]
 
 
 def test_copy_from_rejects_target_with_existing_plan(
@@ -647,7 +647,7 @@ def test_copy_from_rejects_target_with_existing_plan(
         json={"copy_activities": False},
     )
     assert resp.status_code == 400
-    assert "teaching plan" in resp.json()["detail"]
+    assert "teaching plan" in resp.json()["detail"]["message"]
 
 
 def test_copy_from_rejects_self_target(client: TestClient, session: Session) -> None:
@@ -688,7 +688,7 @@ def test_copy_from_rejects_different_schools(
         json={"copy_activities": False},
     )
     assert resp.status_code == 400
-    assert "school" in resp.json()["detail"].lower()
+    assert "school" in resp.json()["detail"]["message"].lower()
 
 
 def test_copy_from_404_for_missing_source(client: TestClient, session: Session) -> None:
@@ -733,7 +733,7 @@ def test_cannot_add_teacher_to_final_process(
         },
     )
     assert resp.status_code == 400
-    assert "final" in resp.json()["detail"].lower()
+    assert "final" in resp.json()["detail"]["message"].lower()
 
 
 def test_cannot_add_subject_to_final_process(
@@ -747,7 +747,7 @@ def test_cannot_add_subject_to_final_process(
         json={"assignment_process_id": str(process.id), "name": "Math"},
     )
     assert resp.status_code == 400
-    assert "final" in resp.json()["detail"].lower()
+    assert "final" in resp.json()["detail"]["message"].lower()
 
 
 def test_cannot_add_group_to_final_process(
@@ -768,4 +768,4 @@ def test_cannot_add_group_to_final_process(
         },
     )
     assert resp.status_code == 400
-    assert "final" in resp.json()["detail"].lower()
+    assert "final" in resp.json()["detail"]["message"].lower()

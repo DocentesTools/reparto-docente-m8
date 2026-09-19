@@ -123,6 +123,22 @@ class ExportArtifactFormat(str, Enum):
     JSON = "json"
 
 
+class ExportArtifactLocale(str, Enum):
+    """Language a stored export was requested under (C13, plan §5.1 = B).
+
+    The same closed set as :data:`reparto_service.core.i18n.SUPPORTED_LOCALES`
+    and the client's route locales — a fourth language is a coordinated change
+    across the gettext catalogs, the client dictionaries and this enum, never a
+    drift one side makes alone. Only the ``pdf`` *document* renderer reads it;
+    the ``json``/``csv`` data formats are language-neutral, and on those rows
+    the value records the request rather than the bytes.
+    """
+
+    EN = "en"
+    ES = "es"
+    FR = "fr"
+
+
 class PlanningExportMode(str, Enum):
     """Strictness mode of a planning artifact export (plan §3.10, §7.8).
 

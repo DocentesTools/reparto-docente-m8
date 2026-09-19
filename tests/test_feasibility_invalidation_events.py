@@ -15,6 +15,7 @@ instance it does not otherwise need.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable, Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -38,7 +39,7 @@ PREFIX = "/reparto/assignment-processes"
 
 
 @pytest.fixture
-def subscribe():
+def subscribe() -> Iterator[Callable[[uuid.UUID], sse.Subscription]]:
     """Attach a real subscription to the process-wide broker, detached on teardown."""
     created: list[sse.Subscription] = []
 

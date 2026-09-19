@@ -54,6 +54,7 @@ cover/
 # Translations
 *.mo
 *.pot
+!reparto_service/locales/**/LC_MESSAGES/*.mo
 
 # Django stuff:
 *.log

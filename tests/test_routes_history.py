@@ -9,7 +9,9 @@ and generation/reconciliation consistency validation.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -19,6 +21,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, col, select
 
 from reparto_service.db_models.assignments import Assignment
+from reparto_service.db_models.export_artifacts import ExportArtifact
 from reparto_service.db_models.department_hour_allocation_revisions import (
     DepartmentHourAllocationRevision,
 )
@@ -32,11 +35,23 @@ from reparto_service.db_models.teaching_plans import TeachingPlan
 from reparto_service.enums import (
     AssignmentProcessStatus,
     AssignmentStatus,
+    ExportArtifactFormat,
+    ExportArtifactLocale,
+    ExportArtifactType,
     FeasibilityStatus,
     HourRequirementStatus,
     SubjectAllocationCategory,
     TeachingActivitySource,
     TeachingPlanStatus,
+)
+from reparto_service.services.document_rendering import (
+    DOCUMENT_TRACE_ID_LINE_PREFIXES,
+    DocumentIdentityContext,
+    DocumentRenderingService,
+)
+from reparto_service.services.document_catalog import load_document_catalog
+from reparto_service.services.stale_reasons import (
+    MAIN_GENERATED_ACTIVITY_VALUES_CHANGED,
 )
 from tests import factories
 
@@ -241,6 +256,54 @@ def test_backup_snapshot_without_plan(client: TestClient, session: Session) -> N
     assert snapshot["requirements"] == []
 
 
+def test_backup_excludes_internal_stale_reason_catalog_metadata(
+    client: TestClient, session: Session
+) -> None:
+    process, *_ = _full_source(session)
+    plan = _plan(session, process.id)
+    assert plan is not None
+    plan.status = TeachingPlanStatus.STALE
+    plan.stale_reason = MAIN_GENERATED_ACTIVITY_VALUES_CHANGED.message
+    plan.stale_reason_code = MAIN_GENERATED_ACTIVITY_VALUES_CHANGED.code
+    plan.stale_reason_params = {}
+    session.add(plan)
+    session.commit()
+
+    stored_plan = json.loads(_backup_content(client, process.id))["teaching_plan"]
+
+    assert stored_plan["stale_reason"] == MAIN_GENERATED_ACTIVITY_VALUES_CHANGED.message
+    assert "stale_reason_code" not in stored_plan
+    assert "stale_reason_params" not in stored_plan
+
+    rendered = client.post(
+        f"/reparto/assignment-processes/{process.id}/exports",
+        json={"export_type": "internal_draft", "format": "pdf", "locale": "es"},
+    )
+    assert rendered.status_code == 201, rendered.text
+    assert (
+        "Los valores de una actividad principal generada automáticamente "
+        "cambiaron durante la sincronización con su origen."
+    ) in rendered.json()["content"]
+
+
+def test_document_identity_keeps_backup_bytes_and_restore_contract_unchanged(
+    client: TestClient, session: Session
+) -> None:
+    """Document-only joins never enter the restorable snapshot."""
+    source, *_ = _full_source(session)
+    before = _backup_content(client, source.id)
+
+    _pdf_document(client, source.id, "school_leadership")
+    after = _backup_content(client, source.id)
+
+    assert after == before
+    target = factories.make_assignment_process(session)
+    restored = _restore(client, target.id, after)
+    assert restored.status_code == 201, restored.text
+    assert _count(session, ProcessTeacher, target.id) == 2
+    assert _count(session, HourRequirement, target.id) == 3
+
+
 def test_create_csv_export_with_version(client: TestClient, session: Session) -> None:
     process, _rev, slot_new, _slot_sec = _full_source(session)
     version = client.post(
@@ -262,6 +325,214 @@ def test_create_csv_export_with_version(client: TestClient, session: Session) ->
     assert content.startswith("section,id,hours,status")
     assert "requirement," in content
     assert "assignment," in content
+
+
+# ── Export locale (C13, plan §5.1 = B) ───────────────────────────────────────
+
+
+def _export(
+    client: TestClient,
+    process_id: uuid.UUID,
+    body: dict[str, Any],
+    *,
+    accept_language: str | None = None,
+) -> Any:
+    headers = {} if accept_language is None else {"Accept-Language": accept_language}
+    return client.post(
+        f"/reparto/assignment-processes/{process_id}/exports",
+        json=body,
+        headers=headers,
+    )
+
+
+def test_export_locale_is_body_then_negotiated_header_then_english(
+    client: TestClient, session: Session
+) -> None:
+    """The persisted locale resolves explicit → negotiated → default.
+
+    An older client sends neither a body ``locale`` nor ``Accept-Language`` and
+    gets English, exactly as before the column existed; the C9 client sends
+    the route locale as a header; the C13 client also names it in the body,
+    and the body wins so a head may ask for another language's copy.
+    """
+    process, *_ = _full_source(session)
+    document = {"export_type": "internal_draft", "format": "pdf"}
+
+    silent = _export(client, process.id, document)
+    negotiated = _export(
+        client, process.id, document, accept_language="es-ES, en;q=0.5"
+    )
+    explicit = _export(
+        client, process.id, {**document, "locale": "fr"}, accept_language="es"
+    )
+
+    for resp in (silent, negotiated, explicit):
+        assert resp.status_code == 201, resp.text
+    assert silent.json()["locale"] == "en"
+    assert negotiated.json()["locale"] == "es"
+    assert explicit.json()["locale"] == "fr"
+    # The response declares the language the *row* carries — not the header
+    # — and that a body without a locale varies by ``Accept-Language``.
+    assert explicit.headers["content-language"] == "fr"
+    assert "accept-language" in explicit.headers["vary"].lower()
+    assert silent.headers["content-language"] == "en"
+
+    listed = client.get(f"/reparto/assignment-processes/{process.id}/exports")
+    assert listed.status_code == 200
+    assert sorted(row["locale"] for row in listed.json()["data"]) == ["en", "es", "fr"]
+    # Stored bytes do not vary by request language (plan §6 invariant 4), so
+    # the inventory declares no language negotiation at all.
+    assert "content-language" not in listed.headers
+    assert "accept-language" not in listed.headers.get("vary", "").lower()
+
+
+def test_export_locale_outside_the_closed_set_is_refused(
+    client: TestClient, session: Session
+) -> None:
+    process = factories.make_assignment_process(session)
+
+    resp = _export(
+        client, process.id, {"export_type": "backup", "format": "json", "locale": "de"}
+    )
+
+    assert resp.status_code == 422
+    assert (
+        client.get(f"/reparto/assignment-processes/{process.id}/exports").json()[
+            "count"
+        ]
+        == 0
+    )
+
+
+def test_data_formats_are_byte_stable_across_locales(
+    client: TestClient, session: Session
+) -> None:
+    """``json``/``csv`` accept a locale, record it, and never read it.
+
+    Backup JSON is the restore artifact and CSV is machine data (plan §6
+    invariant 5): the bytes, and therefore the checksum, are identical whatever
+    language the row was requested under. The row still records the request
+    language, because that is a fact about the request rather than the file.
+    """
+    process, *_ = _full_source(session)
+    client.post(
+        f"/reparto/assignment-processes/{process.id}/versions",
+        json={"reason": "locale stability"},
+    )
+
+    rows = {
+        (fmt, locale): _export(
+            client,
+            process.id,
+            {
+                "export_type": "backup" if fmt == "json" else "internal_draft",
+                "format": fmt,
+                "locale": locale,
+            },
+        ).json()
+        for fmt in ("json", "csv")
+        for locale in ("en", "es", "fr")
+    }
+
+    for fmt in ("json", "csv"):
+        contents = {rows[(fmt, locale)]["content"] for locale in ("en", "es", "fr")}
+        checksums = {rows[(fmt, locale)]["checksum"] for locale in ("en", "es", "fr")}
+        assert len(contents) == 1, fmt
+        assert len(checksums) == 1, fmt
+    for (fmt, locale), row in rows.items():
+        assert row["locale"] == locale, (fmt, locale)
+    # The Spanish-requested backup restores exactly like the English one.
+    target = factories.make_assignment_process(session)
+    restored = _restore(client, target.id, rows[("json", "es")]["content"])
+    assert restored.status_code == 201, restored.text
+
+
+def test_document_checksum_is_the_content_hash_never_salted_with_locale(
+    client: TestClient, session: Session
+) -> None:
+    """``checksum == sha256(content)`` in every language (plan §6 invariant 3).
+
+    Two languages are two rows with two locales; whether they differ by
+    checksum is decided by their bytes alone. Today the document catalog has
+    not landed (C14) and every locale renders the same English text, so the
+    checksums coincide — the moment the text depends on the locale they will
+    diverge through content, and nothing here has to change for that.
+    """
+    process, *_ = _full_source(session)
+
+    english = _export(
+        client,
+        process.id,
+        {"export_type": "school_leadership", "format": "pdf", "locale": "en"},
+    ).json()
+    spanish = _export(
+        client,
+        process.id,
+        {"export_type": "school_leadership", "format": "pdf", "locale": "es"},
+    ).json()
+
+    for row in (english, spanish):
+        assert (
+            row["checksum"]
+            == hashlib.sha256(row["content"].encode("utf-8")).hexdigest()
+        )
+        assert row["file_path"].endswith(f"{row['checksum'][:12]}.pdf")
+    assert english["locale"] == "en"
+    assert spanish["locale"] == "es"
+    assert (english["checksum"] == spanish["checksum"]) == (
+        english["content"] == spanish["content"]
+    )
+
+
+def test_rows_written_before_the_locale_column_read_back_as_english(
+    client: TestClient, session: Session
+) -> None:
+    """The backfill is the column's own server default, applied by the database.
+
+    A row inserted without a locale — what every existing row looks like when
+    the autogenerated ``ADD COLUMN … NOT NULL DEFAULT`` runs against it — reads
+    back as ``en``, which is the language it was rendered in.
+    """
+    process = factories.make_assignment_process(session)
+    content = "REPARTO — INTERNAL DRAFT\n"
+    row = ExportArtifact(
+        assignment_process_id=process.id,
+        export_type=ExportArtifactType.INTERNAL_DRAFT,
+        format=ExportArtifactFormat.PDF,
+        file_path=f"exports/{process.id}/internal_draft-legacy.pdf",
+        created_by_user_id=uuid.uuid4(),
+        checksum=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        content=content,
+    )
+    session.add(row)
+    session.commit()
+
+    listed = client.get(f"/reparto/assignment-processes/{process.id}/exports").json()
+
+    assert listed["count"] == 1
+    assert listed["data"][0]["locale"] == "en"
+    assert listed["data"][0]["content"] == content
+
+
+def test_renderer_refuses_an_unmodelled_catalog(
+    client: TestClient, session: Session
+) -> None:
+    """A bare string is a programming error, not an injected catalog."""
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+
+    try:
+        DocumentRenderingService.render(
+            ExportArtifactType.INTERNAL_DRAFT,
+            snapshot,
+            [],
+            _document_identity(snapshot),
+            "es",  # type: ignore[arg-type]
+        )
+    except TypeError as error:
+        assert "DocumentCatalog" in str(error)
+    else:  # pragma: no cover - the assertion above is the test
+        raise AssertionError("a str locale must be refused")
 
 
 def test_list_artifacts_endpoint(client: TestClient, session: Session) -> None:
@@ -331,23 +602,185 @@ def test_final_export_blocked_by_validations(
     )
 
     assert resp.status_code == 400
-    assert "blocking validations" in resp.json()["detail"]
+    assert "blocking validations" in resp.json()["detail"]["message"]
 
 
-def test_pdf_export_returns_not_implemented(
+def _pdf_document(client: TestClient, process_id: uuid.UUID, export_type: str) -> str:
+    resp = client.post(
+        f"/reparto/assignment-processes/{process_id}/exports",
+        json={"export_type": export_type, "format": "pdf"},
+    )
+    assert resp.status_code == 201, resp.text
+    return str(resp.json()["content"])
+
+
+def test_internal_draft_pdf_documents_an_unfinished_process(
     client: TestClient, session: Session
 ) -> None:
+    """Plan §15.1: a draft document describes a plan that is *not* settled.
+
+    The whole point of the draft is to be produced mid-process, so the
+    unfinished state has to travel inside the document rather than block it.
+    """
+    process, *_ = _full_source(session)
+
+    content = _pdf_document(client, process.id, "internal_draft")
+
+    assert "REPARTO — INTERNAL DRAFT" in content
+    assert "not for distribution" in content
+    assert "GLOBAL BALANCE" in content
+    assert "TEACHER BALANCES" in content
+    assert "UNCOVERED REQUIREMENTS" in content
+    # `_full_source` leaves the spare secondary slot AVAILABLE.
+    assert "Secondary" in content
+    assert "uncovered" in content.lower()
+    session.refresh(process)
+    assert process.status != AssignmentProcessStatus.ARCHIVED
+
+
+def test_internal_draft_pdf_is_produced_without_a_plan(
+    client: TestClient, session: Session
+) -> None:
+    """A process that has not started planning still exports a document."""
+    process = _config_only_source(session)
+
+    content = _pdf_document(client, process.id, "internal_draft")
+
+    assert "planning has not started" in content
+    assert "No teaching plan exists for this process yet." in content
+
+
+def test_school_leadership_pdf_carries_the_leadership_sections(
+    client: TestClient, session: Session
+) -> None:
+    """Plan §15.2: identity, both assignment views, summary and exceptions."""
+    process, *_ = _full_source(session)
+    teacher = session.exec(
+        select(ProcessTeacher)
+        .where(ProcessTeacher.assignment_process_id == process.id)
+        .where(col(ProcessTeacher.extra_weekly_hours) > 0)
+    ).one()
+    teacher.extra_hours_reason = "Covers the vacant secondary position."
+    session.add(teacher)
+    session.commit()
+    client.post(
+        f"/reparto/assignment-processes/{process.id}/versions",
+        json={"reason": "leadership"},
+    )
+
+    content = _pdf_document(client, process.id, "school_leadership")
+
+    assert "School:         IES Test" in content
+    assert "Department:     Matemáticas" in content
+    assert "Academic year:  2026/2027" in content
+    assert "Ana" in content
+    assert "Beto" in content
+    assert str(process.school_id) not in content
+    assert str(process.department_id) not in content
+    assert str(process.academic_year_id) not in content
+    assert "Version:        v1" in content
+    assert "ASSIGNMENT BY TEACHER" in content
+    assert "ASSIGNMENT BY GROUP" in content
+    assert "HOURS SUMMARY" in content
+    assert "Covers the vacant secondary position." in content
+
+
+def test_teacher_summary_pdf_withholds_the_extra_hours_justification(
+    client: TestClient, session: Session
+) -> None:
+    """The participant recap stays below the department-head tier (§20.25).
+
+    The head's written justification is the key the SSE teacher tier withholds
+    even from the participant it is about, so the document a teacher receives
+    must not reintroduce it.
+    """
+    process, *_ = _full_source(session)
+    teacher = session.exec(
+        select(ProcessTeacher)
+        .where(ProcessTeacher.assignment_process_id == process.id)
+        .where(col(ProcessTeacher.extra_weekly_hours) > 0)
+    ).one()
+    teacher.extra_hours_reason = "Covers the vacant secondary position."
+    session.add(teacher)
+    session.commit()
+
+    content = _pdf_document(client, process.id, "teacher_summary")
+
+    assert "ASSIGNMENT BY TEACHER" in content
+    assert "Covers the vacant secondary position." not in content
+    assert "EXCEPTIONS AND JUSTIFICATIONS" not in content
+
+
+def test_final_pdf_export_archives_process(
+    client: TestClient, session: Session
+) -> None:
+    """Plan §15.3: the final document closes the process, same as the JSON one."""
     process = factories.make_assignment_process(session)
+
+    content = _pdf_document(client, process.id, "final")
+
+    assert "REPARTO — FINAL" in content
+    assert "FINAL ASSIGNMENT LIST" in content
+    assert "FINAL SUMMARY" in content
+    assert "Confirmed by:" not in content
+    session.refresh(process)
+    assert process.status == AssignmentProcessStatus.ARCHIVED
+
+
+def test_final_pdf_export_is_blocked_by_blocking_validations(
+    client: TestClient, session: Session
+) -> None:
+    """The §7.8 gate runs ahead of rendering, so nothing is stored or archived."""
+    process = factories.make_assignment_process(session)
+    profile = factories.make_teacher_profile(session)
+    factories.make_process_teacher(session, process, profile, base_weekly_hours=18.0)
 
     resp = client.post(
         f"/reparto/assignment-processes/{process.id}/exports",
         json={"export_type": "final", "format": "pdf"},
     )
 
-    assert resp.status_code == 501
-    assert resp.json()["detail"] == "PDF export is not implemented."
+    assert resp.status_code == 400
+    assert "blocking validations" in resp.json()["detail"]["message"]
     session.refresh(process)
     assert process.status != AssignmentProcessStatus.ARCHIVED
+
+
+def test_pdf_document_rendering_is_deterministic(
+    client: TestClient, session: Session
+) -> None:
+    """Two documents of an unchanged process are byte-identical.
+
+    The artifact's checksum is a hash of the content, so a wall-clock date in
+    the document would make every checksum unique and destroy its ability to
+    answer "has anything moved?".
+    """
+    process, *_ = _full_source(session)
+
+    first = _pdf_document(client, process.id, "internal_draft")
+    second = _pdf_document(client, process.id, "internal_draft")
+
+    assert first == second
+    artifacts = client.get(
+        f"/reparto/assignment-processes/{process.id}/exports"
+    ).json()["data"]
+    checksums = {row["checksum"] for row in artifacts}
+    assert len(checksums) == 1
+
+
+def test_pdf_backup_is_refused_as_unrestorable(
+    client: TestClient, session: Session
+) -> None:
+    """A backup is a restorable payload; rendering it as prose would break that."""
+    process = factories.make_assignment_process(session)
+
+    resp = client.post(
+        f"/reparto/assignment-processes/{process.id}/exports",
+        json={"export_type": "backup", "format": "pdf"},
+    )
+
+    assert resp.status_code == 400
+    assert "restored" in resp.json()["detail"]["message"]
 
 
 def test_final_json_export_archives_process(
@@ -500,7 +933,7 @@ def test_restore_requires_draft(client: TestClient, session: Session) -> None:
     resp = _restore(client, process.id, "{}")
 
     assert resp.status_code == 400
-    assert "draft process" in resp.json()["detail"]
+    assert "draft process" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_invalid_content(client: TestClient, session: Session) -> None:
@@ -553,7 +986,7 @@ def test_restore_rejects_requirements_without_plan(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "no teaching plan" in resp.json()["detail"]
+    assert "no teaching plan" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_generation_beyond_plan(
@@ -569,7 +1002,7 @@ def test_restore_rejects_generation_beyond_plan(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "beyond the plan" in resp.json()["detail"]
+    assert "beyond the plan" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_bad_retirement_generation(
@@ -587,7 +1020,7 @@ def test_restore_rejects_bad_retirement_generation(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "retirement generation" in resp.json()["detail"]
+    assert "retirement generation" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_dangling_supersession(
@@ -605,7 +1038,7 @@ def test_restore_rejects_dangling_supersession(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "superseded by a slot missing" in resp.json()["detail"]
+    assert "superseded by a slot missing" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_assignment_missing_requirement(
@@ -621,7 +1054,7 @@ def test_restore_rejects_assignment_missing_requirement(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "requirement missing" in resp.json()["detail"]
+    assert "requirement missing" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_assignment_activity_mismatch(
@@ -637,7 +1070,7 @@ def test_restore_rejects_assignment_activity_mismatch(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "does not match its requirement" in resp.json()["detail"]
+    assert "does not match its requirement" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_assignment_missing_teacher(
@@ -653,7 +1086,7 @@ def test_restore_rejects_assignment_missing_teacher(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "teacher missing" in resp.json()["detail"]
+    assert "teacher missing" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_two_active_on_slot(
@@ -674,7 +1107,7 @@ def test_restore_rejects_two_active_on_slot(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "more than one active assignment" in resp.json()["detail"]
+    assert "more than one active assignment" in resp.json()["detail"]["message"]
 
 
 def test_restore_rejects_teacher_twice_on_activity(
@@ -704,4 +1137,292 @@ def test_restore_rejects_teacher_twice_on_activity(
     resp = _restore(client, target.id, content)
 
     assert resp.status_code == 400
-    assert "assigned twice on one activity" in resp.json()["detail"]
+    assert "assigned twice on one activity" in resp.json()["detail"]["message"]
+
+
+# ── Document renderer: the snapshot paths a route cannot produce ─────────────
+#
+# `DocumentRenderingService` is a pure function of a snapshot, and several of
+# its branches exist for a snapshot that is *internally inconsistent* — a link
+# whose group-subject is gone, an assignment naming an activity the snapshot
+# does not carry. A live process never produces one, so a route test never
+# reaches them; a **restored** backup can, since `restore-draft` accepts a
+# payload the caller supplies. They are reached here by rendering a deliberately
+# broken snapshot directly, which is also the only way to prove the renderer
+# keeps its "never refuses" contract on input it cannot join.
+
+
+def _document_snapshot(client: TestClient, process_id: uuid.UUID) -> dict[str, Any]:
+    """A well-formed snapshot, as `_render_artifact` hands one to the renderer."""
+    return dict(json.loads(_backup_content(client, process_id)))
+
+
+def _document_identity(
+    snapshot: dict[str, Any], *, missing_profile_id: str | None = None
+) -> DocumentIdentityContext:
+    """Deterministic labels for direct pure-renderer tests."""
+    teacher_names = {
+        str(row["teacher_profile_id"]): f"Teacher {index}"
+        for index, row in enumerate(snapshot["teachers"], start=1)
+        if str(row["teacher_profile_id"]) != missing_profile_id
+    }
+    return DocumentIdentityContext(
+        school_name="IES Test",
+        department_name="Matemáticas",
+        academic_year_label="2026/2027",
+        teacher_display_names_by_profile_id=teacher_names,
+    )
+
+
+def test_renderer_skips_a_link_whose_group_subject_is_missing(
+    client: TestClient, session: Session
+) -> None:
+    """A dangling `group_subject_id` drops the link, not the document."""
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    assert snapshot["teaching_activity_groups"], "fixture must carry a link"
+    for link in snapshot["teaching_activity_groups"]:
+        link["group_subject_id"] = str(uuid.uuid4())
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.INTERNAL_DRAFT,
+        snapshot,
+        [],
+        _document_identity(snapshot),
+        load_document_catalog(ExportArtifactLocale.EN),
+    )
+
+    # The document is still produced, and the activity is simply named without
+    # the group codes it can no longer reach.
+    assert content
+    assert " ()" not in content
+
+
+def test_renderer_skips_a_link_whose_teaching_group_is_missing(
+    client: TestClient, session: Session
+) -> None:
+    """The second half of the same chain: the cell resolves, the group does not."""
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    for cell in snapshot["group_subjects"]:
+        cell["teaching_group_id"] = str(uuid.uuid4())
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.INTERNAL_DRAFT,
+        snapshot,
+        [],
+        _document_identity(snapshot),
+        load_document_catalog(ExportArtifactLocale.EN),
+    )
+
+    assert content
+    assert " ()" not in content
+
+
+def test_renderer_lists_a_repeated_group_code_once(
+    client: TestClient, session: Session
+) -> None:
+    """Two cells of one activity on the same group code print one code.
+
+    A group code is what the reader recognizes, so `A, A` would read as two
+    groups where there is one.
+    """
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    link = snapshot["teaching_activity_groups"][0]
+    cell = next(
+        row
+        for row in snapshot["group_subjects"]
+        if row["id"] == str(link["group_subject_id"])
+    )
+    twin = dict(cell)
+    twin["id"] = str(uuid.uuid4())
+    snapshot["group_subjects"].append(twin)
+    snapshot["teaching_activity_groups"].append(
+        {
+            **link,
+            "id": str(uuid.uuid4()),
+            "group_subject_id": twin["id"],
+        }
+    )
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.INTERNAL_DRAFT,
+        snapshot,
+        [],
+        _document_identity(snapshot),
+        load_document_catalog(ExportArtifactLocale.EN),
+    )
+
+    group = next(
+        row
+        for row in snapshot["teaching_groups"]
+        if row["id"] == str(cell["teaching_group_id"])
+    )
+    code = str(group["group_code"])
+    assert f"({code})" in content
+    assert f"({code}, {code})" not in content
+
+
+def test_renderer_uses_placeholders_for_missing_activity_and_process_teacher(
+    client: TestClient, session: Session
+) -> None:
+    """An unjoinable row stays visible without exposing its identifier.
+
+    Silence would understate the reparto — a slot really is taken — so the
+    document says what it knows and no more. The assignment-by-group section
+    is the one that labels an assignment's *own* activity and participant
+    rather than the teacher it is iterating, so it is the school-leadership
+    document that reaches both fallbacks.
+    """
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    orphan_activity = str(uuid.uuid4())
+    orphan_teacher = str(uuid.uuid4())
+    assert snapshot["assignments"], "fixture must carry an assignment"
+    for row in snapshot["assignments"]:
+        row["teaching_activity_id"] = orphan_activity
+        row["process_teacher_id"] = orphan_teacher
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.SCHOOL_LEADERSHIP,
+        snapshot,
+        [],
+        _document_identity(snapshot),
+        load_document_catalog(ExportArtifactLocale.EN),
+    )
+
+    assert "(teaching activity unavailable)" in content
+    assert "(process teacher unavailable)" in content
+    assert orphan_activity not in content
+    assert orphan_teacher not in content
+    # An activity with no resolvable cell has no group codes, so the row is
+    # filed under the explicit placeholder rather than a blank heading.
+    assert "(unlinked)" in content
+
+
+def test_renderer_uses_a_placeholder_when_a_teacher_profile_is_missing(
+    client: TestClient, session: Session
+) -> None:
+    """A missing enriched profile never falls back to its UUID."""
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    missing_profile_id = str(snapshot["teachers"][0]["teacher_profile_id"])
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.INTERNAL_DRAFT,
+        snapshot,
+        [],
+        _document_identity(snapshot, missing_profile_id=missing_profile_id),
+        load_document_catalog(ExportArtifactLocale.EN),
+    )
+
+    assert "(teacher profile unavailable)" in content
+    assert missing_profile_id not in content
+
+
+def test_renderer_uses_a_placeholder_when_an_activity_subject_is_missing(
+    client: TestClient, session: Session
+) -> None:
+    """A dangling subject stays visible without exposing its UUID."""
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    missing_subject_id = str(uuid.uuid4())
+    for activity in snapshot["teaching_activities"]:
+        activity["subject_id"] = missing_subject_id
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.SCHOOL_LEADERSHIP,
+        snapshot,
+        [],
+        _document_identity(snapshot),
+        load_document_catalog(ExportArtifactLocale.EN),
+    )
+
+    assert "(subject unavailable)" in content
+    assert missing_subject_id not in content
+
+
+def test_document_uuid_lines_are_limited_to_the_trace_allowlist(
+    client: TestClient, session: Session
+) -> None:
+    """Human labels may not silently regress to database identifiers."""
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    snapshot["process"]["closed_by_user_id"] = str(uuid.uuid4())
+    identity = _document_identity(snapshot)
+    uuid_pattern = re.compile(
+        r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-"
+        r"[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\b"
+    )
+
+    for export_type in (
+        ExportArtifactType.INTERNAL_DRAFT,
+        ExportArtifactType.SCHOOL_LEADERSHIP,
+        ExportArtifactType.TEACHER_SUMMARY,
+        ExportArtifactType.FINAL,
+    ):
+        content = DocumentRenderingService.render(
+            export_type,
+            snapshot,
+            [],
+            identity,
+            load_document_catalog(ExportArtifactLocale.EN),
+        )
+        uuid_lines = [
+            line for line in content.splitlines() if uuid_pattern.search(line)
+        ]
+        assert uuid_lines
+        assert all(
+            line.startswith(tuple(DOCUMENT_TRACE_ID_LINE_PREFIXES))
+            for line in uuid_lines
+        )
+
+
+def test_renderer_warns_that_a_stale_plan_is_stale(
+    client: TestClient, session: Session
+) -> None:
+    """Plan §15.1: a stale plan is stated on the face of the document."""
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    snapshot["teaching_plan"]["stale_reason"] = "allocation changed after locking"
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.INTERNAL_DRAFT,
+        snapshot,
+        [],
+        _document_identity(snapshot),
+        load_document_catalog(ExportArtifactLocale.EN),
+    )
+
+    assert "Plan is stale: allocation changed after locking" in content
+
+
+def test_renderer_warns_that_an_unvalidated_plan_is_not_validated(
+    client: TestClient, session: Session
+) -> None:
+    """§20.25: a document off a plan that is not FEASIBLE says so.
+
+    This is the counterpart to the export centre's own feasibility label: a
+    draft is produced from whatever the plan is, so the *document* has to
+    carry the disclaimer rather than the button that made it. `INFEASIBLE` and
+    `NOT EVALUATED` are equally not-validated here — the renderer tests
+    against `feasible` rather than for a particular failure.
+    """
+    process, *_ = _full_source(session)
+    snapshot = _document_snapshot(client, process.id)
+    assert snapshot["teaching_plan"]["feasibility_status"] == (
+        FeasibilityStatus.FEASIBLE.value
+    ), "fixture must start feasible for this to prove anything"
+    snapshot["teaching_plan"]["feasibility_status"] = FeasibilityStatus.INFEASIBLE.value
+
+    content = DocumentRenderingService.render(
+        ExportArtifactType.INTERNAL_DRAFT,
+        snapshot,
+        [],
+        _document_identity(snapshot),
+        load_document_catalog(ExportArtifactLocale.EN),
+    )
+
+    assert "Feasibility is INFEASIBLE" in content
+    assert "not describe a validated plan" in content

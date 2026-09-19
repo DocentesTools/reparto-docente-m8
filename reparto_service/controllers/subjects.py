@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.subjects import (
     Subject,
@@ -49,12 +50,11 @@ class SubjectController(DomainController):
             DomainController.get_process_or_404(session, process_id)
         )
         if subject_in.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "assignment_process_id in the payload does not match the "
-                    "URL process_id."
-                ),
+                code="subjects.assignment_process_id_payload_does_not_match_url",
+                message="assignment_process_id in the payload does not match the URL process_id.",
+                params={},
             )
         subject = Subject.model_validate(subject_in.model_dump())
         session.add(subject)
@@ -72,12 +72,11 @@ class SubjectController(DomainController):
             session.commit()
         except Exception as exc:
             session.rollback()
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Could not create subject: a subject with this name "
-                    "already exists in the process."
-                ),
+                code="subjects.could_not_create_subject_subject_with_name_already",
+                message="Could not create subject: a subject with this name already exists in the process.",
+                params={},
             ) from exc
         session.refresh(subject)
         return SubjectPublic.model_validate(subject)
@@ -111,12 +110,11 @@ class SubjectController(DomainController):
             session.commit()
         except Exception as exc:
             session.rollback()
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Could not update subject: a subject with this name "
-                    "already exists in the process."
-                ),
+                code="subjects.could_not_update_subject_subject_with_name_already",
+                message="Could not update subject: a subject with this name already exists in the process.",
+                params={},
             ) from exc
         session.refresh(subject)
         return SubjectPublic.model_validate(subject)
@@ -155,9 +153,11 @@ class SubjectController(DomainController):
         statement = select(Subject).where(Subject.id == subject_id)
         subject = session.exec(statement).first()
         if subject is None or subject.assignment_process_id != process_id:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Subject {subject_id} not found in process {process_id}.",
+                code="subjects.subject_not_found_process",
+                message=f"Subject {subject_id} not found in process {process_id}.",
+                params={"subject_id": subject_id, "process_id": process_id},
             )
         return subject
 

@@ -26,10 +26,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi_m8 import UserModel
 from sqlmodel import Session, select
 
+from reparto_service.core.errors import DomainHTTPException
 from reparto_service.controllers.base import DomainController
 from reparto_service.db_models.teaching_plans import (
     TeachingPlan,
@@ -52,6 +53,7 @@ from reparto_service.services.planning_lifecycle import (
     TEACHING_PLAN_LIFECYCLE,
     IllegalStateTransitionError,
 )
+from reparto_service.services.stale_reasons import ServiceStaleReason
 from reparto_service.services.validations import PlanValidationService
 from reparto_service.services.feasibility_witnesses import FeasibilityWitnessService
 
@@ -64,9 +66,11 @@ class TeachingPlanController(DomainController):
         DomainController.get_process_or_404(session, process_id)
         plan = TeachingPlanController._plan_row(session, process_id)
         if plan is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No teaching plan for process {process_id}.",
+                code="teaching_plans.no_teaching_plan_process",
+                message=f"No teaching plan for process {process_id}.",
+                params={"process_id": process_id},
             )
         return TeachingPlanPublic.model_validate(plan)
 
@@ -83,9 +87,11 @@ class TeachingPlanController(DomainController):
         DomainController.get_process_or_404(session, process_id)
         plan = TeachingPlanController._plan_row(session, process_id)
         if plan is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No teaching plan for process {process_id}.",
+                code="teaching_plans.no_teaching_plan_process",
+                message=f"No teaching plan for process {process_id}.",
+                params={"process_id": process_id},
             )
         return PlanningCalculationService.compute_plan_balance(session, plan)
 
@@ -101,9 +107,11 @@ class TeachingPlanController(DomainController):
         DomainController.get_process_or_404(session, process_id)
         plan = TeachingPlanController._plan_row(session, process_id)
         if plan is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No teaching plan for process {process_id}.",
+                code="teaching_plans.no_teaching_plan_process",
+                message=f"No teaching plan for process {process_id}.",
+                params={"process_id": process_id},
             )
         return PlanValidationService.compute_plan_validations(session, plan)
 
@@ -149,9 +157,11 @@ class TeachingPlanController(DomainController):
         DomainController.ensure_process_mutable(process)
 
         if TeachingPlanController._plan_row(session, process_id) is not None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Process {process_id} already has a teaching plan.",
+                code="teaching_plans.process_already_has_teaching_plan",
+                message=f"Process {process_id} already has a teaching plan.",
+                params={"process_id": process_id},
             )
 
         plan = TeachingPlan(
@@ -191,17 +201,18 @@ class TeachingPlanController(DomainController):
         )
         plan = TeachingPlanController._plan_row(session, process_id)
         if plan is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No teaching plan for process {process_id}.",
+                code="teaching_plans.no_teaching_plan_process",
+                message=f"No teaching plan for process {process_id}.",
+                params={"process_id": process_id},
             )
         if plan.status != TeachingPlanStatus.BALANCED:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"Cannot lock the teaching plan while it is {plan.status.value}; "
-                    "both planning balances must be exact first."
-                ),
+                code="teaching_plans.cannot_lock_teaching_plan_while_it_is_both",
+                message=f"Cannot lock the teaching plan while it is {plan.status.value}; both planning balances must be exact first.",
+                params={"plan_status": plan.status.value},
             )
         FeasibilityWitnessService.require_intended_feasible(
             session, process_id, operation="lock the teaching plan"
@@ -241,17 +252,18 @@ class TeachingPlanController(DomainController):
         )
         plan = TeachingPlanController._plan_row(session, process_id)
         if plan is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No teaching plan for process {process_id}.",
+                code="teaching_plans.no_teaching_plan_process",
+                message=f"No teaching plan for process {process_id}.",
+                params={"process_id": process_id},
             )
         if plan.status != TeachingPlanStatus.LOCKED:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"Cannot unlock the teaching plan while it is {plan.status.value}; "
-                    "only a locked pre-generation plan can be unlocked."
-                ),
+                code="teaching_plans.cannot_unlock_teaching_plan_while_it_is_only",
+                message=f"Cannot unlock the teaching plan while it is {plan.status.value}; only a locked pre-generation plan can be unlocked.",
+                params={"plan_status": plan.status.value},
             )
         before = TeachingPlan.model_validate(plan.model_dump())
         TeachingPlanController.apply_status_transition(
@@ -293,9 +305,11 @@ class TeachingPlanController(DomainController):
         """
         plan = TeachingPlanController._plan_row(session, process_id)
         if plan is None:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No teaching plan for process {process_id}.",
+                code="teaching_plans.no_teaching_plan_process",
+                message=f"No teaching plan for process {process_id}.",
+                params={"process_id": process_id},
             )
         # Read before the transition: moving to STALE resets the stored status
         # itself, so asking `invalidate` afterwards would always answer "nothing
@@ -363,28 +377,51 @@ class TeachingPlanController(DomainController):
         plan: TeachingPlan,
         target: TeachingPlanStatus,
         *,
-        stale_reason: str | None = None,
+        stale_reason: str | ServiceStaleReason | None = None,
     ) -> None:
         """Validate and apply a plan status change against the lifecycle table.
 
-        Raises 409 on an illegal edge. Moving to ``STALE`` records the reason
-        and resets feasibility to ``NOT_EVALUATED`` (plan §20.14); leaving
-        ``STALE`` clears the reason. Does not commit — the caller owns the
-        transaction.
+        Raises 409 on an illegal edge. Moving to ``STALE`` records a generated
+        reason as stable code/params or a user reason as verbatim prose, then
+        resets feasibility to ``NOT_EVALUATED`` (plan §20.14); leaving
+        ``STALE`` clears all reason fields. Does not commit — the caller owns
+        the transaction.
         """
         try:
             TEACHING_PLAN_LIFECYCLE.assert_allowed(plan.status, target)
         except IllegalStateTransitionError as exc:
-            raise HTTPException(
+            raise DomainHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=str(exc),
+                code="teaching_plans.status_transition_rejected",
+                message=str(exc),
+                params={"reason": str(exc)},
             ) from exc
         plan.status = target
         if target == TeachingPlanStatus.STALE:
-            plan.stale_reason = stale_reason
+            TeachingPlanController.set_stale_reason(plan, stale_reason)
             TeachingPlanController._reset_feasibility(plan)
         else:
-            plan.stale_reason = None
+            TeachingPlanController.set_stale_reason(plan, None)
+
+    @staticmethod
+    def set_stale_reason(
+        plan: TeachingPlan,
+        reason: str | ServiceStaleReason | None,
+    ) -> None:
+        """Persist generated reason metadata without changing the public prose.
+
+        A plain string is explicitly user-authored (or historical on restore),
+        so it remains verbatim and carries no catalog code. The stable fields
+        are internal and excluded from the backup/public contracts.
+        """
+        if isinstance(reason, ServiceStaleReason):
+            plan.stale_reason = reason.message
+            plan.stale_reason_code = reason.code
+            plan.stale_reason_params = dict(reason.params)
+            return
+        plan.stale_reason = reason
+        plan.stale_reason_code = None
+        plan.stale_reason_params = None
 
     # ── Internal helpers ─────────────────────────────────────────────────────
 
