@@ -128,6 +128,12 @@ field this release emits on every export row.
   binding, dual-key overlap window, JWKS cache headers) and vendors the
   matching `init-keys.sh`, whose keys-exist path now verifies the
   `ACCESS_KEY_ID` binding instead of skipping it.
+- Dependency floors raised by Dependabot: `uvicorn>=0.53.0`,
+  `python-multipart>=0.0.32`, `gunicorn>=26.2.0` (HTTP/2 header-policy fix),
+  `debugpy>=1.8.21`, `wheel>=0.48.0`; `trivy-action`, `setup-buildx-action`
+  (4.3.0) and `sbom-action` (0.24.2) pins bumped in CI. `constraints.txt` /
+  `constraints-all.txt` regenerated so the recorded `uvicorn` (`0.53.0`) and
+  `wheel` (`0.48.0`) pins satisfy the new floors again; no other pin moved.
 
 ### Fixed
 
