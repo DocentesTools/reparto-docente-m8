@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-19
+
+Folds the never-published `2.1.1` (2026-09-06) into this release: `v2.1.0`
+remained the newest tag on `origin` while the export-renderer fix and the
+service-authored-text plan (`C4`–`C14`) landed on top of it, so the work takes
+the minor it earns rather than riding a patch number npm and Docker Hub never
+saw. The contract stays `reparto-docente-m8@2.0.0`, range `>=2.0.0 <3.0.0`;
+every new field below is additive and optional on the published client.
+
+**Deploy order:** `astro-reparto-m8@2.2.0` must be published and installed by
+the host **before** this service is deployed — the published `2.1.0` client's
+`ExportArtifactPublic` schema is strict and does not yet declare the `locale`
+field this release emits on every export row.
+
 ### Added
 
 - **Rendered reparto documents use an explicit three-locale catalog (C14).**
@@ -48,31 +62,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `GET /exports` returns stored bytes and declares neither. Additive within
   contract `2.0`: the published client already accepts the optional field.
 
+- **The service speaks the caller's language at the HTTP boundary (C10).**
+  A pure-ASGI middleware negotiates `Accept-Language` (quality weights,
+  regional tags such as `es-ES` → `es`, wildcards, bounded input, `en`
+  fallback) into a per-request `ContextVar` that is set before any dependency
+  can raise and reset in `finally`. Domain errors are translated at the
+  boundary only, from committed Spanish and French gettext catalogs under
+  `reparto_service/locales/<locale>/LC_MESSAGES/reparto.{po,mo}`; a missing
+  catalog, message id or parameter falls back to the English message rather
+  than a `500`. Translated responses declare `Content-Language` and
+  `Vary: Accept-Language`. Babel is a build/dev dependency only
+  (`requirements_build.txt`); production loads the compiled catalogs with the
+  standard-library `gettext`, and the Docker build fails if a shipped catalog
+  is missing or unreadable.
+
+- **Every Reparto-owned HTTP error carries a stable machine code (C7).** All
+  164 service-raised `HTTPException` sites now answer the exact envelope
+  `{"detail": {"code", "message", "params"}}` from a 157-code, additive-only
+  catalog (`docs/error-taxonomy.md` / `.json`); every value the English message used to
+  interpolate is repeated in `params`, and messages that interpolate nothing
+  carry `{}`. Validation (`422`), framework/auth (`401`/`403`/`429`/`503`
+  from `fastapi-m8`) and unexpected errors keep their existing owners and
+  status-based classification. A source-derived gate rejects a raw
+  service-owned `HTTPException`, wire drift, code drift and parameter drift.
+  Follows the three sites that already used this shape; the tolerant client
+  that reads it (`astro-reparto-m8@2.1.0`) was published first.
+
+- **Bulk-preview prose is coded, not sniffed (C11).**
+  `GroupSubjectBulkConflict` gains optional `code` / `params` beside its
+  `reason`, and `GroupSubjectBulkPreview.validation_errors` entries may be
+  `{code, message, params}` records as well as strings — both arms already
+  staged in the published client. The compatibility prose is translated at the
+  boundary through the same catalog as C10.
+
+- **Documents name people and places, not identifiers (C5).** The renderer
+  receives an explicit `DocumentIdentityContext` — school, department,
+  academic-year and teacher display names resolved from service-owned rows at
+  the call site — instead of falling back to `teacher-profile <uuid>`.
+  Missing joins use non-identifying placeholders. `Confirmed by:` is omitted
+  from the final document: `closed_by_user_id` is an auth-service identity
+  this service must not resolve. The labelled `Process reference` line is the
+  only document line allowed to carry a UUID, and a test asserts it. The
+  backup JSON snapshot (`_snapshot()`) is untouched and byte-stable.
+
+- **Validation findings expose a language-neutral parameter contract (C4).**
+  Every one of the 17 planning and assignment codes now emits exact `params`
+  beside its compatibility `message`: counts are JSON integers, decimal hours
+  are canonical signed strings, and people or teaching entities are named
+  through display labels while `entity_id` remains machine data. The public
+  model keeps `params` optional so the tolerant client could be released
+  before this service shape is deployed, but validates exact keys and scalar
+  kinds whenever a known code supplies them.
+
+- **A gate inventories every service-authored prose field (C6).**
+  `docs/service-authored-prose-inventory.json` classifies every free-string
+  public response field as service prose, user content, identity or machine
+  contract and names the code/catalog owner of each; an OpenAPI-graph test
+  fails closed on a new unclassified string field.
+
+### Changed
+
+- `fastapi-m8` floor raised to `>=4.5.1,<5.0.0` and the pip constraints
+  regenerated, which moves the transitive `auth-sdk-m8` pin to `3.2.0`. The
+  `dev_reparto_m8` Compose stack pins `fa-auth-m8` `2.2.1` (JWKS `kid`/key
+  binding, dual-key overlap window, JWKS cache headers) and vendors the
+  matching `init-keys.sh`, whose keys-exist path now verifies the
+  `ACCESS_KEY_ID` binding instead of skipping it.
+
 ### Fixed
-
-- **The documented `mypy . --ignore-missing-imports` gate is clean again.**
-  The README's full-tree command reported fifteen long-standing errors in five
-  test modules — hour fixtures assigned binary floats to `Decimal` columns,
-  and two tests read `impl`/`endpoint` off unnarrowed SQLAlchemy and Starlette
-  base types — while CI ran only the narrower `mypy reparto_service` and
-  stayed green. The tests now bind `Decimal` hours and narrow before they
-  read, three `subscribe` fixtures are annotated, and
-  `HoursNumeric.process_bind_param` declares the `float` its docstring and its
-  own test already promised to normalize. No runtime behaviour changes; the
-  README's command and CI's command now agree.
-
-## [2.1.1] - 2026-09-06
-
-### Fixed
-
-- **Validation findings expose a language-neutral parameter contract.** Every
-  one of the 17 planning and assignment codes now emits exact `params` beside
-  its compatibility `message`: counts are JSON integers, decimal hours are
-  canonical signed strings, and people or teaching entities are named through
-  display labels while `entity_id` remains machine data. The public model keeps
-  `params` optional so the tolerant client can be released before this service
-  shape is deployed, but validates exact keys and scalar kinds whenever a known
-  code supplies them.
 
 - **`POST .../exports` renders the plan §15 documents instead of refusing
   them.** Every `pdf` request answered `501`, so three of the four document
@@ -89,8 +146,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `restore-draft` can read back. No schema change and no contract move — the
   `format`/`export_type` fields were already declared and accepted; this
   closes the gap between what the request schema promised and what the
-  handler actually served. The contract stays `reparto-docente-m8@2.0.0`, so
-  no client upgrade is required.
+  handler actually served.
+
+- **The runtime image builds again.** Debian trixie superseded
+  `curl 8.14.1-2+deb13u4` and dropped it from the archive, so the exact apt
+  pin failed at `apt-get install`; the pin moves to `8.14.1-2+deb13u5`.
+
+- **The documented `mypy . --ignore-missing-imports` gate is clean again.**
+  The README's full-tree command reported fifteen long-standing errors in five
+  test modules — hour fixtures assigned binary floats to `Decimal` columns,
+  and two tests read `impl`/`endpoint` off unnarrowed SQLAlchemy and Starlette
+  base types — while CI ran only the narrower `mypy reparto_service` and
+  stayed green. The tests now bind `Decimal` hours and narrow before they
+  read, three `subscribe` fixtures are annotated, and
+  `HoursNumeric.process_bind_param` declares the `float` its docstring and its
+  own test already promised to normalize. No runtime behaviour changes; the
+  README's command and CI's command now agree.
 
 ## [2.1.0] - 2026-08-30
 
