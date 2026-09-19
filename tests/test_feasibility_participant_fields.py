@@ -18,6 +18,7 @@ which is the guard against the real risk here — under-invalidating.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable, Iterator
 from decimal import Decimal
 from typing import Any
 
@@ -62,7 +63,7 @@ MUTABLE_FIELDS: dict[str, Any] = {
 
 
 @pytest.fixture
-def subscribe():
+def subscribe() -> Iterator[Callable[[uuid.UUID], sse.Subscription]]:
     """Attach a real subscription to the process-wide broker, detached on teardown."""
     created: list[sse.Subscription] = []
 

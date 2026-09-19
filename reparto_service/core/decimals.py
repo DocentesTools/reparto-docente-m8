@@ -200,7 +200,7 @@ class HoursNumeric(TypeDecorator[Decimal]):
     cache_ok = True
 
     def process_bind_param(
-        self, value: Decimal | int | str | None, dialect: object
+        self, value: Decimal | int | float | str | None, dialect: object
     ) -> Decimal | None:
         if value is None:
             return None

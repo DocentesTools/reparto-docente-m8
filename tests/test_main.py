@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 
@@ -61,5 +62,7 @@ def test_metrics_endpoint_registration(monkeypatch) -> None:
     )
     main._register_metrics_endpoint(router, enabled=True, credential=None)
     assert router.routes
-    response = router.routes[-1].endpoint()
+    route = router.routes[-1]
+    assert isinstance(route, APIRoute)
+    response = route.endpoint()
     assert response.body == b"metrics"

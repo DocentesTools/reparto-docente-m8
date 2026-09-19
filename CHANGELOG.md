@@ -48,6 +48,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `GET /exports` returns stored bytes and declares neither. Additive within
   contract `2.0`: the published client already accepts the optional field.
 
+### Fixed
+
+- **The documented `mypy . --ignore-missing-imports` gate is clean again.**
+  The README's full-tree command reported fifteen long-standing errors in five
+  test modules — hour fixtures assigned binary floats to `Decimal` columns,
+  and two tests read `impl`/`endpoint` off unnarrowed SQLAlchemy and Starlette
+  base types — while CI ran only the narrower `mypy reparto_service` and
+  stayed green. The tests now bind `Decimal` hours and narrow before they
+  read, three `subscribe` fixtures are annotated, and
+  `HoursNumeric.process_bind_param` declares the `float` its docstring and its
+  own test already promised to normalize. No runtime behaviour changes; the
+  README's command and CI's command now agree.
+
 ## [2.1.1] - 2026-09-06
 
 ### Fixed

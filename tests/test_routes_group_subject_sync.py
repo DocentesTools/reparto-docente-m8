@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
@@ -464,8 +465,8 @@ def test_sync_resolves_subject_defaults_and_zero_fallbacks(
     preview = client.post(_preview_url(process.id, cell.id)).json()
     assert preview["source_values"]["group_weekly_hours_per_group"] == "0.00"
     assert preview["source_values"]["teacher_weekly_hours_per_position"] == "0.00"
-    subject.default_group_weekly_hours = 2.0
-    subject.default_teacher_weekly_hours_per_position = 3.0
+    subject.default_group_weekly_hours = Decimal("2.0")
+    subject.default_teacher_weekly_hours_per_position = Decimal("3.0")
     session.add(subject)
     session.commit()
     preview = client.post(_preview_url(process.id, cell.id)).json()

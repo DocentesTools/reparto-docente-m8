@@ -11,7 +11,7 @@ import asyncio
 import json
 import uuid
 from decimal import Decimal
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable, Iterator
 from typing import cast
 
 import pytest
@@ -58,7 +58,7 @@ PREFIX = "/reparto/assignment-processes"
 
 
 @pytest.fixture
-def subscribe():
+def subscribe() -> Iterator[Callable[[uuid.UUID], sse.Subscription]]:
     """Attach a real subscription to the process-wide broker, detached on teardown."""
     created: list[sse.Subscription] = []
 

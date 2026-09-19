@@ -11,6 +11,7 @@ never silently dropping an assignment).
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from auth_sdk_m8.schemas.user import UserModel
 from fastapi.testclient import TestClient
@@ -174,7 +175,7 @@ def test_generate_fails_closed_when_intended_state_is_infeasible(
     participant = session.exec(
         select(ProcessTeacher).where(ProcessTeacher.assignment_process_id == process.id)
     ).one()
-    participant.base_weekly_hours = 3.0
+    participant.base_weekly_hours = Decimal("3.0")
     session.add(participant)
     session.commit()
 
@@ -365,7 +366,7 @@ def test_generate_value_change_unassigned_retire_and_recreate(
     participant = session.exec(
         select(ProcessTeacher).where(ProcessTeacher.assignment_process_id == process.id)
     ).one()
-    participant.base_weekly_hours = 3.0
+    participant.base_weekly_hours = Decimal("3.0")
     session.add(participant)
     session.add(activity)
     session.commit()
@@ -415,7 +416,7 @@ def test_generate_conflict_value_changed_assigned_409(
     teacher = session.exec(
         select(ProcessTeacher).where(ProcessTeacher.assignment_process_id == process.id)
     ).one()
-    teacher.base_weekly_hours = 5.0
+    teacher.base_weekly_hours = Decimal("5.0")
     session.add(teacher)
     session.add(activity)
     session.commit()
@@ -470,7 +471,7 @@ def test_preview_reports_conflict(client: TestClient, session: Session) -> None:
     teacher = session.exec(
         select(ProcessTeacher).where(ProcessTeacher.assignment_process_id == process.id)
     ).one()
-    teacher.base_weekly_hours = 5.0
+    teacher.base_weekly_hours = Decimal("5.0")
     session.add(teacher)
     session.add(activity)
     session.commit()
@@ -494,7 +495,7 @@ def test_preview_reports_retire_and_create(
     participant = session.exec(
         select(ProcessTeacher).where(ProcessTeacher.assignment_process_id == process.id)
     ).one()
-    participant.base_weekly_hours = 3.0
+    participant.base_weekly_hours = Decimal("3.0")
     session.add(participant)
     session.add(activity)
     session.commit()
