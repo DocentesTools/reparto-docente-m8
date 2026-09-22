@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import status
 from fastapi_m8 import UserModel
@@ -66,6 +67,11 @@ from reparto_service.services.process_lifecycle import (
     is_reopen_edge,
 )
 from reparto_service.services.read_scope import UNRESTRICTED, visible_department_ids
+
+#: Canonical two-place zero for hour columns, matching the ``_ZERO_HOURS`` /
+#: ``_ZERO`` constants in ``controllers/teaching_activities.py``,
+#: ``controllers/assignments.py`` and ``services/calculations.py``.
+_ZERO_HOURS = Decimal("0.00")
 
 
 class AssignmentProcessController(DomainController):
@@ -497,7 +503,10 @@ class AssignmentProcessController(DomainController):
                     assignment_process_id=target.id,
                     teacher_profile_id=teacher.teacher_profile_id,
                     base_weekly_hours=teacher.base_weekly_hours,
-                    extra_weekly_hours=0,
+                    # Canonical two-place zero, not the int literal: this is an
+                    # hours column (``HoursNumeric``), and every other hour value
+                    # in this repository is a ``Decimal``.
+                    extra_weekly_hours=_ZERO_HOURS,
                     extra_hours_reason=None,
                     extra_hours_updated_by_user_id=None,
                     extra_hours_updated_at=None,

@@ -36,6 +36,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import date
+from decimal import Decimal
 
 from sqlmodel import Session, func, select
 
@@ -261,6 +262,9 @@ PARTICIPANTS: tuple[tuple[str, float], ...] = (
     ("Fernando Gil Rojas", 20.0),
 )
 
+#: Canonical two-place zero for hour columns.
+_ZERO_HOURS = Decimal("0.00")
+
 #: The hours leadership allocated to the department — the group-load target.
 ALLOCATED_GROUP_WEEKLY_HOURS = 120.0
 
@@ -364,8 +368,12 @@ def _seed_matrix(
             name=name,
             allocation_category=category,
             activity_type=activity_type,
-            default_group_weekly_hours=hours,
-            default_teacher_weekly_hours_per_position=hours,
+            # The seed tables spell hours as floats for readability; they are
+            # converted here, at the single point where they reach a
+            # ``HoursNumeric`` column, and via ``str`` so no binary-float error
+            # is carried into the Decimal (the idiom ``core.decimals`` uses).
+            default_group_weekly_hours=Decimal(str(hours)),
+            default_teacher_weekly_hours_per_position=Decimal(str(hours)),
             default_required_teacher_count=positions,
         )
         session.add(subject)
@@ -395,8 +403,8 @@ def _seed_participants_and_allocation(
             ProcessTeacher(
                 assignment_process_id=process.id,
                 teacher_profile_id=profile.id,
-                base_weekly_hours=base_weekly_hours,
-                extra_weekly_hours=0.0,
+                base_weekly_hours=Decimal(str(base_weekly_hours)),
+                extra_weekly_hours=_ZERO_HOURS,
                 status=ProcessTeacherStatus.ACTIVE,
                 participates_in_selection=True,
             )
@@ -406,7 +414,7 @@ def _seed_participants_and_allocation(
         DepartmentHourAllocationRevision(
             assignment_process_id=process.id,
             revision_number=1,
-            allocated_group_weekly_hours=ALLOCATED_GROUP_WEEKLY_HOURS,
+            allocated_group_weekly_hours=Decimal(str(ALLOCATED_GROUP_WEEKLY_HOURS)),
             reason="Reparto inicial de la jefatura de estudios (ejemplo).",
             source=DepartmentHourAllocationSource.MANUAL_TRANSCRIPTION,
             created_by_user_id=SEED_USER_ID,

@@ -15,6 +15,8 @@ retirement is an explicit guarded action under plan §20.12.
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
+from typing import TypedDict
 
 from fastapi import status
 from fastapi_m8 import UserModel
@@ -76,6 +78,20 @@ _BULK_VALUE_FIELDS = (
     "teacher_weekly_hours_per_position",
     "required_teacher_count",
 )
+
+
+class _BulkCreateValues(TypedDict):
+    """The concrete field values a bulk-created cell is built from.
+
+    Shaped rather than left as ``dict[str, object]`` because it is unpacked
+    straight into ``GroupSubject`` and ``GroupSubjectBulkChange``: with an
+    untyped dict every field arrived as ``object`` and neither constructor
+    could be checked, so a wrong type or a missing key reached the database.
+    """
+
+    group_weekly_hours: Decimal | None
+    teacher_weekly_hours_per_position: Decimal | None
+    required_teacher_count: int
 
 
 class _BulkAuditPayload(SQLModel):
@@ -766,7 +782,7 @@ class GroupSubjectController(DomainController):
         request: GroupSubjectBulkRequest,
     ) -> tuple[
         GroupSubjectBulkPreview,
-        list[tuple[uuid.UUID, dict[str, object]]],
+        list[tuple[uuid.UUID, _BulkCreateValues]],
         list[tuple[GroupSubject, dict[str, object]]],
     ]:
         """Compute the create/update/unchanged/conflict split for a bulk request.
@@ -792,13 +808,13 @@ class GroupSubjectController(DomainController):
             for field in _BULK_VALUE_FIELDS
             if field in request.model_fields_set
         }
-        create_values = GroupSubjectController._create_values(provided)
+        create_values = GroupSubjectController._create_values(request)
 
         to_create: list[GroupSubjectBulkChange] = []
         to_update: list[GroupSubjectBulkChange] = []
         unchanged: list[GroupSubjectBulkChange] = []
         conflicts: list[GroupSubjectBulkConflict] = []
-        create_specs: list[tuple[uuid.UUID, dict[str, object]]] = []
+        create_specs: list[tuple[uuid.UUID, _BulkCreateValues]] = []
         update_specs: list[tuple[GroupSubject, dict[str, object]]] = []
 
         for group in groups:
@@ -890,17 +906,34 @@ class GroupSubjectController(DomainController):
         return list(session.exec(statement).all()), errors
 
     @staticmethod
-    def _create_values(provided: dict[str, object]) -> dict[str, object]:
+    def _create_values(request: GroupSubjectBulkRequest) -> _BulkCreateValues:
         """Resolve the concrete field values for a newly created cell.
 
         Unset hour fields inherit (NULL); an unset count falls back to 1.
+
+        Reads the request directly rather than the ``dict[str, object]`` of
+        set fields, so each value keeps the type its field declares. An
+        explicitly ``null`` ``required_teacher_count`` also falls back to 1:
+        the column is ``int`` and NOT NULL, and 1 is the default this
+        operation documents, so the previous ``dict.get(..., 1)`` — which
+        passed the ``None`` straight through to the insert — could only end in
+        an integrity error.
         """
+        fields = request.model_fields_set
         return {
-            "group_weekly_hours": provided.get("group_weekly_hours"),
-            "teacher_weekly_hours_per_position": provided.get(
-                "teacher_weekly_hours_per_position"
+            "group_weekly_hours": (
+                request.group_weekly_hours if "group_weekly_hours" in fields else None
             ),
-            "required_teacher_count": provided.get("required_teacher_count", 1),
+            "teacher_weekly_hours_per_position": (
+                request.teacher_weekly_hours_per_position
+                if "teacher_weekly_hours_per_position" in fields
+                else None
+            ),
+            "required_teacher_count": (
+                request.required_teacher_count
+                if request.required_teacher_count is not None
+                else 1
+            ),
         }
 
     @staticmethod
