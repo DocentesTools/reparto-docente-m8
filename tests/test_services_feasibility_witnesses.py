@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime
 
 import pytest
 from fastapi import HTTPException
@@ -486,7 +487,16 @@ def test_diagnostics_checked_at_falls_back_to_the_row_timestamp(
 
     assert response.status_code == 200
     row = session.exec(select(FeasibilityWitness)).one()
-    assert response.json()["checked_at"] == row.updated_at.isoformat()
+    checked_at = response.json()["checked_at"]
+    # The served spelling is the contract, not ``datetime.isoformat()``'s.
+    # ``updated_at`` comes back timezone-aware, and pydantic serializes an
+    # aware UTC instant as ``...Z`` while ``isoformat()`` spells the same
+    # instant ``...+00:00``. Comparing the two strings asserted the
+    # serializer's punctuation, not the fallback this test is about. Assert
+    # the instant, then pin the spelling separately so a change to either one
+    # still fails here.
+    assert datetime.fromisoformat(checked_at) == row.updated_at
+    assert checked_at.endswith("Z")
 
 
 def test_regular_writer_cannot_read_diagnostics(

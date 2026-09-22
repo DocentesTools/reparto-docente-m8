@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-09-22
+
+Dev-set drift repair — `B27-dev-set-drift-repair` of the workspace's
+consumer-alignment closure plan, finding `G20`. CI installs
+`reparto_service/requirements_dev.txt`, whose entries are `>=` floors, so
+`test` and `typecheck` resolve a fresh dependency graph on every run; the
+generation that resolved on 2026-09-22 — sqlmodel `0.0.46` / SQLAlchemy
+`2.0.54` / pydantic `2.13.5` — stopped hiding defects that were already on
+`main`. No route, schema or contract change: `SERVICE_VERSION` moves to
+`2.2.2`, the contract stays `reparto-docente-m8@2.0.0`, range
+`>=2.0.0 <3.0.0`, inside `@mano8/astro-reparto-m8` `2.3.0`'s service-version
+gate.
+
+Unlike its three sibling services this repository has **no** naive
+`datetime.now()` in source — every call already passes `tz=timezone.utc` —
+so its share of `G20` is entirely the typing half plus one serialization
+assertion.
+
+### Fixed
+
+- **`required_teacher_count` can no longer reach the insert as `NULL`.**
+  `GroupSubjectBulkRequest.required_teacher_count` is `Optional[int]`, so a
+  caller could send it explicitly as `null`; the bulk create path read it
+  with `dict.get("required_teacher_count", 1)`, whose default applies only
+  to a *missing* key, and passed the `None` through to a column that is
+  `int` and `NOT NULL`. It now falls back to `1` — the default this
+  operation already documents — for both the unset and the explicit-`null`
+  case. An unset field still inherits; hour fields sent as `null` still
+  clear an override, unchanged.
+- **Seed and process-copy hours are `Decimal`, never binary floats.**
+  `initial_data.py` passed `float` literals and
+  `controllers/assignment_processes.py` an `int` `0` into `HoursNumeric`
+  (`NUMERIC(8, 2)`) columns. This repository's own rule is that a binary
+  float must never drive a domain decision — `core.decimals.normalize_hours`
+  rejects `float` outright — and these were the paths that bypassed it. They
+  convert at the call site via `Decimal(str(...))`, the idiom
+  `core.decimals` already uses, so no binary-float error is carried into the
+  stored value. The columns are unchanged.
+- **The bulk create values carry their declared types.** `_create_values`
+  returned `dict[str, object]` and was unpacked straight into `GroupSubject`
+  and `GroupSubjectBulkChange`, so neither constructor could be checked and
+  a wrong type or missing key reached the database. It now returns a
+  `_BulkCreateValues` `TypedDict` read from the request itself.
+- **`checked_at`'s served spelling is the contract.** With the stored value
+  coming back timezone-aware, pydantic serializes it as `...Z` while
+  `datetime.isoformat()` spells the same instant `...+00:00`. The
+  feasibility-witness fallback test compared those two strings, so it was
+  asserting the serializer's punctuation rather than the fallback it exists
+  for. It now asserts the *instant*, and pins the served `Z` spelling
+  separately. **No service behaviour changed here** — the response is the
+  same bytes `2.2.1` already serves. See `G21`: because this is the one
+  service image in the fleet with no hash-locked dependency set, that
+  spelling change reached the published `2.2.1` image rather than staying in
+  CI, and `G21` — not this release — owns the lock that prevents a repeat.
+
 ## [2.2.1] - 2026-09-20
 
 Debian patch-layer convergence — `B23-converge-patch-layer` (Wave 6) of the
