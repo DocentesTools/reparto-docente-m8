@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-09-20
+
+Debian patch-layer convergence — `B23-converge-patch-layer` (Wave 6) of the
+workspace's consumer-alignment closure plan, finding `G18`; the form is
+recorded once, in the workspace's `.workspace/context/debian-patch-layer.md`,
+and the five service images now carry it byte-for-byte. Image-only patch
+release: no route, schema, contract or dependency change. `SERVICE_VERSION`
+moves to `2.2.1`; the contract stays `reparto-docente-m8@2.0.0`, range
+`>=2.0.0 <3.0.0`, inside `@mano8/astro-reparto-m8` `2.3.0`'s service-version
+gate.
+
+### Security
+
+- **The runtime image's Debian layer is now the fleet's one form:**
+  `apt-get update && apt-get upgrade -y`, nothing exact-pinned, nothing
+  installed that the base does not already ship. `curl` is no longer
+  installed: its exact `=8.14.1-2+deb13u5` pin was the one package
+  `apt-get upgrade -y` could not raise, it had already been hand-raised once
+  (`deb13u4` → `deb13u5`, `90136c5`) for an advisory on a package nothing in
+  this image uses — no `HEALTHCHECK`, the Compose healthchecks probe with
+  `python -c "import urllib.request…"`, and the only `curl` calls in this
+  repository run outside the image.
+- **Base image raised to the current `python:3.14-slim` digest
+  `caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2`**
+  (Debian 13.7, Python 3.14.7, created 2026-09-19), from `cea0e6…` (Debian 13.6).
+  All five service images now pin this same digest, and from here on base
+  digests move together — on advisory or on cadence, never one repository
+  alone. Measured inside the new base: every package this fleet had ever
+  pinned ships at or above its pinned version (`openssl` `3.5.7-1~deb13u2`,
+  `gzip` `1.13-1+deb13u1`, `libpcre2-8-0` `10.46-1~deb13u2`, `libsqlite3-0`
+  `3.46.1-7+deb13u2`, `perl-base` `5.40.1-6+deb13u1`), so `upgrade -y` is a
+  no-op today and self-heals from the next advisory on.
+- Verified before the change was proposed: `docker build --no-cache` green
+  on the new Dockerfile; Trivy at the `trivy-image` gate's own settings
+  (`severity: CRITICAL,HIGH`, `ignore-unfixed: true`) reports **0**
+  findings; inside the built container `openssl version` reads
+  `OpenSSL 3.5.7` and `dpkg-query -W curl` reports it not installed.
+
 ## [2.2.0] - 2026-09-19
 
 Folds the never-published `2.1.1` (2026-09-06) into this release: `v2.1.0`
