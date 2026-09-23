@@ -25,6 +25,57 @@ Unlike its three sibling services this repository has **no** naive
 so its share of `G20` is entirely the typing half plus one serialization
 assertion.
 
+`2.2.2` also carries `B28-reparto-hash-locked-release-set` (`G21`): this was
+the one service image in the fleet built from unpinned floors, so what it
+shipped was a property of the day it was built rather than of this
+repository. It now installs from a `pip-compile --generate-hashes` lock under
+`--require-hashes`, and two CI gates stand over that lock.
+
+### Changed
+
+- **The release image installs a hash-locked, fully pinned dependency set.**
+  `reparto_service/requirements_prod.lock` is new — 50 pins, every one with
+  its hashes, generated inside the Dockerfile's own pinned `python:3.14-slim`
+  base so the resolution is the linux one the image uses. The Dockerfile's
+  `ENVIRONMENT != development` branch installs it with `--require-hashes`
+  instead of resolving `requirements_prod.txt`'s `>=` floors. The
+  `development` branch is unchanged and still resolves floors on purpose.
+- **Measured before/after of what the image contains, because a lock that
+  silently moves the shipped generation is the same defect wearing a
+  different hat.** Read from the published `2.2.1` image and from this
+  release's build, all 50 distributions compared:
+
+  | Package | `2.2.1` | `2.2.2` |
+  | --- | --- | --- |
+  | SQLAlchemy | `2.0.54` | `2.0.54` |
+  | sqlmodel | `0.0.46` | `0.0.46` |
+  | pydantic | `2.13.5` | `2.13.5` |
+  | gunicorn | `26.2.0` | `26.2.0` |
+  | Mako | `1.4.1` | **`1.4.3`** |
+  | python-slugify | `9.1.0` | **`9.1.1`** |
+
+  48 of 50 are identical and nothing is added or removed. The library
+  generation `B27` made this repository correct against — SQLAlchemy
+  `2.0.54` / sqlmodel `0.0.46` / pydantic `2.13.5` — is the generation the
+  lock pins, so there is no upgrade and no downgrade in this release. The two
+  that moved are transitive patch bumps published since `2.2.1` was built
+  (`Mako` via `alembic`; `python-slugify` a declared floor in
+  `requirements_base.txt`) — which is exactly the unannounced drift the lock
+  now prevents.
+- **`pip-audit` runs a second time, over the shipped lock.** The existing run
+  audits `requirements_dev.txt`, whose floors resolve a graph the image does
+  not install — and `gunicorn`, the production server, is declared in no dev
+  file and so was never audited at all. Clean on its first run.
+- **`test-shipped-lock` executes the shipped set.** `pip-audit` and Trivy
+  *scan* a lock; neither *runs* it, so a lock that installs and then breaks
+  at import or at runtime would ship green. The new job installs the lock
+  exactly as the Dockerfile does, adds test tooling under constraints derived
+  from the lock (`scripts/shipped_lock_env.py --emit-constraints`),
+  re-verifies that nothing moved a runtime package (`--verify`), and runs the
+  full suite at the 100 % floor. `Babel` is installed as test tooling there:
+  it is build-only, never shipped, and the i18n tests read `.po`/`.mo` with
+  it.
+
 ### Fixed
 
 - **`required_teacher_count` can no longer reach the insert as `NULL`.**
