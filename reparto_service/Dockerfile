@@ -9,13 +9,22 @@ ENV PIP_ROOT_USER_ACTION=ignore
 COPY ./reparto_service/requirements_base.txt .
 COPY ./reparto_service/requirements_dev.txt .
 COPY ./reparto_service/requirements_prod.txt .
+COPY ./reparto_service/requirements_prod.lock .
 
+# Release images install from a hash-locked, fully pinned dependency set so a
+# rebuild of the same source cannot silently resolve a different graph.
+# `--require-hashes` is enforced for every non-development build. Regenerate
+# the lock with:
+#   pip-compile --generate-hashes --no-emit-index-url \
+#     --output-file=reparto_service/requirements_prod.lock \
+#     reparto_service/requirements_prod.txt
 RUN pip install --upgrade "pip==26.1.1" && \
     if [ "$ENVIRONMENT" = "development" ]; then \
         pip install --prefix=/install --no-cache-dir -r requirements_base.txt && \
         pip install --prefix=/install --no-cache-dir -r requirements_dev.txt ; \
     else \
-        pip install --prefix=/install --no-cache-dir -r requirements_prod.txt ; \
+        pip install --prefix=/install --no-cache-dir \
+            --require-hashes -r requirements_prod.lock ; \
     fi
 
 
