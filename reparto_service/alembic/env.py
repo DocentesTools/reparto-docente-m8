@@ -22,6 +22,7 @@ from sqlmodel import SQLModel
 import reparto_service.db_models  # noqa: F401
 from reparto_service.core.autogenerate import make_include_object
 from reparto_service.core.config import settings
+from reparto_service.core.utc_session import pin_utc_session
 
 # ---------------------------------------------------------------------
 # PYTHONPATH (Docker / monorepo safe)
@@ -115,10 +116,14 @@ def run_migrations_online() -> None:
         raise RuntimeError("Alembic configuration section is missing.")
     configuration["sqlalchemy.url"] = get_url()
 
-    connectable = engine_from_config(
-        configuration,  # type: ignore[arg-type]
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
+    # A UTC session makes the timestamp -> timestamptz ALTER an autogenerate
+    # emits read existing naive rows as UTC instead of the server's zone (G23).
+    connectable = pin_utc_session(
+        engine_from_config(
+            configuration,  # type: ignore[arg-type]
+            prefix="sqlalchemy.",
+            poolclass=pool.NullPool,
+        )
     )
 
     with connectable.connect() as connection:
