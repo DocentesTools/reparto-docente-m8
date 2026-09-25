@@ -92,7 +92,7 @@ repository. It now installs from a `pip-compile --generate-hashes` lock under
   Other dialects are left alone. Read on the built image with its own
   libraries, a naive column and one row written each way:
 
-  | Server `TimeZone` | without the pin: old / new row | this release: old / new row |
+  | Server `TimeZone` | unpinned: old / new row | this release: old / new |
   | --- | --- | --- |
   | `UTC` | `12:00Z` / `12:00Z` | `12:00Z` / `12:00Z` |
   | `Europe/Madrid` | `12:00Z` / **`13:00Z`** | `12:00Z` / `12:00Z` |
