@@ -116,6 +116,11 @@ def test_invalid_context_and_english_translation_use_the_default() -> None:
         reset_current_locale(token)
 
 
+def _vary_tokens(header: str) -> set[str]:
+    """The lower-cased values of a ``Vary`` header."""
+    return {token.strip().lower() for token in header.split(",")}
+
+
 def _probe_app() -> FastAPI:
     probe = FastAPI()
     probe.add_middleware(LocaleMiddleware)
@@ -370,7 +375,10 @@ def test_real_app_translates_domain_errors_at_the_boundary(
         },
     }
     assert response.headers["content-language"] == "fr"
-    assert response.headers["vary"] == "accept-language"
+    # A token, not the whole header: the real app's CORS middleware adds
+    # ``Origin`` from Starlette 1.7.0 on, and the service merges its own value
+    # into whatever is already there (core/i18n.py).
+    assert "accept-language" in _vary_tokens(response.headers["vary"])
 
 
 def test_stdlib_gettext_reads_the_committed_catalogs() -> None:
