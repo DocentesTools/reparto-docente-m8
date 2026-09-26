@@ -254,7 +254,10 @@ def test_bulk_preview_localizes_coded_prose_at_the_http_boundary(
     assert conflict.json()["conflicts"][0]["reason"] == conflict_reason
     for response in (invalid, conflict):
         assert response.headers["content-language"] == locale
-        assert response.headers["vary"] == "accept-language"
+        # A token, not the whole header: CORS adds ``Origin`` (Starlette 1.7.0+).
+        assert "accept-language" in {
+            token.strip().lower() for token in response.headers["vary"].split(",")
+        }
 
 
 def test_bulk_preview_subject_not_in_process_404(

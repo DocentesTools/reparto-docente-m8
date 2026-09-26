@@ -31,10 +31,13 @@ from reparto_service.services.user_directory import (
 )
 
 from .config import settings
+from .utc_session import pin_utc_session
 
 # Single instances shared across the entire process.
 auth: AuthDeps = build_auth_deps(settings)
 engine: DbEngine = create_db_engine(settings)
+# Every PostgreSQL session this engine opens runs in UTC (G23).
+pin_utc_session(engine._engine)
 
 # ``auth.CurrentUser`` is deliberately *not* re-exported under a local name: an
 # alias here is an invitation to annotate a route with bare authentication, and

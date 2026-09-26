@@ -78,6 +78,48 @@ repository. It now installs from a `pip-compile --generate-hashes` lock under
 
 ### Fixed
 
+- **Timestamps are stored exactly on a PostgreSQL server that does not run
+  in UTC** (`B30-pre-publish-hardening` leg 1, finding `G23`). The sqlmodel
+  `0.0.46` this release ships maps a `datetime` field to `UTCDateTime`,
+  which binds an *aware* UTC value, while every existing deployment holds
+  `timestamp without time zone` columns generated under the old mapping.
+  PostgreSQL casts that value into the column **in the session
+  `TimeZone`**, so under `Europe/Madrid` a row written at `12:00Z` was
+  stored as `13:00` and read back as `13:00Z`, beside older rows that were
+  correct. `core/utc_session.py` now runs `SET TIME ZONE 'UTC'` on every
+  connection the service engine (`core/deps.py`) and Alembic's engine
+  (`alembic/env.py`) open, which makes that cast a no-op on every server.
+  Other dialects are left alone. Read on the built image with its own
+  libraries, a naive column and one row written each way:
+
+  | Server `TimeZone` | unpinned: old / new row | this release: old / new |
+  | --- | --- | --- |
+  | `UTC` | `12:00Z` / `12:00Z` | `12:00Z` / `12:00Z` |
+  | `Europe/Madrid` | `12:00Z` / **`13:00Z`** | `12:00Z` / `12:00Z` |
+
+  **Upgrade note (`timestamptz`).** New deployments already generate
+  `timestamp with time zone` columns at first boot. An existing deployment
+  keeps its naive columns and stays correct with the pin. To move it to
+  `timestamptz`, generate and apply a revision
+  (`alembic revision --autogenerate`, then `alembic upgrade head`). Alembic
+  now reports the type change, and because its session is pinned too, the
+  ALTER reads every existing row as the UTC it is. Measured on `Europe/Madrid`:
+  `12:00Z` stays `12:00Z`, where an unpinned ALTER moves it to `11:00Z`.
+  Here that revision is automatic: `scripts/docker_start.sh` generates
+  and applies it on the first boot that sees the drift, now under the pin.
+
+  **Already-published `2.2.1`, measured and not corrected here.** `2.2.1`
+  ran the same sqlmodel `0.0.46` (read out of `tepochtli/reparto-docente-m8:2.2.1`)
+  with this repository's start script, which autogenerates and applies a
+  revision on any `alembic check` drift, **unpinned**. On a PostgreSQL server
+  outside UTC, a `2.2.0` → `2.2.1` upgrade therefore ALTERed every
+  timestamp column in the server's zone, and every row written before that
+  boot now reads early by the offset. Rows written by `2.2.1` itself are
+  exact, because its columns were already `timestamptz`. Nothing can tell
+  the two sets apart after the fact, so this release does not rewrite them.
+  An operator who ran `2.2.1` on such a server can correct the earlier rows
+  from the date of the upgrade boot. The fleet's own stacks run UTC and are
+  unaffected.
 - **`required_teacher_count` can no longer reach the insert as `NULL`.**
   `GroupSubjectBulkRequest.required_teacher_count` is `Optional[int]`, so a
   caller could send it explicitly as `null`; the bulk create path read it
@@ -112,6 +154,25 @@ repository. It now installs from a `pip-compile --generate-hashes` lock under
   service image in the fleet with no hash-locked dependency set, that
   spelling change reached the published `2.2.1` image rather than staying in
   CI, and `G21` — not this release — owns the lock that prevents a repeat.
+
+### Security
+
+- **A lock that only resolves where it was made is now refused**
+  (`B30-pre-publish-hardening` leg 2, finding `G24`).
+  `scripts/shipped_lock_env.py --check-portable` runs first in
+  `test-shipped-lock`. It fails on a `--find-links`/`-f`/`--index-url`/
+  `--extra-index-url`/`-e` option, on any filesystem path, and on a short,
+  commented deny-list of platform-only distributions (`colorama`, `pywin32`,
+  `pywin32-ctypes`, `pywinpty`), so a Windows regeneration can no longer put
+  `colorama` back into the Linux image silently. This repository's lock
+  already passes. The same check is in all five service repositories.
+- **The arm64 image is scanned before it is pushed** (leg 8, finding
+  `G31`(a)). The publish workflow scanned an amd64 build and then pushed
+  amd64 and arm64, so arm64 reached the registry unscanned. A second
+  single-platform build is now Trivy-gated at the same settings before the
+  push, and `tests/test_publish_scans_every_platform.py` fails if any pushed
+  platform lacks its own blocking scan. Both architectures of this release
+  read **0** CRITICAL/HIGH locally.
 
 ## [2.2.1] - 2026-09-20
 
