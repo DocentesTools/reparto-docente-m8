@@ -75,6 +75,12 @@ repository. It now installs from a `pip-compile --generate-hashes` lock under
   full suite at the 100 % floor. `Babel` is installed as test tooling there:
   it is build-only, never shipped, and the i18n tests read `.po`/`.mo` with
   it.
+- **The dev stack pins the issuer release the fleet publishes with this one**
+  (`B32-pre-publish-pin-alignment`).
+  `dev_reparto_m8/docker-compose.yml` moves `tepochtli/fa-auth-m8:2.2.1` →
+  `2.2.3`, which is pending publish, so the
+  `v2.2.2` tree names the issuer it ships beside. The stack pulls it once the
+  fleet's publish sweep reads `2.2.3` back.
 
 ### Fixed
 
