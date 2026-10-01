@@ -1,2 +1,2 @@
 # Catalog compiler only; production loads the committed .mo files with gettext.
-Babel>=2.17.0
+Babel>=2.18.0
